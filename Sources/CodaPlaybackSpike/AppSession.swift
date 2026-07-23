@@ -217,7 +217,6 @@ final class AppSession: ObservableObject {
     self.configuration = configuration
     connectionState = .failed(error.localizedDescription)
     path.removeAll()
-    rootToken = UUID()
   }
 
   private func resetConnectionState(to state: ConnectionState) {
