@@ -17,6 +17,7 @@ enum {
 struct CodaMPV {
   mpv_handle *handle;
   CodaMPVEvent snapshot;
+  bool resume_after_file_load;
 };
 
 static void observe(CodaMPV *engine, uint64_t identifier, const char *name, mpv_format format) {
@@ -122,6 +123,12 @@ bool coda_mpv_next_event(CodaMPV *engine, CodaMPVEvent *output) {
       : CODA_MPV_EVENT_END_FILE_EOF;
     return true;
   }
+  case MPV_EVENT_FILE_LOADED:
+    if (engine->resume_after_file_load) {
+      engine->resume_after_file_load = false;
+      set_flag(engine, "pause", false);
+    }
+    return true;
   case MPV_EVENT_SHUTDOWN:
     output->type = CODA_MPV_EVENT_SHUTDOWN;
     return true;
@@ -171,7 +178,11 @@ void coda_mpv_load(
 ) {
   if (!engine || !current_url)
     return;
-  set_flag(engine, "pause", !autoplay);
+  // Starting a remote stream at a saved position requires an initial seek.
+  // Keep the audio paused until mpv has loaded the file so no pre-seek audio
+  // can escape. Zero-position loads retain their immediate startup path.
+  engine->resume_after_file_load = autoplay && position > 0;
+  set_flag(engine, "pause", !autoplay || engine->resume_after_file_load);
   if (position > 0) {
     char options[96];
     snprintf(options, sizeof(options), "start=%.9f", position);
@@ -199,8 +210,11 @@ void coda_mpv_update_next(CodaMPV *engine, const char *next_url) {
 }
 
 void coda_mpv_set_paused(CodaMPV *engine, bool paused) {
-  if (engine)
+  if (engine) {
+    if (paused)
+      engine->resume_after_file_load = false;
     set_flag(engine, "pause", paused);
+  }
 }
 
 void coda_mpv_seek(CodaMPV *engine, double position) {
@@ -211,6 +225,7 @@ void coda_mpv_seek(CodaMPV *engine, double position) {
 void coda_mpv_stop(CodaMPV *engine) {
   if (!engine)
     return;
+  engine->resume_after_file_load = false;
   const char *stop[] = {"stop", NULL};
   command(engine, stop);
 }
