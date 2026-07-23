@@ -137,6 +137,7 @@ private final class CodaAppDelegate: NSObject, NSApplicationDelegate {
   private var isPreparingToTerminate = false
 
   func applicationWillFinishLaunching(_ notification: Notification) {
+    NSWindow.allowsAutomaticWindowTabbing = false
     NSApp.appearance = NSAppearance(named: .darkAqua)
   }
 
@@ -216,6 +217,7 @@ private final class CodaAppDelegate: NSObject, NSApplicationDelegate {
 
   private func configureWindows() {
     for window in NSApp.windows {
+      window.tabbingMode = .disallowed
       if window.title == "Coda Status" {
         window.styleMask.remove(.fullSizeContentView)
         window.titlebarAppearsTransparent = false
