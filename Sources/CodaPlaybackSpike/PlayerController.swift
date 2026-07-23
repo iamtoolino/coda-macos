@@ -2,6 +2,10 @@ import Combine
 import Foundation
 import MediaPlayer
 
+func playbackTimelinePublicationInterval(windowIsVisible: Bool) -> Duration {
+  windowIsVisible ? .milliseconds(250) : .seconds(1)
+}
+
 @MainActor
 final class PlaybackTimeline: ObservableObject {
   struct Snapshot: Equatable {
@@ -31,23 +35,6 @@ final class PlaybackTimeline: ObservableObject {
     snapshot = latestSnapshot
   }
 
-  func publishNextSecond(advancing: Bool) {
-    var replacement = latestSnapshot
-    if advancing {
-      let locallyAdvancedPosition = snapshot.position + 1
-      if abs(latestSnapshot.position - locallyAdvancedPosition) <= 1.5 {
-        replacement.position = locallyAdvancedPosition
-      }
-    } else {
-      replacement.position = snapshot.position
-    }
-    if replacement.duration > 0 {
-      replacement.position = min(replacement.position, replacement.duration)
-    }
-    guard replacement != snapshot else { return }
-    snapshot = replacement
-  }
-
   func setPosition(_ position: Double) {
     update(
       position: position,
@@ -62,8 +49,6 @@ final class PlaybackTimeline: ObservableObject {
 
 @MainActor
 final class PlayerController: ObservableObject {
-  private static let timelinePublicationInterval = Duration.seconds(1)
-
   @Published private(set) var queue: [QueueEntry] = []
   @Published private(set) var currentIndex: Int?
   @Published private(set) var playbackOccurrenceID: UUID?
@@ -83,6 +68,7 @@ final class PlayerController: ObservableObject {
   private var automaticIdleRecoveryAttempts = 0
   private var automaticIdleRecoveryPosition: Double?
   private var timelinePublicationTask: Task<Void, Never>?
+  private var isPlaybackWindowVisible = true
 
   var position: Double { timeline.position }
   var duration: Double { timeline.duration }
@@ -108,6 +94,12 @@ final class PlayerController: ObservableObject {
 
   var isEffectivelyMuted: Bool {
     isMuted || volume <= 0.001
+  }
+
+  func setPlaybackWindowVisible(_ isVisible: Bool) {
+    guard isPlaybackWindowVisible != isVisible else { return }
+    isPlaybackWindowVisible = isVisible
+    restartTimelinePublicationTask()
   }
 
   init(backend: (any PlaybackBackend)? = nil) {
@@ -486,9 +478,13 @@ final class PlayerController: ObservableObject {
 
     timelinePublicationTask = Task { @MainActor [weak self] in
       while !Task.isCancelled {
-        try? await Task.sleep(for: Self.timelinePublicationInterval)
-        guard !Task.isCancelled, let self, self.isPlaying else { return }
-        self.timeline.publishNextSecond(advancing: self.status != "Buffering")
+        guard let self else { return }
+        let interval = playbackTimelinePublicationInterval(
+          windowIsVisible: self.isPlaybackWindowVisible
+        )
+        try? await Task.sleep(for: interval)
+        guard !Task.isCancelled, self.isPlaying else { return }
+        self.timeline.publishLatest()
       }
     }
   }

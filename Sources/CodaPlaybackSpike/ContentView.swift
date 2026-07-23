@@ -10,6 +10,8 @@ struct ContentView: View {
   var body: some View {
     ZStack {
       AppArtworkBackground()
+      PlaybackWindowVisibilityObserver()
+        .frame(width: 0, height: 0)
 
       GeometryReader { geometry in
         let contentWidth = max(0, geometry.size.width - 20)
@@ -102,6 +104,85 @@ struct ContentView: View {
           try? await Task.sleep(for: .milliseconds(220))
           guard player.queue.isEmpty else { return }
           isDockVolumeExpanded = false
+        }
+      }
+    }
+  }
+}
+
+private struct PlaybackWindowVisibilityObserver: NSViewRepresentable {
+  @EnvironmentObject private var player: PlayerController
+
+  func makeNSView(context: Context) -> PlaybackWindowVisibilityView {
+    let view = PlaybackWindowVisibilityView()
+    view.onVisibilityChange = player.setPlaybackWindowVisible
+    return view
+  }
+
+  func updateNSView(_ nsView: PlaybackWindowVisibilityView, context: Context) {
+    nsView.onVisibilityChange = player.setPlaybackWindowVisible
+    nsView.reportVisibility()
+  }
+
+  static func dismantleNSView(_ nsView: PlaybackWindowVisibilityView, coordinator: ()) {
+    nsView.onVisibilityChange?(false)
+    nsView.stopObserving()
+  }
+}
+
+@MainActor
+private final class PlaybackWindowVisibilityView: NSView {
+  var onVisibilityChange: ((Bool) -> Void)?
+
+  private weak var observedWindow: NSWindow?
+  private var notificationTokens: [NSObjectProtocol] = []
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    guard observedWindow !== window else {
+      reportVisibility()
+      return
+    }
+    stopObserving()
+    observedWindow = window
+    startObserving()
+    reportVisibility()
+  }
+
+  func reportVisibility() {
+    guard let window = observedWindow else {
+      onVisibilityChange?(false)
+      return
+    }
+    onVisibilityChange?(
+      !window.isMiniaturized && window.occlusionState.contains(.visible)
+    )
+  }
+
+  func stopObserving() {
+    for token in notificationTokens {
+      NotificationCenter.default.removeObserver(token)
+    }
+    notificationTokens.removeAll()
+    observedWindow = nil
+  }
+
+  private func startObserving() {
+    guard let window = observedWindow else { return }
+    let center = NotificationCenter.default
+    let names: [Notification.Name] = [
+      NSWindow.didChangeOcclusionStateNotification,
+      NSWindow.didMiniaturizeNotification,
+      NSWindow.didDeminiaturizeNotification,
+    ]
+    notificationTokens = names.map { name in
+      center.addObserver(
+        forName: name,
+        object: window,
+        queue: .main
+      ) { [weak self] _ in
+        MainActor.assumeIsolated {
+          self?.reportVisibility()
         }
       }
     }
