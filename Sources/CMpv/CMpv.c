@@ -108,11 +108,15 @@ bool coda_mpv_next_event(CodaMPV *engine, CodaMPVEvent *output) {
 
   *output = engine->snapshot;
   switch (event->event_id) {
-  case MPV_EVENT_START_FILE:
+  case MPV_EVENT_START_FILE: {
+    mpv_event_start_file *start = event->data;
+    output->playlist_entry_id = start ? start->playlist_entry_id : 0;
     output->type = CODA_MPV_EVENT_START_FILE;
     return true;
+  }
   case MPV_EVENT_END_FILE: {
     mpv_event_end_file *end = event->data;
+    output->playlist_entry_id = end ? end->playlist_entry_id : 0;
     output->type = end && end->reason == MPV_END_FILE_REASON_ERROR
       ? CODA_MPV_EVENT_END_FILE_ERROR
       : CODA_MPV_EVENT_END_FILE_EOF;

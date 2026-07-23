@@ -2,6 +2,7 @@
 #define CODA_MPV_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef struct CodaMPV CodaMPV;
 
@@ -17,6 +18,7 @@ typedef enum CodaMPVEventType {
 
 typedef struct CodaMPVEvent {
   CodaMPVEventType type;
+  int64_t playlist_entry_id;
   double position;
   double duration;
   double buffered_until;

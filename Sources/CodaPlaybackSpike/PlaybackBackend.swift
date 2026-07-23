@@ -39,6 +39,11 @@ struct MPVFileStartAdvanceTracker {
   }
 }
 
+func mpvEndEventMatchesActiveFile(activeID: Int64?, endedID: Int64) -> Bool {
+  guard let activeID else { return true }
+  return activeID == endedID
+}
+
 @MainActor
 protocol PlaybackBackend: AnyObject {
   var name: String { get }
@@ -80,6 +85,7 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
   private let engine: OpaquePointer
   private var snapshot = PlaybackBackendSnapshot()
   private var fileStartAdvanceTracker = MPVFileStartAdvanceTracker()
+  private var activePlaylistEntryID: Int64?
   private var hasExpectedNext = false
   private var isLoadingItem = false
   private var intentionallyStopping = false
@@ -115,6 +121,7 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
     hasExpectedNext = next != nil
     isLoadingItem = true
     fileStartAdvanceTracker.reset()
+    activePlaylistEntryID = nil
     snapshot = PlaybackBackendSnapshot(position: max(0, position), isPlaying: autoplay)
     eventHandler?(.snapshot(snapshot))
 
@@ -162,6 +169,7 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
     hasExpectedNext = false
     isLoadingItem = false
     fileStartAdvanceTracker.reset()
+    activePlaylistEntryID = nil
     snapshot = PlaybackBackendSnapshot()
     eventHandler?(.snapshot(snapshot))
   }
@@ -177,6 +185,7 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
   private func drainEvents() {
     var event = CodaMPVEvent(
       type: CODA_MPV_EVENT_NONE,
+      playlist_entry_id: 0,
       position: 0,
       duration: 0,
       buffered_until: 0,
@@ -194,18 +203,29 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
     case CODA_MPV_EVENT_SNAPSHOT:
       updateSnapshot(from: event)
     case CODA_MPV_EVENT_START_FILE:
+      activePlaylistEntryID = event.playlist_entry_id
       if fileStartAdvanceTracker.observeStart(hasExpectedNext: hasExpectedNext) {
         eventHandler?(.automaticallyAdvanced)
       }
     case CODA_MPV_EVENT_END_FILE_EOF:
+      guard mpvEndEventMatchesActiveFile(
+        activeID: activePlaylistEntryID,
+        endedID: event.playlist_entry_id
+      ) else { return }
       if !hasExpectedNext {
         hasLoadedItem = false
         isLoadingItem = false
+        activePlaylistEntryID = nil
         eventHandler?(.finished)
       }
     case CODA_MPV_EVENT_END_FILE_ERROR:
+      guard mpvEndEventMatchesActiveFile(
+        activeID: activePlaylistEntryID,
+        endedID: event.playlist_entry_id
+      ) else { return }
       hasLoadedItem = false
       isLoadingItem = false
+      activePlaylistEntryID = nil
       eventHandler?(.failed("libmpv could not play the stream."))
     case CODA_MPV_EVENT_IDLE_CHANGED:
       updateSnapshot(from: event)
