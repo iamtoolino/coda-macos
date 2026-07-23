@@ -40,7 +40,7 @@ struct MPVFileStartAdvanceTracker {
 }
 
 func mpvEndEventMatchesActiveFile(activeID: Int64?, endedID: Int64) -> Bool {
-  guard let activeID else { return true }
+  guard let activeID else { return false }
   return activeID == endedID
 }
 

@@ -180,7 +180,7 @@ enum SelfTests {
     check("late mpv end event cannot finish the incoming file", failures: &failures) {
       mpvEndEventMatchesActiveFile(activeID: 12, endedID: 12)
         && !mpvEndEventMatchesActiveFile(activeID: 12, endedID: 11)
-        && mpvEndEventMatchesActiveFile(activeID: nil, endedID: 11)
+        && !mpvEndEventMatchesActiveFile(activeID: nil, endedID: 11)
     }
 
     check("automatic backend advance publishes the next queue entry", failures: &failures) {
@@ -592,6 +592,19 @@ enum SelfTests {
     player.setVolume(0)
     player.replaceQueue(entries, startsPlaying: true)
 
+    for _ in 0..<40 {
+      if player.currentIndex == 0, player.isPlaying, player.position >= 0.1 {
+        break
+      }
+      try? await Task.sleep(for: .milliseconds(100))
+    }
+    guard player.currentIndex == 0, player.isPlaying, player.position >= 0.1 else {
+      player.clear()
+      print("FAILED: mpv did not begin the first local playlist item.")
+      return false
+    }
+
+    player.play(index: 1)
     for _ in 0..<80 {
       if let message = player.errorMessage {
         player.clear()
@@ -600,14 +613,14 @@ enum SelfTests {
       }
       if player.currentIndex == 1, player.isPlaying, player.position >= 0.1 {
         player.clear()
-        print("mpv advanced to and remained synchronized with the final playlist item.")
+        print("mpv directly started and remained synchronized with the final playlist item.")
         return true
       }
       try? await Task.sleep(for: .milliseconds(100))
     }
 
     player.clear()
-    print("FAILED: mpv did not remain synchronized with the final playlist item.")
+    print("FAILED: mpv did not remain synchronized after directly starting the final item.")
     return false
   }
 
