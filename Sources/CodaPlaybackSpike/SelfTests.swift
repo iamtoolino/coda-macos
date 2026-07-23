@@ -101,6 +101,15 @@ enum SelfTests {
       ] && AlbumCollectionKind.mostPlayed.apiValue == "frequent"
     }
 
+    check("artist search excludes participation-only artists", failures: &failures) {
+      let results = [
+        RemoteArtist(id: "album-artist", name: "Avantasia", albumCount: 8),
+        RemoteArtist(id: "performer", name: "Avantasia, Jorn", albumCount: 0),
+        RemoteArtist(id: "legacy", name: "Legacy Server Artist"),
+      ].filter(\.isAlbumArtistSearchResult)
+      return results.map(\.id) == ["album-artist", "legacy"]
+    }
+
     check("source metadata formatting", failures: &failures) {
       let song = RemoteSong(
         id: "1",
@@ -588,7 +597,7 @@ enum SelfTests {
     }
 
     if failures.isEmpty {
-      print("Coda playback spike self-tests passed (32 checks).")
+      print("Coda playback spike self-tests passed (33 checks).")
       return true
     }
 

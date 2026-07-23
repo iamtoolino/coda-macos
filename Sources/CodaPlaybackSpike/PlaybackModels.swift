@@ -229,6 +229,15 @@ struct RemoteArtist: Decodable, Identifiable, Hashable, Sendable {
   var coverArt: String? = nil
   var artistImageUrl: String? = nil
   var genre: String? = nil
+
+  var isAlbumArtistSearchResult: Bool {
+    guard let albumCount else {
+      // Some Subsonic-compatible servers omit this optional field. Preserve
+      // those results instead of assuming they are participation-only artists.
+      return true
+    }
+    return albumCount > 0
+  }
 }
 
 struct RemotePlaylist: Decodable, Identifiable, Hashable, Sendable {

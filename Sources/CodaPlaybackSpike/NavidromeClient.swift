@@ -403,7 +403,7 @@ struct NavidromeClient: Sendable {
     )
     let result = response.searchResult3
     return LibrarySearchResults(
-      artists: result?.artist ?? [],
+      artists: (result?.artist ?? []).filter(\.isAlbumArtistSearchResult),
       albums: result?.album ?? [],
       songs: result?.song ?? []
     )
