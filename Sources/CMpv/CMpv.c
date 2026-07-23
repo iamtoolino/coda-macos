@@ -17,7 +17,10 @@ enum {
 struct CodaMPV {
   mpv_handle *handle;
   CodaMPVEvent snapshot;
-  bool resume_after_file_load;
+  double pending_resume_position;
+  bool pending_resume_should_play;
+  bool pending_resume_seek_issued;
+  bool pending_resume_seek_started;
 };
 
 static void observe(CodaMPV *engine, uint64_t identifier, const char *name, mpv_format format) {
@@ -124,9 +127,31 @@ bool coda_mpv_next_event(CodaMPV *engine, CodaMPVEvent *output) {
     return true;
   }
   case MPV_EVENT_FILE_LOADED:
-    if (engine->resume_after_file_load) {
-      engine->resume_after_file_load = false;
-      set_flag(engine, "pause", false);
+    if (engine->pending_resume_position > 0) {
+      char seconds[64];
+      snprintf(seconds, sizeof(seconds), "%.9f", engine->pending_resume_position);
+      const char *seek[] = {"seek", seconds, "absolute+exact", NULL};
+      engine->pending_resume_seek_issued = true;
+      command(engine, seek);
+    }
+    return true;
+  case MPV_EVENT_SEEK:
+    if (engine->pending_resume_position > 0 && engine->pending_resume_seek_issued)
+      engine->pending_resume_seek_started = true;
+    return true;
+  case MPV_EVENT_PLAYBACK_RESTART:
+    if (
+      engine->pending_resume_position > 0 &&
+      engine->pending_resume_seek_issued &&
+      engine->pending_resume_seek_started
+    ) {
+      bool should_play = engine->pending_resume_should_play;
+      engine->pending_resume_position = 0;
+      engine->pending_resume_should_play = false;
+      engine->pending_resume_seek_issued = false;
+      engine->pending_resume_seek_started = false;
+      if (should_play)
+        set_flag(engine, "pause", false);
     }
     return true;
   case MPV_EVENT_SHUTDOWN:
@@ -178,20 +203,17 @@ void coda_mpv_load(
 ) {
   if (!engine || !current_url)
     return;
-  // Starting a remote stream at a saved position requires an initial seek.
-  // Keep the audio paused until mpv has loaded the file so no pre-seek audio
-  // can escape. Zero-position loads retain their immediate startup path.
-  engine->resume_after_file_load = autoplay && position > 0;
-  set_flag(engine, "pause", !autoplay || engine->resume_after_file_load);
-  if (position > 0) {
-    char options[96];
-    snprintf(options, sizeof(options), "start=%.9f", position);
-    const char *load[] = {"loadfile", current_url, "replace", "-1", options, NULL};
-    command(engine, load);
-  } else {
-    const char *load[] = {"loadfile", current_url, "replace", NULL};
-    command(engine, load);
-  }
+  // A cold `start=<position>` can stall before mpv begins reading a remote
+  // stream. Load normally while paused, then use the fast in-file seek path
+  // once mpv reports the file ready. Playback resumes only after that seek
+  // completes, preventing both startup audio and pre-seek artifacts.
+  engine->pending_resume_position = position > 0 ? position : 0;
+  engine->pending_resume_should_play = autoplay && position > 0;
+  engine->pending_resume_seek_issued = false;
+  engine->pending_resume_seek_started = false;
+  set_flag(engine, "pause", !autoplay || position > 0);
+  const char *load[] = {"loadfile", current_url, "replace", NULL};
+  command(engine, load);
   if (next_url) {
     const char *append[] = {"loadfile", next_url, "append", NULL};
     command(engine, append);
@@ -211,21 +233,32 @@ void coda_mpv_update_next(CodaMPV *engine, const char *next_url) {
 
 void coda_mpv_set_paused(CodaMPV *engine, bool paused) {
   if (engine) {
-    if (paused)
-      engine->resume_after_file_load = false;
+    if (engine->pending_resume_position > 0) {
+      engine->pending_resume_should_play = !paused;
+      if (!paused)
+        return;
+    }
     set_flag(engine, "pause", paused);
   }
 }
 
 void coda_mpv_seek(CodaMPV *engine, double position) {
-  if (engine)
+  if (engine) {
+    engine->pending_resume_position = 0;
+    engine->pending_resume_should_play = false;
+    engine->pending_resume_seek_issued = false;
+    engine->pending_resume_seek_started = false;
     set_double(engine, "time-pos", position);
+  }
 }
 
 void coda_mpv_stop(CodaMPV *engine) {
   if (!engine)
     return;
-  engine->resume_after_file_load = false;
+  engine->pending_resume_position = 0;
+  engine->pending_resume_should_play = false;
+  engine->pending_resume_seek_issued = false;
+  engine->pending_resume_seek_started = false;
   const char *stop[] = {"stop", NULL};
   command(engine, stop);
 }
