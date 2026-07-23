@@ -172,17 +172,18 @@ void coda_mpv_load(
   if (!engine || !current_url)
     return;
   set_flag(engine, "pause", !autoplay);
-  const char *load[] = {"loadfile", current_url, "replace", NULL};
-  command(engine, load);
+  if (position > 0) {
+    char options[96];
+    snprintf(options, sizeof(options), "start=%.9f", position);
+    const char *load[] = {"loadfile", current_url, "replace", "-1", options, NULL};
+    command(engine, load);
+  } else {
+    const char *load[] = {"loadfile", current_url, "replace", NULL};
+    command(engine, load);
+  }
   if (next_url) {
     const char *append[] = {"loadfile", next_url, "append", NULL};
     command(engine, append);
-  }
-  if (position > 0) {
-    char seconds[64];
-    snprintf(seconds, sizeof(seconds), "%.9f", position);
-    const char *seek[] = {"seek", seconds, "absolute+exact", NULL};
-    command(engine, seek);
   }
 }
 

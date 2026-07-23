@@ -211,6 +211,28 @@ enum SelfTests {
         && backend.updatedNextURLs == [nil]
     }
 
+    check("restored queue loads paused at its saved position", failures: &failures) {
+      let backend = SelfTestPlaybackBackend()
+      let entry = QueueEntry(
+        sourceID: "restored-track",
+        url: URL(string: "https://example.test/restored-track")!,
+        title: "Restored Track"
+      )
+      let player = PlayerController(backend: backend)
+      player.replaceQueue(
+        [entry],
+        positionSeconds: 83.25,
+        startsPlaying: false
+      )
+
+      guard let load = backend.loadCalls.last else { return false }
+      return load.url == entry.url
+        && load.position == 83.25
+        && !load.autoplay
+        && player.position == 83.25
+        && !player.isPlaying
+    }
+
     check("playback clock does not invalidate stable player state", failures: &failures) {
       let backend = SelfTestPlaybackBackend()
       let player = PlayerController(backend: backend)
@@ -566,7 +588,7 @@ enum SelfTests {
     }
 
     if failures.isEmpty {
-      print("Coda playback spike self-tests passed (31 checks).")
+      print("Coda playback spike self-tests passed (32 checks).")
       return true
     }
 
@@ -595,15 +617,33 @@ enum SelfTests {
       QueueEntry(sourceID: "local-\(index)", url: url, title: url.deletingPathExtension().lastPathComponent)
     }
     player.setVolume(0)
-    player.replaceQueue(entries, startsPlaying: true)
+    player.replaceQueue(
+      entries,
+      positionSeconds: 0.2,
+      startsPlaying: false
+    )
 
     for _ in 0..<40 {
-      if player.currentIndex == 0, player.isPlaying, player.position >= 0.1 {
+      if !player.isPlaying, player.duration > 0, player.position >= 0.15 {
         break
       }
       try? await Task.sleep(for: .milliseconds(100))
     }
-    guard player.currentIndex == 0, player.isPlaying, player.position >= 0.1 else {
+    guard !player.isPlaying, player.duration > 0, player.position >= 0.15 else {
+      player.clear()
+      print("FAILED: mpv did not restore a paused local item at its saved position.")
+      return false
+    }
+
+    player.play()
+
+    for _ in 0..<40 {
+      if player.currentIndex == 0, player.isPlaying, player.position >= 0.25 {
+        break
+      }
+      try? await Task.sleep(for: .milliseconds(100))
+    }
+    guard player.currentIndex == 0, player.isPlaying, player.position >= 0.25 else {
       player.clear()
       print("FAILED: mpv did not begin the first local playlist item.")
       return false
