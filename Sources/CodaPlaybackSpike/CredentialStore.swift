@@ -33,6 +33,8 @@ enum CredentialStore {
   private static let service = "io.github.iamtoolino.coda.macos.navidrome"
   private static let account = "default"
   private static let accessPolicyMigrationKey =
+    "CredentialStore.stableSignedApplicationAccess.v2"
+  private static let legacyAccessPolicyMigrationKey =
     "CredentialStore.stableSignedApplicationAccess.v1"
 
   static func load() throws -> StoredLogin? {
@@ -161,6 +163,7 @@ enum CredentialStore {
 
   private static func markAccessPolicyCurrent() {
     UserDefaults.standard.set(true, forKey: accessPolicyMigrationKey)
+    UserDefaults.standard.removeObject(forKey: legacyAccessPolicyMigrationKey)
   }
 }
 
