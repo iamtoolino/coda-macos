@@ -143,8 +143,8 @@ SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" \
   swift run CodaPlaybackSpike --mpv-stream-test
 ```
 
-The live stream test uses the login saved by Coda in Keychain. Isolated test credentials can instead
-be supplied through `CODA_SERVER_URL`, `CODA_USERNAME`, and `CODA_PASSWORD`.
+The live stream test uses the login saved by Coda. Isolated test credentials can instead be supplied
+through `CODA_SERVER_URL`, `CODA_USERNAME`, and `CODA_PASSWORD`.
 
 ## Privacy
 

@@ -341,8 +341,8 @@ private struct PlaybackProgressControl: View {
       Text(elapsedLabel)
         .frame(width: 38, alignment: .trailing)
       PlaybackSeekBar(
-        position: timeline.position,
-        duration: timeline.duration,
+        position: timeline.snapshot.position,
+        duration: timeline.snapshot.duration,
         previewPosition: $previewPosition,
         seekAction: player.seek
       )
@@ -353,11 +353,11 @@ private struct PlaybackProgressControl: View {
   }
 
   private var elapsedLabel: String {
-    formatDuration(Int(previewPosition ?? timeline.position))
+    formatDuration(Int(previewPosition ?? timeline.snapshot.position))
   }
 
   private var durationLabel: String {
-    formatDuration(Int(timeline.duration))
+    formatDuration(Int(timeline.snapshot.duration))
   }
 }
 
@@ -711,9 +711,18 @@ private struct NavidromeLoginView: View {
         .controlSize(.large)
         .disabled(!canConnect || session.connectionState == .connecting)
 
-        Label("Your login is stored in your macOS login Keychain.", systemImage: "key.fill")
+        #if DEBUG
+          Label(
+            "Local debug builds keep this login in your private Application Support folder.",
+            systemImage: "hammer.fill"
+          )
           .font(.caption)
           .foregroundStyle(.secondary)
+        #else
+          Label("Your login is stored in your macOS login Keychain.", systemImage: "key.fill")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        #endif
       }
       .padding(20)
       .frame(width: 430)

@@ -31,6 +31,23 @@ final class PlaybackTimeline: ObservableObject {
     snapshot = latestSnapshot
   }
 
+  func publishNextSecond(advancing: Bool) {
+    var replacement = latestSnapshot
+    if advancing {
+      let locallyAdvancedPosition = snapshot.position + 1
+      if abs(latestSnapshot.position - locallyAdvancedPosition) <= 1.5 {
+        replacement.position = locallyAdvancedPosition
+      }
+    } else {
+      replacement.position = snapshot.position
+    }
+    if replacement.duration > 0 {
+      replacement.position = min(replacement.position, replacement.duration)
+    }
+    guard replacement != snapshot else { return }
+    snapshot = replacement
+  }
+
   func setPosition(_ position: Double) {
     update(
       position: position,
@@ -45,7 +62,7 @@ final class PlaybackTimeline: ObservableObject {
 
 @MainActor
 final class PlayerController: ObservableObject {
-  private static let timelinePublicationInterval = Duration.milliseconds(500)
+  private static let timelinePublicationInterval = Duration.seconds(1)
 
   @Published private(set) var queue: [QueueEntry] = []
   @Published private(set) var currentIndex: Int?
@@ -471,7 +488,7 @@ final class PlayerController: ObservableObject {
       while !Task.isCancelled {
         try? await Task.sleep(for: Self.timelinePublicationInterval)
         guard !Task.isCancelled, let self, self.isPlaying else { return }
-        self.timeline.publishLatest()
+        self.timeline.publishNextSecond(advancing: self.status != "Buffering")
       }
     }
   }

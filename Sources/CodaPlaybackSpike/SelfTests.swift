@@ -254,6 +254,25 @@ enum SelfTests {
         && player.bufferedUntil == 31
     }
 
+    check("presentation clock advances once per visible second and resynchronizes", failures: &failures) {
+      let timeline = PlaybackTimeline()
+      timeline.update(position: 0.8, duration: 100)
+      timeline.update(position: 2.1, duration: 100, publish: false)
+      timeline.publishNextSecond(advancing: true)
+      let firstTick = timeline.snapshot.position
+
+      timeline.update(position: 3.2, duration: 100, publish: false)
+      timeline.publishNextSecond(advancing: true)
+      let secondTick = timeline.snapshot.position
+
+      timeline.update(position: 20, duration: 100, publish: false)
+      timeline.publishNextSecond(advancing: true)
+
+      return abs(firstTick - 1.8) < 0.001
+        && abs(secondTick - 2.8) < 0.001
+        && timeline.snapshot.position == 20
+    }
+
     check("reordering the playing album preserves playback identity", failures: &failures) {
       let backend = SelfTestPlaybackBackend()
       let player = PlayerController(backend: backend)
@@ -561,7 +580,7 @@ enum SelfTests {
     }
 
     if failures.isEmpty {
-      print("Coda playback spike self-tests passed (30 checks).")
+      print("Coda playback spike self-tests passed (31 checks).")
       return true
     }
 
