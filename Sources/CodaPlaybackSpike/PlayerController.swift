@@ -45,7 +45,7 @@ final class PlaybackTimeline: ObservableObject {
 
 @MainActor
 final class PlayerController: ObservableObject {
-  private static let timelinePublicationInterval = Duration.seconds(1)
+  private static let timelinePublicationInterval = Duration.milliseconds(500)
 
   @Published private(set) var queue: [QueueEntry] = []
   @Published private(set) var currentIndex: Int?
