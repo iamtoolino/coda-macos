@@ -204,16 +204,29 @@ void coda_mpv_load(
   if (!engine || !current_url)
     return;
   // A cold `start=<position>` can stall before mpv begins reading a remote
-  // stream. Load normally while paused, then use the fast in-file seek path
-  // once mpv reports the file ready. Playback resumes only after that seek
-  // completes, preventing both startup audio and pre-seek artifacts.
+  // stream. For saved-position restores, prefill mpv's demuxer cache while
+  // paused, then use the fast in-file seek path once mpv reports the file
+  // ready. Playback resumes only after that seek completes, preventing both
+  // startup audio and pre-seek artifacts.
   engine->pending_resume_position = position > 0 ? position : 0;
   engine->pending_resume_should_play = autoplay && position > 0;
   engine->pending_resume_seek_issued = false;
   engine->pending_resume_seek_started = false;
   set_flag(engine, "pause", !autoplay || position > 0);
-  const char *load[] = {"loadfile", current_url, "replace", NULL};
-  command(engine, load);
+  if (position > 0) {
+    const char *load[] = {
+      "loadfile",
+      current_url,
+      "replace",
+      "-1",
+      "demuxer-cache-wait=yes",
+      NULL
+    };
+    command(engine, load);
+  } else {
+    const char *load[] = {"loadfile", current_url, "replace", NULL};
+    command(engine, load);
+  }
   if (next_url) {
     const char *append[] = {"loadfile", next_url, "append", NULL};
     command(engine, append);
