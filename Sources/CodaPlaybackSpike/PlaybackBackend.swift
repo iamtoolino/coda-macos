@@ -227,11 +227,13 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
       isLoadingItem = false
       activePlaylistEntryID = nil
       eventHandler?(.failed("libmpv could not play the stream."))
+    case CODA_MPV_EVENT_PLAYBACK_READY:
+      hasLoadedItem = true
+      isLoadingItem = false
     case CODA_MPV_EVENT_IDLE_CHANGED:
       updateSnapshot(from: event)
       if !event.is_idle {
         hasLoadedItem = true
-        isLoadingItem = false
         return
       }
 

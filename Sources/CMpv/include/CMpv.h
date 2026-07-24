@@ -14,6 +14,7 @@ typedef enum CodaMPVEventType {
   CODA_MPV_EVENT_END_FILE_ERROR = 4,
   CODA_MPV_EVENT_IDLE_CHANGED = 5,
   CODA_MPV_EVENT_SHUTDOWN = 6,
+  CODA_MPV_EVENT_PLAYBACK_READY = 7,
 } CodaMPVEventType;
 
 typedef struct CodaMPVEvent {
