@@ -22,7 +22,7 @@ struct ContentView: View {
         let contentHeight = max(0, geometry.size.height - 20)
         let queueWidth = min(330, max(285, geometry.size.width * 0.22))
         let queueIsVisible =
-          session.client != nil && contentWidth - queueWidth - 10 >= 650
+          session.hasEstablishedConnection && contentWidth - queueWidth - 10 >= 650
 
         HStack(alignment: .top, spacing: 10) {
           ZStack(alignment: .bottom) {
@@ -36,7 +36,7 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.clear)
 
-            if session.client != nil {
+            if session.hasEstablishedConnection {
               HStack(spacing: 0) {
                 Color.clear
                   .frame(width: PlaybackDockMetrics.volumeExpansionWidth)
@@ -85,7 +85,7 @@ struct ContentView: View {
       }
     }
     .toolbar {
-      if session.client != nil {
+      if session.hasEstablishedConnection {
         ToolbarItemGroup(placement: .navigation) {
           ForEach(SidebarDestination.allCases) { destination in
             TitlebarNavigationButton(destination: destination)
@@ -678,7 +678,9 @@ private struct RootContentView: View {
 
   var body: some View {
     Group {
-      if session.client == nil {
+      if session.isRestoringConnection {
+        NavidromeConnectionView()
+      } else if !session.hasEstablishedConnection {
         NavidromeLoginView()
       } else {
         switch session.selectedRoot {
@@ -718,6 +720,37 @@ private struct RouteContentView: View {
       }
     }
     .safeAreaPadding(.top, 14)
+  }
+}
+
+private struct NavidromeConnectionView: View {
+  @EnvironmentObject private var session: AppSession
+
+  var body: some View {
+    VStack(spacing: 14) {
+      Image(nsImage: NSApp.applicationIconImage)
+        .resizable()
+        .interpolation(.high)
+        .frame(width: 72, height: 72)
+        .shadow(color: .black.opacity(0.28), radius: 14, y: 7)
+
+      ProgressView()
+        .controlSize(.small)
+
+      Text(connectionLabel)
+        .font(.callout.weight(.medium))
+        .foregroundStyle(.secondary)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .transition(.opacity)
+    .accessibilityElement(children: .combine)
+  }
+
+  private var connectionLabel: String {
+    guard let host = session.configuration?.serverURL.host, !host.isEmpty else {
+      return "Connecting to Navidrome…"
+    }
+    return "Connecting to \(host)…"
   }
 }
 

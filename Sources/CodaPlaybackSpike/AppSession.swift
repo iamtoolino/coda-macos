@@ -73,6 +73,17 @@ final class AppSession: ObservableObject {
   private var artworkURLs: [String: URL] = [:]
   private var automaticConnectionTask: Task<Void, Never>?
 
+  var hasEstablishedConnection: Bool {
+    client != nil && activeSessionID != nil
+  }
+
+  var isRestoringConnection: Bool {
+    connectionState == .connecting
+      && configuration != nil
+      && client != nil
+      && activeSessionID == nil
+  }
+
   init(loadCredentials: Bool = true) {
     guard loadCredentials else { return }
     do {
