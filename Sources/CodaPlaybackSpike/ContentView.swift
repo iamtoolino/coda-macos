@@ -1,6 +1,10 @@
 import AppKit
 import SwiftUI
 
+private enum CodaWindowLayout {
+  static let mainContentTopLift: CGFloat = 20
+}
+
 struct ContentView: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
@@ -15,6 +19,7 @@ struct ContentView: View {
 
       GeometryReader { geometry in
         let contentWidth = max(0, geometry.size.width - 20)
+        let contentHeight = max(0, geometry.size.height - 20)
         let queueWidth = min(330, max(285, geometry.size.width * 0.22))
         let queueIsVisible =
           session.client != nil && contentWidth - queueWidth - 10 >= 650
@@ -60,7 +65,9 @@ struct ContentView: View {
               )
             }
           }
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .frame(maxWidth: .infinity)
+          .frame(height: contentHeight + CodaWindowLayout.mainContentTopLift)
+          .offset(y: -CodaWindowLayout.mainContentTopLift)
 
           if queueIsVisible {
             QueuePanel()
@@ -71,7 +78,7 @@ struct ContentView: View {
         }
         .frame(
           width: contentWidth,
-          height: max(0, geometry.size.height - 20),
+          height: contentHeight,
           alignment: .topLeading
         )
         .padding(10)
