@@ -85,11 +85,12 @@ struct ContentView: View {
       }
     }
     .toolbar {
-      if session.hasEstablishedConnection {
-        ToolbarItemGroup(placement: .navigation) {
-          ForEach(SidebarDestination.allCases) { destination in
-            TitlebarNavigationButton(destination: destination)
-          }
+      ToolbarItemGroup(placement: .navigation) {
+        ForEach(SidebarDestination.allCases) { destination in
+          TitlebarNavigationButton(destination: destination)
+            .opacity(session.hasEstablishedConnection ? 1 : 0)
+            .disabled(!session.hasEstablishedConnection)
+            .accessibilityHidden(!session.hasEstablishedConnection)
         }
       }
     }
