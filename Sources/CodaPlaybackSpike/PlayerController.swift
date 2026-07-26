@@ -463,11 +463,15 @@ final class PlayerController: ObservableObject {
       )
 
     case .finished:
+      currentIndex = nil
+      playbackOccurrenceID = nil
       isPlaying = false
-      timeline.setPosition(duration)
+      timeline.reset()
+      bufferedUntil = 0
       status = "Finished"
       restartTimelinePublicationTask()
-      updateNowPlayingInfo()
+      MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+      MPNowPlayingInfoCenter.default().playbackState = .stopped
 
     case .failed(let message):
       isPlaying = false

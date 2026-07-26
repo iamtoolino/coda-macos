@@ -106,11 +106,11 @@ struct ContentView: View {
     .onChange(of: session.selectedRoot) {
       artworkTreatments.restorePlaybackArtwork()
     }
-    .onChange(of: player.queue.isEmpty) { _, isEmpty in
-      if isEmpty {
+    .onChange(of: player.currentEntry?.id) { _, currentEntryID in
+      if currentEntryID == nil {
         Task {
           try? await Task.sleep(for: .milliseconds(220))
-          guard player.queue.isEmpty else { return }
+          guard player.currentEntry == nil else { return }
           isDockVolumeExpanded = false
         }
       }
@@ -207,13 +207,13 @@ private struct CompactPlaybackDockHost: NSViewRepresentable {
     let view = PassthroughDockHostingView(rootView: rootView)
     view.dockWidth = dockWidth
     view.showsMetadata = showsMetadata
-    view.hasQueue = !player.queue.isEmpty
+    view.hasActiveEntry = player.currentEntry != nil
     return view
   }
 
   func updateNSView(_ nsView: PassthroughDockHostingView, context: Context) {
     nsView.dockWidth = dockWidth
-    nsView.hasQueue = !player.queue.isEmpty
+    nsView.hasActiveEntry = player.currentEntry != nil
     // The hosted dock already observes PlayerController and the artwork settings.
     // Replacing its root view for every playback-position publication forces a
     // complete AppKit/SwiftUI layout pass four times per second. Only rebuild the
@@ -249,7 +249,7 @@ private struct CompactPlaybackDockHostingRoot: View {
 
   var body: some View {
     Group {
-      if !player.queue.isEmpty {
+      if player.currentEntry != nil {
         CompactPlaybackDock(
           showsMetadata: showsMetadata,
           isVolumeExpanded: $isVolumeExpanded
@@ -265,17 +265,17 @@ private struct CompactPlaybackDockHostingRoot: View {
         )
       }
     }
-    .animation(.easeInOut(duration: 0.2), value: player.queue.isEmpty)
+    .animation(.easeInOut(duration: 0.2), value: player.currentEntry?.id)
   }
 }
 
 private final class PassthroughDockHostingView: NSHostingView<CompactPlaybackDockHostingRoot> {
   var dockWidth: CGFloat = PlaybackDockMetrics.collapsedWidthWithoutMetadata
   var showsMetadata = false
-  var hasQueue = false
+  var hasActiveEntry = false
 
   override func hitTest(_ point: NSPoint) -> NSView? {
-    guard hasQueue else { return nil }
+    guard hasActiveEntry else { return nil }
     let dockHeight: CGFloat = 52
     let dockY = isFlipped ? 0 : bounds.height - dockHeight
     let dockRect = NSRect(

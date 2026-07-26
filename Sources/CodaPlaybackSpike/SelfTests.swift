@@ -220,6 +220,32 @@ enum SelfTests {
         && backend.updatedNextURLs == [nil]
     }
 
+    check("finishing the queue retains it without an active track", failures: &failures) {
+      let backend = SelfTestPlaybackBackend()
+      let entry = QueueEntry(
+        sourceID: "finished-track",
+        url: URL(string: "https://example.test/finished-track")!,
+        title: "Finished Track"
+      )
+      let player = PlayerController(backend: backend)
+      player.replaceQueue([entry], startsPlaying: true)
+      backend.emit(
+        .snapshot(
+          PlaybackBackendSnapshot(position: 120, duration: 120, isPlaying: true)
+        )
+      )
+      backend.emit(.finished)
+
+      return player.queue.map(\.id) == [entry.id]
+        && player.currentIndex == nil
+        && player.currentEntry == nil
+        && player.playbackOccurrenceID == nil
+        && !player.isPlaying
+        && player.position == 0
+        && player.duration == 0
+        && player.status == "Finished"
+    }
+
     check("restored queue loads paused at its saved position", failures: &failures) {
       let backend = SelfTestPlaybackBackend()
       let entry = QueueEntry(
@@ -616,7 +642,7 @@ enum SelfTests {
     }
 
     if failures.isEmpty {
-      print("Coda playback spike self-tests passed (34 checks).")
+      print("Coda playback spike self-tests passed (35 checks).")
       return true
     }
 
