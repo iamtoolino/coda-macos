@@ -242,6 +242,25 @@ enum SelfTests {
         && !player.isPlaying
     }
 
+    check("volume level survives player recreation", failures: &failures) {
+      let suiteName = "Coda.SelfTests.Volume.\(UUID().uuidString)"
+      guard let defaults = UserDefaults(suiteName: suiteName) else { return false }
+      defer { defaults.removePersistentDomain(forName: suiteName) }
+
+      let firstPlayer = PlayerController(
+        backend: SelfTestPlaybackBackend(),
+        volumeDefaults: defaults
+      )
+      firstPlayer.setVolume(0.37)
+
+      let restoredPlayer = PlayerController(
+        backend: SelfTestPlaybackBackend(),
+        volumeDefaults: defaults
+      )
+      return abs(restoredPlayer.volume - 0.37) < 0.000_001
+        && !restoredPlayer.isMuted
+    }
+
     check("playback clock does not invalidate stable player state", failures: &failures) {
       let backend = SelfTestPlaybackBackend()
       let player = PlayerController(backend: backend)
@@ -597,7 +616,7 @@ enum SelfTests {
     }
 
     if failures.isEmpty {
-      print("Coda playback spike self-tests passed (33 checks).")
+      print("Coda playback spike self-tests passed (34 checks).")
       return true
     }
 

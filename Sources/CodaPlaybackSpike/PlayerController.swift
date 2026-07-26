@@ -49,6 +49,8 @@ final class PlaybackTimeline: ObservableObject {
 
 @MainActor
 final class PlayerController: ObservableObject {
+  private static let storedVolumeKey = "playback-volume"
+
   @Published private(set) var queue: [QueueEntry] = []
   @Published private(set) var currentIndex: Int?
   @Published private(set) var playbackOccurrenceID: UUID?
@@ -63,6 +65,7 @@ final class PlayerController: ObservableObject {
   let timeline = PlaybackTimeline()
 
   private var backend: any PlaybackBackend
+  private let volumeDefaults: UserDefaults?
   private var remoteCommandTokens: [(MPRemoteCommand, Any)] = []
   private var lastAudibleVolume: Double = 1
   private var automaticIdleRecoveryAttempts = 0
@@ -102,16 +105,32 @@ final class PlayerController: ObservableObject {
     restartTimelinePublicationTask()
   }
 
-  init(backend: (any PlaybackBackend)? = nil) {
-    let selectedBackend = backend
-      ?? PlaybackBackendFactory.make()
-    self.backend = selectedBackend
-    playbackEngineName = selectedBackend.name
-    selectedBackend.eventHandler = { [weak self] event in
+  convenience init() {
+    self.init(
+      backend: PlaybackBackendFactory.make(),
+      volumeDefaults: .standard
+    )
+  }
+
+  init(
+    backend: any PlaybackBackend,
+    volumeDefaults: UserDefaults? = nil
+  ) {
+    self.backend = backend
+    self.volumeDefaults = volumeDefaults
+    if let savedVolume = volumeDefaults?.object(forKey: Self.storedVolumeKey) as? NSNumber {
+      let restoredVolume = savedVolume.doubleValue
+      if restoredVolume.isFinite {
+        volume = min(max(restoredVolume, 0), 1)
+      }
+    }
+    lastAudibleVolume = volume > 0.001 ? volume : 0.25
+    playbackEngineName = backend.name
+    backend.eventHandler = { [weak self] event in
       self?.handleBackendEvent(event)
     }
-    selectedBackend.setVolume(volume)
-    selectedBackend.setMuted(isMuted)
+    backend.setVolume(volume)
+    backend.setMuted(isMuted)
     configureRemoteCommands()
   }
 
@@ -216,6 +235,7 @@ final class PlayerController: ObservableObject {
     isMuted = false
     backend.setMuted(false)
     backend.setVolume(bounded)
+    persistVolume()
   }
 
   func toggleMute() {
@@ -223,6 +243,7 @@ final class PlayerController: ObservableObject {
       if volume <= 0.001 {
         volume = max(lastAudibleVolume, 0.25)
         backend.setVolume(volume)
+        persistVolume()
       }
       isMuted = false
       backend.setMuted(false)
@@ -468,6 +489,10 @@ final class PlayerController: ObservableObject {
     errorMessage = nil
     MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     MPNowPlayingInfoCenter.default().playbackState = .stopped
+  }
+
+  private func persistVolume() {
+    volumeDefaults?.set(volume, forKey: Self.storedVolumeKey)
   }
 
   private func restartTimelinePublicationTask() {
