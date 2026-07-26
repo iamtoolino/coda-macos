@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 private let floatingPlaybackDockScrollClearance: CGFloat = 78
@@ -831,6 +832,18 @@ struct AlbumDetailView: View {
         await highlightRating()
       }
     }
+    .onAppear {
+      applyLoadedArtwork()
+    }
+    .onReceive(
+      NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)
+    ) { notification in
+      guard let window = notification.object as? NSWindow,
+        window === NSApp.keyWindow,
+        window.title != "Coda Status"
+      else { return }
+      applyLoadedArtwork()
+    }
     .onChange(of: session.albumRatingPrompt) { _, prompt in
       guard prompt?.albumID == albumID else { return }
       Task { await highlightRating() }
@@ -929,15 +942,28 @@ struct AlbumDetailView: View {
       await artworkLoader.load(
         url: session.artworkURL(id: loadedPage.album.coverArt ?? loadedPage.album.id, size: 700)
       )
-      if !Task.isCancelled, let image = artworkLoader.image {
-        artworkTreatments.displayArtwork(
-          image,
-          accent: artworkLoader.accent,
-          identity: loadedPage.album.id
-        )
+      if !Task.isCancelled {
+        applyLoadedArtwork()
       }
     } catch {
       errorMessage = error.localizedDescription
+    }
+  }
+
+  private func applyLoadedArtwork() {
+    guard let album = page?.album, let image = artworkLoader.image else { return }
+    if player.currentEntry?.albumID == album.id {
+      artworkTreatments.rememberPlaybackArtwork(
+        image,
+        accent: artworkLoader.accent,
+        identity: album.id
+      )
+    } else {
+      artworkTreatments.displayArtwork(
+        image,
+        accent: artworkLoader.accent,
+        identity: album.id
+      )
     }
   }
 }
