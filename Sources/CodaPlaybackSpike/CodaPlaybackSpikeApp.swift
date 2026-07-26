@@ -134,6 +134,7 @@ private final class CodaAppDelegate: NSObject, NSApplicationDelegate {
   weak var queueHandoff: QueueHandoffCoordinator?
   private var terminationSignalSource: DispatchSourceSignal?
   private var mouseNavigationMonitor: Any?
+  private var windowActivationObserver: NSObjectProtocol?
   private var isPreparingToTerminate = false
 
   func applicationWillFinishLaunching(_ notification: Notification) {
@@ -161,6 +162,7 @@ private final class CodaAppDelegate: NSObject, NSApplicationDelegate {
     NSApp.setActivationPolicy(.regular)
     NSApp.activate(ignoringOtherApps: true)
     installMouseNavigationMonitor()
+    installWindowActivationObserver()
     installGracefulTerminationSignalHandler()
     DispatchQueue.main.async { self.configureWindows() }
   }
@@ -169,6 +171,10 @@ private final class CodaAppDelegate: NSObject, NSApplicationDelegate {
     if let mouseNavigationMonitor {
       NSEvent.removeMonitor(mouseNavigationMonitor)
       self.mouseNavigationMonitor = nil
+    }
+    if let windowActivationObserver {
+      NotificationCenter.default.removeObserver(windowActivationObserver)
+      self.windowActivationObserver = nil
     }
   }
 
@@ -184,6 +190,14 @@ private final class CodaAppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationDidBecomeActive(_ notification: Notification) {
     configureWindows()
+  }
+
+  func applicationShouldHandleReopen(
+    _ sender: NSApplication,
+    hasVisibleWindows flag: Bool
+  ) -> Bool {
+    DispatchQueue.main.async { self.configureWindows() }
+    return true
   }
 
   private func installGracefulTerminationSignalHandler() {
@@ -215,25 +229,43 @@ private final class CodaAppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
+  private func installWindowActivationObserver() {
+    guard windowActivationObserver == nil else { return }
+    windowActivationObserver = NotificationCenter.default.addObserver(
+      forName: NSWindow.didBecomeKeyNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] notification in
+      guard let window = notification.object as? NSWindow else { return }
+      DispatchQueue.main.async {
+        self?.configure(window)
+      }
+    }
+  }
+
   private func configureWindows() {
     for window in NSApp.windows {
-      window.tabbingMode = .disallowed
-      if window.title == "Coda Status" {
-        window.styleMask.remove(.fullSizeContentView)
-        window.titlebarAppearsTransparent = false
-        window.titleVisibility = .visible
-        window.titlebarSeparatorStyle = .automatic
-        window.isOpaque = true
-        window.backgroundColor = .windowBackgroundColor
-        continue
-      }
-      window.styleMask.insert(.fullSizeContentView)
-      window.titlebarAppearsTransparent = true
-      window.titleVisibility = .hidden
-      window.titlebarSeparatorStyle = .none
-      window.toolbarStyle = .unified
-      window.isOpaque = false
-      window.backgroundColor = .clear
+      configure(window)
     }
+  }
+
+  private func configure(_ window: NSWindow) {
+    window.tabbingMode = .disallowed
+    if window.title == "Coda Status" {
+      window.styleMask.remove(.fullSizeContentView)
+      window.titlebarAppearsTransparent = false
+      window.titleVisibility = .visible
+      window.titlebarSeparatorStyle = .automatic
+      window.isOpaque = true
+      window.backgroundColor = .windowBackgroundColor
+      return
+    }
+    window.styleMask.insert(.fullSizeContentView)
+    window.titlebarAppearsTransparent = true
+    window.titleVisibility = .hidden
+    window.titlebarSeparatorStyle = .none
+    window.toolbarStyle = .unified
+    window.isOpaque = false
+    window.backgroundColor = .clear
   }
 }
