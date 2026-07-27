@@ -49,10 +49,13 @@ final class ArtworkTreatmentSettings: ObservableObject {
   }
 
   func displayArtwork(_ image: NSImage, accent: ArtworkColor, identity: String? = nil) {
-    if let identity, displayedArtworkIdentity == identity {
+    if let artwork,
+      artwork === image,
+      self.accent == accent,
+      displayedArtworkIdentity == identity
+    {
       return
     }
-    if let artwork, artwork === image, self.accent == accent { return }
     withAnimation(.easeInOut(duration: 0.85)) {
       artwork = image
       self.accent = accent

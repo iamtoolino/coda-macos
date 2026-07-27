@@ -1,3 +1,4 @@
+import AppKit
 import AudioToolbox
 import Combine
 import Foundation
@@ -18,6 +19,20 @@ enum SelfTests {
 
     check("known MD5 vector", failures: &failures) {
       NavidromeConfiguration.md5("passwordsalt") == "b305cadbb3bce54f3aa59c64fec00dea"
+    }
+
+    check("same album identity can repair stale artwork treatment", failures: &failures) {
+      let treatments = ArtworkTreatmentSettings()
+      let staleImage = NSImage(size: NSSize(width: 1, height: 1))
+      let currentImage = NSImage(size: NSSize(width: 2, height: 2))
+      let staleAccent = ArtworkColor(red: 0.7, green: 0.2, blue: 0.1)
+      let currentAccent = ArtworkColor(red: 0.1, green: 0.6, blue: 0.9)
+
+      treatments.displayArtwork(staleImage, accent: staleAccent, identity: "album")
+      treatments.displayArtwork(currentImage, accent: currentAccent, identity: "album")
+
+      return treatments.artwork === currentImage
+        && treatments.accent == currentAccent
     }
 
     check("original stream policy", failures: &failures) {
@@ -642,7 +657,7 @@ enum SelfTests {
     }
 
     if failures.isEmpty {
-      print("Coda playback spike self-tests passed (35 checks).")
+      print("Coda playback spike self-tests passed (36 checks).")
       return true
     }
 
