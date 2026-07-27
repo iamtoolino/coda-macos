@@ -1105,10 +1105,21 @@ private struct QueuePanel: View {
         return .handled
       }
       .onExitCommand { selectedEntryIDs = nil }
-      .onChange(of: player.queue.map(\.id)) {
+      .onChange(of: player.queue.map(\.id)) { previousIDs, currentIDs in
         groups = queueGroups(player.queue)
         reconcileSelection()
         refreshDropGeometry()
+        if previousIDs.isEmpty, !currentIDs.isEmpty {
+          Task { @MainActor in
+            // Queue restoration publishes the entries before PlayerController
+            // publishes its restored current index. Wait for both that update and
+            // the derived album groups to enter the scroll view.
+            await Task.yield()
+            groups = queueGroups(player.queue)
+            await Task.yield()
+            scrollToPlayingTrack(proxy, animated: false)
+          }
+        }
       }
       .onChange(of: player.currentEntry?.id) { oldEntryID, newEntryID in
         followCurrentAlbum(from: oldEntryID, to: newEntryID, proxy: proxy)
