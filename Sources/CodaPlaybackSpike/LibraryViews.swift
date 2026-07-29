@@ -99,6 +99,9 @@ struct HomeView: View {
     .task(id: resetToken) {
       await load()
     }
+    .onAppear {
+      artworkTreatments.restorePlaybackArtwork()
+    }
   }
 
   @MainActor
@@ -186,6 +189,7 @@ struct HomeView: View {
 struct SearchView: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
+  @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   let resetToken: UUID?
 
   @FocusState private var searchFieldIsFocused: Bool
@@ -259,6 +263,7 @@ struct SearchView: View {
       searchFieldIsFocused = true
     }
     .onAppear {
+      artworkTreatments.restorePlaybackArtwork()
       searchFieldIsFocused = true
     }
     .onExitCommand {
@@ -830,6 +835,15 @@ struct AlbumDetailView: View {
     .onAppear {
       applyLoadedArtwork()
     }
+    .onReceive(
+      NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)
+    ) { notification in
+      guard let window = notification.object as? NSWindow,
+        window === NSApp.keyWindow,
+        window.title != "Coda Status"
+      else { return }
+      applyLoadedArtwork()
+    }
     .onChange(of: session.albumRatingPrompt) { _, prompt in
       guard prompt?.albumID == albumID else { return }
       Task { await highlightRating() }
@@ -938,11 +952,19 @@ struct AlbumDetailView: View {
 
   private func applyLoadedArtwork() {
     guard let album = page?.album, let image = artworkLoader.image else { return }
-    artworkTreatments.displayArtwork(
-      image,
-      accent: artworkLoader.accent,
-      identity: album.id
-    )
+    if player.currentEntry?.albumID == album.id {
+      artworkTreatments.rememberPlaybackArtwork(
+        image,
+        accent: artworkLoader.accent,
+        identity: album.id
+      )
+    } else {
+      artworkTreatments.displayArtwork(
+        image,
+        accent: artworkLoader.accent,
+        identity: album.id
+      )
+    }
   }
 }
 

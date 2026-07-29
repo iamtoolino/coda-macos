@@ -27,14 +27,6 @@ struct ArtworkColor: Equatable {
 
 @MainActor
 final class ArtworkTreatmentSettings: ObservableObject {
-  private static let presentedTreatmentCacheLimit = 12
-
-  private struct Treatment {
-    let image: NSImage
-    let accent: ArtworkColor
-    let identity: String?
-  }
-
   private static let showsRatingLabelsKey = "shows-album-rating-labels"
 
   @Published var accent: ArtworkColor = .fallback
@@ -43,13 +35,12 @@ final class ArtworkTreatmentSettings: ObservableObject {
   @Published var showsAlbumRatingLabels: Bool {
     didSet { UserDefaults.standard.set(showsAlbumRatingLabels, forKey: Self.showsRatingLabelsKey) }
   }
-  private var playbackTreatment: Treatment?
-  private var presentedTreatments: [String: Treatment] = [:]
-  private var presentedTreatmentOrder: [String] = []
-  private var presentedArtworkIdentity: String?
+  private var playbackArtwork: NSImage?
+  private var playbackAccent: ArtworkColor?
+  private var playbackArtworkIdentity: String?
   private var displayedArtworkIdentity: String?
 
-  var hasPlaybackArtwork: Bool { playbackTreatment != nil }
+  var hasPlaybackArtwork: Bool { playbackArtwork != nil }
 
   init() {
     let defaults = UserDefaults.standard
@@ -58,14 +49,19 @@ final class ArtworkTreatmentSettings: ObservableObject {
   }
 
   func displayArtwork(_ image: NSImage, accent: ArtworkColor, identity: String? = nil) {
-    guard let identity, identity == presentedArtworkIdentity else { return }
-    presentedTreatments[identity] = Treatment(
-      image: image,
-      accent: accent,
-      identity: identity
-    )
-    touchPresentedTreatment(identity)
-    applyEffectiveTreatment()
+    if let artwork,
+      artwork === image,
+      self.accent == accent,
+      displayedArtworkIdentity == identity
+    {
+      return
+    }
+    withAnimation(.easeInOut(duration: 0.85)) {
+      artwork = image
+      self.accent = accent
+      displayedArtworkIdentity = identity
+      artworkRevision = UUID()
+    }
   }
 
   func rememberPlaybackArtwork(
@@ -73,8 +69,10 @@ final class ArtworkTreatmentSettings: ObservableObject {
     accent: ArtworkColor,
     identity: String? = nil
   ) {
-    playbackTreatment = Treatment(image: image, accent: accent, identity: identity)
-    applyEffectiveTreatment()
+    playbackArtwork = image
+    playbackAccent = accent
+    playbackArtworkIdentity = identity
+    displayArtwork(image, accent: accent, identity: identity)
   }
 
   func promoteDisplayedArtworkToPlayback(ifIdentity identity: String?) {
@@ -82,123 +80,18 @@ final class ArtworkTreatmentSettings: ObservableObject {
       displayedArtworkIdentity == identity,
       let artwork
     else { return }
-    playbackTreatment = Treatment(image: artwork, accent: accent, identity: identity)
-    applyEffectiveTreatment()
+    playbackArtwork = artwork
+    playbackAccent = accent
+    playbackArtworkIdentity = identity
   }
 
-  func setPresentedArtworkIdentity(_ identity: String?) {
-    guard presentedArtworkIdentity != identity else { return }
-    presentedArtworkIdentity = identity
-    if let identity, presentedTreatments[identity] != nil {
-      touchPresentedTreatment(identity)
-    }
-    applyEffectiveTreatment()
-  }
-
-  private func applyEffectiveTreatment() {
-    let treatment: Treatment?
-    if let presentedArtworkIdentity,
-      let presentedTreatment = presentedTreatments[presentedArtworkIdentity]
-    {
-      treatment = presentedTreatment
-    } else {
-      treatment = playbackTreatment
-    }
-    guard let treatment else { return }
-    if let artwork,
-      artwork === treatment.image,
-      accent == treatment.accent,
-      displayedArtworkIdentity == treatment.identity
-    {
-      return
-    }
-    withAnimation(.easeInOut(duration: 0.85)) {
-      artwork = treatment.image
-      accent = treatment.accent
-      displayedArtworkIdentity = treatment.identity
-      artworkRevision = UUID()
-    }
-  }
-
-  private func touchPresentedTreatment(_ identity: String) {
-    presentedTreatmentOrder.removeAll { $0 == identity }
-    presentedTreatmentOrder.append(identity)
-    while presentedTreatmentOrder.count > Self.presentedTreatmentCacheLimit {
-      let evictedIdentity = presentedTreatmentOrder.removeFirst()
-      presentedTreatments.removeValue(forKey: evictedIdentity)
-    }
-  }
-}
-
-@MainActor
-final class ArtworkTreatmentCoordinator: ObservableObject {
-  private struct PlaybackTarget: Equatable {
-    let artworkURL: URL
-    let identity: String?
-  }
-
-  private let player: PlayerController
-  private let settings: ArtworkTreatmentSettings
-  private var currentTarget: PlaybackTarget?
-  private var artworkTask: Task<Void, Never>?
-  private var cancellables: Set<AnyCancellable> = []
-
-  init(
-    session: AppSession,
-    player: PlayerController,
-    settings: ArtworkTreatmentSettings
-  ) {
-    self.player = player
-    self.settings = settings
-
-    session.$path
-      .map { $0.last?.displayedAlbumID }
-      .removeDuplicates()
-      .sink { [weak settings] identity in
-        settings?.setPresentedArtworkIdentity(identity)
-      }
-      .store(in: &cancellables)
-
-    Publishers.CombineLatest(player.$queue, player.$currentIndex)
-      .map(Self.playbackTarget)
-      .removeDuplicates()
-      .sink { [weak self] target in
-        self?.loadPlaybackArtwork(for: target)
-      }
-      .store(in: &cancellables)
-  }
-
-  private static func playbackTarget(
-    queue: [QueueEntry],
-    currentIndex: Int?
-  ) -> PlaybackTarget? {
-    guard let currentIndex,
-      queue.indices.contains(currentIndex),
-      let artworkURL = queue[currentIndex].artworkURL
-    else { return nil }
-    return PlaybackTarget(
-      artworkURL: artworkURL,
-      identity: queue[currentIndex].albumID
+  func restorePlaybackArtwork() {
+    guard let playbackArtwork, let playbackAccent else { return }
+    displayArtwork(
+      playbackArtwork,
+      accent: playbackAccent,
+      identity: playbackArtworkIdentity
     )
-  }
-
-  private func loadPlaybackArtwork(for target: PlaybackTarget?) {
-    currentTarget = target
-    artworkTask?.cancel()
-    guard let target else { return }
-
-    artworkTask = Task { @MainActor [weak self] in
-      guard let self,
-        let image = await ArtworkImageCache.shared.image(for: target.artworkURL),
-        !Task.isCancelled,
-        currentTarget == target
-      else { return }
-      settings.rememberPlaybackArtwork(
-        image,
-        accent: AlbumArtworkLoader.extractAccent(from: image),
-        identity: target.identity
-      )
-    }
   }
 }
 
@@ -441,35 +334,22 @@ final class AlbumArtworkLoader: ObservableObject {
   @Published private(set) var accent: ArtworkColor = .fallback
 
   private var loadedURL: URL?
-  private var requestedURL: URL?
 
   func load(url: URL?) async {
-    guard loadedURL != url || image == nil else { return }
-    requestedURL = url
-    if loadedURL != url {
-      image = nil
-      accent = .fallback
-    }
-    guard let url else {
-      loadedURL = nil
-      return
-    }
-
-    guard let artwork = await ArtworkImageCache.shared.image(for: url),
-      !Task.isCancelled,
-      requestedURL == url
-    else {
-      if requestedURL == url {
-        loadedURL = nil
-      }
-      return
-    }
-    image = artwork
-    accent = Self.extractAccent(from: artwork)
+    guard loadedURL != url else { return }
     loadedURL = url
+    image = nil
+    accent = .fallback
+    guard let url else { return }
+
+    if let artwork = await ArtworkImageCache.shared.image(for: url) {
+      guard loadedURL == url else { return }
+      image = artwork
+      accent = Self.extractAccent(from: artwork)
+    }
   }
 
-  static func extractAccent(from image: NSImage) -> ArtworkColor {
+  private static func extractAccent(from image: NSImage) -> ArtworkColor {
     let size = NSSize(width: 32, height: 32)
     guard let bitmap = NSBitmapImageRep(
       bitmapDataPlanes: nil,

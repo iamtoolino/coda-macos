@@ -8,7 +8,6 @@ struct CodaPlaybackSpikeApp: App {
   @StateObject private var session: AppSession
   @StateObject private var player: PlayerController
   @StateObject private var artworkTreatments: ArtworkTreatmentSettings
-  @StateObject private var artworkCoordinator: ArtworkTreatmentCoordinator
   @StateObject private var queueHandoff: QueueHandoffCoordinator
   @StateObject private var scrobbler: ScrobbleCoordinator
 
@@ -21,17 +20,9 @@ struct CodaPlaybackSpikeApp: App {
       || CommandLine.arguments.contains("--mpv-stream-test")
     let session = AppSession(loadCredentials: !isPlaybackTest)
     let player = PlayerController()
-    let artworkTreatments = ArtworkTreatmentSettings()
     _session = StateObject(wrappedValue: session)
     _player = StateObject(wrappedValue: player)
-    _artworkTreatments = StateObject(wrappedValue: artworkTreatments)
-    _artworkCoordinator = StateObject(
-      wrappedValue: ArtworkTreatmentCoordinator(
-        session: session,
-        player: player,
-        settings: artworkTreatments
-      )
-    )
+    _artworkTreatments = StateObject(wrappedValue: ArtworkTreatmentSettings())
     let queueHandoff = QueueHandoffCoordinator(session: session, player: player)
     _queueHandoff = StateObject(wrappedValue: queueHandoff)
     _scrobbler = StateObject(
@@ -47,7 +38,6 @@ struct CodaPlaybackSpikeApp: App {
         .environmentObject(session)
         .environmentObject(player)
         .environmentObject(artworkTreatments)
-        .environmentObject(artworkCoordinator)
         .environmentObject(queueHandoff)
     }
     .defaultSize(width: 1_440, height: 900)

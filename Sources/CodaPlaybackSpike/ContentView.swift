@@ -8,6 +8,7 @@ private enum CodaWindowLayout {
 struct ContentView: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
+  @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   @State private var isDockVolumeExpanded = false
 
   var body: some View {
@@ -96,6 +97,14 @@ struct ContentView: View {
     .toolbar(removing: .title)
     .onAppear {
       session.startAutomaticConnection()
+    }
+    .onChange(of: session.path) { _, path in
+      if path.isEmpty {
+        artworkTreatments.restorePlaybackArtwork()
+      }
+    }
+    .onChange(of: session.selectedRoot) {
+      artworkTreatments.restorePlaybackArtwork()
     }
     .onChange(of: player.currentEntry?.id) { _, currentEntryID in
       if currentEntryID == nil {
@@ -190,6 +199,7 @@ private final class PlaybackWindowVisibilityView: NSView {
 
 private struct CompactPlaybackDockHost: NSViewRepresentable {
   @EnvironmentObject private var player: PlayerController
+  @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   let showsMetadata: Bool
   @Binding var isVolumeExpanded: Bool
 
@@ -224,6 +234,7 @@ private struct CompactPlaybackDockHost: NSViewRepresentable {
   private var rootView: CompactPlaybackDockHostingRoot {
     CompactPlaybackDockHostingRoot(
       player: player,
+      artworkTreatments: artworkTreatments,
       showsMetadata: showsMetadata,
       isVolumeExpanded: $isVolumeExpanded
     )
@@ -232,6 +243,7 @@ private struct CompactPlaybackDockHost: NSViewRepresentable {
 
 private struct CompactPlaybackDockHostingRoot: View {
   @ObservedObject var player: PlayerController
+  @ObservedObject var artworkTreatments: ArtworkTreatmentSettings
   let showsMetadata: Bool
   @Binding var isVolumeExpanded: Bool
 
@@ -243,6 +255,7 @@ private struct CompactPlaybackDockHostingRoot: View {
           isVolumeExpanded: $isVolumeExpanded
         )
         .environmentObject(player)
+        .environmentObject(artworkTreatments)
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .transition(
@@ -326,6 +339,8 @@ private struct TitlebarNavigationButton: View {
 
 private struct CompactPlaybackDock: View {
   @EnvironmentObject private var player: PlayerController
+  @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
+  @StateObject private var artworkLoader = AlbumArtworkLoader()
   @State private var seekPreviewPosition: Double?
   let showsMetadata: Bool
   @Binding var isVolumeExpanded: Bool
@@ -363,6 +378,19 @@ private struct CompactPlaybackDock: View {
     .animation(.snappy(duration: 0.24), value: showsMetadata)
     .onChange(of: player.currentEntry?.id) {
       seekPreviewPosition = nil
+    }
+    .task(id: player.currentEntry?.artworkURL) {
+      let entry = player.currentEntry
+      artworkTreatments.promoteDisplayedArtworkToPlayback(ifIdentity: entry?.albumID)
+      await artworkLoader.load(url: entry?.artworkURL)
+      guard player.currentEntry?.artworkURL == entry?.artworkURL else { return }
+      if let image = artworkLoader.image {
+        artworkTreatments.rememberPlaybackArtwork(
+          image,
+          accent: artworkLoader.accent,
+          identity: entry?.albumID
+        )
+      }
     }
   }
 

@@ -28,118 +28,11 @@ enum SelfTests {
       let staleAccent = ArtworkColor(red: 0.7, green: 0.2, blue: 0.1)
       let currentAccent = ArtworkColor(red: 0.1, green: 0.6, blue: 0.9)
 
-      treatments.setPresentedArtworkIdentity("album")
       treatments.displayArtwork(staleImage, accent: staleAccent, identity: "album")
       treatments.displayArtwork(currentImage, accent: currentAccent, identity: "album")
 
       return treatments.artwork === currentImage
         && treatments.accent == currentAccent
-    }
-
-    check("browsed artwork stays visible while playback artwork advances", failures: &failures) {
-      let treatments = ArtworkTreatmentSettings()
-      let playingImage = NSImage(size: NSSize(width: 1, height: 1))
-      let browsedImage = NSImage(size: NSSize(width: 2, height: 2))
-      let nextPlayingImage = NSImage(size: NSSize(width: 3, height: 3))
-      let playingAccent = ArtworkColor(red: 0.7, green: 0.2, blue: 0.1)
-      let browsedAccent = ArtworkColor(red: 0.1, green: 0.6, blue: 0.9)
-      let nextPlayingAccent = ArtworkColor(red: 0.2, green: 0.8, blue: 0.3)
-
-      treatments.rememberPlaybackArtwork(
-        playingImage,
-        accent: playingAccent,
-        identity: "playing"
-      )
-      treatments.setPresentedArtworkIdentity("browsed")
-      treatments.displayArtwork(
-        browsedImage,
-        accent: browsedAccent,
-        identity: "browsed"
-      )
-      treatments.rememberPlaybackArtwork(
-        nextPlayingImage,
-        accent: nextPlayingAccent,
-        identity: "next-playing"
-      )
-
-      return treatments.artwork === browsedImage
-        && treatments.accent == browsedAccent
-    }
-
-    check("leaving an album reveals the latest playback artwork", failures: &failures) {
-      let treatments = ArtworkTreatmentSettings()
-      let browsedImage = NSImage(size: NSSize(width: 1, height: 1))
-      let currentPlayingImage = NSImage(size: NSSize(width: 2, height: 2))
-      let browsedAccent = ArtworkColor(red: 0.7, green: 0.2, blue: 0.1)
-      let currentPlayingAccent = ArtworkColor(red: 0.1, green: 0.6, blue: 0.9)
-
-      treatments.setPresentedArtworkIdentity("browsed")
-      treatments.displayArtwork(
-        browsedImage,
-        accent: browsedAccent,
-        identity: "browsed"
-      )
-      treatments.rememberPlaybackArtwork(
-        currentPlayingImage,
-        accent: currentPlayingAccent,
-        identity: "playing"
-      )
-      treatments.setPresentedArtworkIdentity(nil)
-
-      return treatments.artwork === currentPlayingImage
-        && treatments.accent == currentPlayingAccent
-    }
-
-    check("late album artwork cannot replace playback artwork", failures: &failures) {
-      let treatments = ArtworkTreatmentSettings()
-      let playingImage = NSImage(size: NSSize(width: 1, height: 1))
-      let lateImage = NSImage(size: NSSize(width: 2, height: 2))
-      let playingAccent = ArtworkColor(red: 0.1, green: 0.6, blue: 0.9)
-      let lateAccent = ArtworkColor(red: 0.7, green: 0.2, blue: 0.1)
-
-      treatments.rememberPlaybackArtwork(
-        playingImage,
-        accent: playingAccent,
-        identity: "playing"
-      )
-      treatments.setPresentedArtworkIdentity("browsed")
-      treatments.setPresentedArtworkIdentity(nil)
-      treatments.displayArtwork(lateImage, accent: lateAccent, identity: "browsed")
-
-      return treatments.artwork === playingImage
-        && treatments.accent == playingAccent
-    }
-
-    check("back navigation restores cached album artwork immediately", failures: &failures) {
-      let treatments = ArtworkTreatmentSettings()
-      let playingImage = NSImage(size: NSSize(width: 1, height: 1))
-      let firstAlbumImage = NSImage(size: NSSize(width: 2, height: 2))
-      let secondAlbumImage = NSImage(size: NSSize(width: 3, height: 3))
-      let playingAccent = ArtworkColor(red: 0.1, green: 0.6, blue: 0.9)
-      let firstAlbumAccent = ArtworkColor(red: 0.7, green: 0.2, blue: 0.1)
-      let secondAlbumAccent = ArtworkColor(red: 0.2, green: 0.8, blue: 0.3)
-
-      treatments.rememberPlaybackArtwork(
-        playingImage,
-        accent: playingAccent,
-        identity: "playing"
-      )
-      treatments.setPresentedArtworkIdentity("first")
-      treatments.displayArtwork(
-        firstAlbumImage,
-        accent: firstAlbumAccent,
-        identity: "first"
-      )
-      treatments.setPresentedArtworkIdentity("second")
-      treatments.displayArtwork(
-        secondAlbumImage,
-        accent: secondAlbumAccent,
-        identity: "second"
-      )
-      treatments.setPresentedArtworkIdentity("first")
-
-      return treatments.artwork === firstAlbumImage
-        && treatments.accent == firstAlbumAccent
     }
 
     check("original stream policy", failures: &failures) {
@@ -764,7 +657,7 @@ enum SelfTests {
     }
 
     if failures.isEmpty {
-      print("Coda playback spike self-tests passed (42 checks).")
+      print("Coda playback spike self-tests passed (36 checks).")
       return true
     }
 
