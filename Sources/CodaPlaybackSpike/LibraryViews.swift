@@ -951,7 +951,10 @@ struct AlbumDetailView: View {
   }
 
   private func applyLoadedArtwork() {
-    guard let album = page?.album, let image = artworkLoader.image else { return }
+    guard let album = page?.album,
+      session.path.last?.displayedAlbumID == album.id,
+      let image = artworkLoader.image
+    else { return }
     if player.currentEntry?.albumID == album.id {
       artworkTreatments.rememberPlaybackArtwork(
         image,
