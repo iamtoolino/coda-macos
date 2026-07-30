@@ -392,6 +392,10 @@ final class AppSession: ObservableObject {
           songs.append(contentsOf: try await songsForArtist(id: item.id, client: client))
         case .song:
           songs.append(try await client.song(id: item.id))
+        case .songs:
+          songs.append(
+            contentsOf: try await fetchSongs(ids: item.songIDs ?? [], client: client)
+          )
         }
       }
       player.insert(try queueEntries(for: songs), before: entryID)
@@ -414,6 +418,22 @@ final class AppSession: ObservableObject {
         albums.append(album)
       }
       return albums.sorted { $0.0 < $1.0 }.flatMap(\.1)
+    }
+  }
+
+  private func fetchSongs(ids: [String], client: NavidromeClient) async throws -> [RemoteSong] {
+    try await withThrowingTaskGroup(of: (Int, RemoteSong).self) { group in
+      for (index, id) in ids.enumerated() {
+        group.addTask {
+          (index, try await client.song(id: id))
+        }
+      }
+
+      var songs: [(Int, RemoteSong)] = []
+      for try await song in group {
+        songs.append(song)
+      }
+      return songs.sorted { $0.0 < $1.0 }.map(\.1)
     }
   }
 }

@@ -967,6 +967,7 @@ private struct QueuePanel: View {
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   @State private var selectedEntryIDs: [UUID]?
+  @State private var selectionAnchorEntryID: UUID?
   @State private var groups: [QueueGroup] = []
   @State private var fullyVisibleGroupIDs: Set<UUID> = []
   @State private var visibleEntryIDs: Set<UUID> = []
@@ -993,14 +994,14 @@ private struct QueuePanel: View {
           .frame(maxWidth: .infinity)
           .contentShape(Rectangle())
           .onTapGesture {
-            selectedEntryIDs = nil
+            clearSelection()
             queueHasFocus = true
           }
           .accessibilityElement()
           .accessibilityLabel("Deselect Queue Selection")
           .accessibilityAddTraits(.isButton)
           .accessibilityAction {
-            selectedEntryIDs = nil
+            clearSelection()
             queueHasFocus = true
           }
           if shouldShowReturnToPlaying {
@@ -1012,7 +1013,7 @@ private struct QueuePanel: View {
             .help("Return to Playing Track")
           }
           Button("Clear Queue", systemImage: "trash", role: .destructive) {
-            selectedEntryIDs = nil
+            clearSelection()
             player.clear()
           }
           .labelStyle(.iconOnly)
@@ -1035,7 +1036,7 @@ private struct QueuePanel: View {
                 .contentShape(Rectangle())
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: viewportHeight)
-                .onTapGesture { selectedEntryIDs = nil }
+                .onTapGesture { clearSelection() }
 
               LazyVStack(alignment: .leading, spacing: 12) {
                 ForEach(groups) { group in
@@ -1104,7 +1105,7 @@ private struct QueuePanel: View {
         removeSelection()
         return .handled
       }
-      .onExitCommand { selectedEntryIDs = nil }
+      .onExitCommand { clearSelection() }
       .onChange(of: player.queue.map(\.id)) { previousIDs, currentIDs in
         groups = queueGroups(player.queue)
         reconcileSelection()
@@ -1185,25 +1186,44 @@ private struct QueuePanel: View {
 
   private func select(_ entryIDs: [UUID]) {
     selectedEntryIDs = selectedEntryIDs == entryIDs ? nil : entryIDs
+    selectionAnchorEntryID = nil
     queueHasFocus = true
   }
 
-  private func selectTrack(_ entryID: UUID) {
-    selectedEntryIDs = [entryID]
+  private func selectTrack(_ entryID: UUID, modifiers: TrackSelectionModifiers) {
+    let selection = updatedTrackSelection(
+      current: selectedEntryIDs ?? [],
+      anchor: selectionAnchorEntryID,
+      clicked: entryID,
+      ordered: player.queue.map(\.id),
+      modifiers: modifiers
+    )
+    selectedEntryIDs = selection.ids.isEmpty ? nil : selection.ids
+    selectionAnchorEntryID = selection.anchor
     queueHasFocus = true
   }
 
   private func remove(_ entryIDs: [UUID]) {
     player.remove(entryIDs: entryIDs)
-    if selectedEntryIDs == entryIDs {
-      selectedEntryIDs = nil
+    if let selectedEntryIDs {
+      let removed = Set(entryIDs)
+      let remainingSelection = selectedEntryIDs.filter { !removed.contains($0) }
+      self.selectedEntryIDs = remainingSelection.isEmpty ? nil : remainingSelection
+    }
+    if let selectionAnchorEntryID, entryIDs.contains(selectionAnchorEntryID) {
+      self.selectionAnchorEntryID = nil
     }
   }
 
   private func removeSelection() {
     guard let selectedEntryIDs else { return }
     player.remove(entryIDs: selectedEntryIDs)
-    self.selectedEntryIDs = nil
+    clearSelection()
+  }
+
+  private func clearSelection() {
+    selectedEntryIDs = nil
+    selectionAnchorEntryID = nil
   }
 
   private func move(_ item: QueueReorderDragItem, before targetID: UUID?) -> Bool {
@@ -1331,8 +1351,10 @@ private struct QueuePanel: View {
   private func reconcileSelection() {
     guard let selectedEntryIDs else { return }
     let queueIDs = Set(player.queue.map(\.id))
-    if !Set(selectedEntryIDs).isSubset(of: queueIDs) {
-      self.selectedEntryIDs = nil
+    let remainingSelection = selectedEntryIDs.filter(queueIDs.contains)
+    self.selectedEntryIDs = remainingSelection.isEmpty ? nil : remainingSelection
+    if let selectionAnchorEntryID, !queueIDs.contains(selectionAnchorEntryID) {
+      self.selectionAnchorEntryID = nil
     }
   }
 
@@ -1389,7 +1411,7 @@ private struct QueueAlbumBlock: View {
   let isPlaying: Bool
   let selectedEntryIDs: [UUID]?
   let selectAction: ([UUID]) -> Void
-  let trackSelectAction: (UUID) -> Void
+  let trackSelectAction: (UUID, TrackSelectionModifiers) -> Void
   let deleteAction: ([UUID]) -> Void
   let playAction: (Int) -> Void
   let removeEntryAction: (UUID) -> Void
@@ -1428,10 +1450,14 @@ private struct QueueAlbumBlock: View {
           album: album,
           isCurrent: currentIndex == group.startIndex + offset,
           isPlaying: isPlaying,
-          isTrackSelected: selectedEntryIDs == [entry.id],
+          isTrackSelected: selectedEntryIDs?.contains(entry.id) == true,
           isCollectionSelected: group.showsDiscHeadings
             && selectedEntryIDs == group.discEntryIDs(at: offset),
-          selectAction: { trackSelectAction(entry.id) },
+          dragEntryIDs: selectedEntryIDs?.contains(entry.id) == true
+            ? selectedEntryIDs ?? [entry.id] : [entry.id],
+          selectAction: { modifiers in
+            trackSelectAction(entry.id, modifiers)
+          },
           playAction: { playAction(group.startIndex + offset) },
           removeAction: { removeEntryAction(entry.id) },
           geometryGeneration: geometryGeneration,
@@ -1659,7 +1685,8 @@ private struct QueueTrackRow: View {
   let isPlaying: Bool
   let isTrackSelected: Bool
   let isCollectionSelected: Bool
-  let selectAction: () -> Void
+  let dragEntryIDs: [UUID]
+  let selectAction: (TrackSelectionModifiers) -> Void
   let playAction: () -> Void
   let removeAction: () -> Void
   let geometryGeneration: Int
@@ -1705,18 +1732,20 @@ private struct QueueTrackRow: View {
           .fill(artworkTreatments.accent.color.opacity(0.14))
       }
     }
-    .onTapGesture(perform: selectAction)
+    .onTapGesture {
+      selectAction(currentTrackSelectionModifiers())
+    }
     .simultaneousGesture(
       TapGesture(count: 2)
         .onEnded(playAction)
     )
     .accessibilityAddTraits(.isButton)
-    .accessibilityAction { selectAction() }
+    .accessibilityAction { selectAction([]) }
     .accessibilityAction(named: "Play", playAction)
-    .draggable(QueueDropItem.reorder(.track(entry.id)))
+    .draggable(QueueDropItem.reorder(.tracks(dragEntryIDs)))
     .dragConfiguration(.init(allowMove: true))
     .onDragSessionUpdated { dragSession in
-      let item = QueueReorderDragItem.track(entry.id)
+      let item = QueueReorderDragItem.tracks(dragEntryIDs)
       dragStateAction(item, dragSession.phase == .initial || dragSession.phase == .active)
     }
     .onGeometryChange(for: QueueDropGeometryMeasurement.self) { geometry in

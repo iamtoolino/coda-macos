@@ -153,15 +153,19 @@ enum SelfTests {
         LibraryQueueDragItem.album("album/1"),
         LibraryQueueDragItem.albumDisc("album/1", discNumber: 3),
         LibraryQueueDragItem.song("song/1"),
+        LibraryQueueDragItem.songs(["song/2", "song/3"]),
       ]
       let data = try JSONEncoder().encode(items)
       return try JSONDecoder().decode([LibraryQueueDragItem].self, from: data) == items
     }
 
     check("queue reorder drag payload round trip", failures: &failures) {
-      let item = QueueReorderDragItem.albumBlock([UUID(), UUID()])
-      let data = try JSONEncoder().encode(item)
-      return try JSONDecoder().decode(QueueReorderDragItem.self, from: data) == item
+      let items = [
+        QueueReorderDragItem.albumBlock([UUID(), UUID()]),
+        QueueReorderDragItem.tracks([UUID(), UUID()]),
+      ]
+      let data = try JSONEncoder().encode(items)
+      return try JSONDecoder().decode([QueueReorderDragItem].self, from: data) == items
     }
 
     check("unified queue drop payload round trip", failures: &failures) {
@@ -171,6 +175,44 @@ enum SelfTests {
       ]
       let data = try JSONEncoder().encode(items)
       return try JSONDecoder().decode([QueueDropItem].self, from: data) == items
+    }
+
+    check("track selection follows macOS modifier semantics", failures: &failures) {
+      let ids = ["one", "two", "three", "four", "five"]
+      let plain = updatedTrackSelection(
+        current: [],
+        anchor: nil,
+        clicked: "two",
+        ordered: ids,
+        modifiers: []
+      )
+      let shifted = updatedTrackSelection(
+        current: plain.ids,
+        anchor: plain.anchor,
+        clicked: "four",
+        ordered: ids,
+        modifiers: [.shift]
+      )
+      let extended = updatedTrackSelection(
+        current: shifted.ids,
+        anchor: shifted.anchor,
+        clicked: "five",
+        ordered: ids,
+        modifiers: [.command, .shift]
+      )
+      let toggled = updatedTrackSelection(
+        current: extended.ids,
+        anchor: extended.anchor,
+        clicked: "three",
+        ordered: ids,
+        modifiers: [.command]
+      )
+      return plain.ids == ["two"]
+        && shifted.ids == ["two", "three", "four"]
+        && shifted.anchor == "two"
+        && extended.ids == ["two", "three", "four", "five"]
+        && toggled.ids == ["two", "four", "five"]
+        && toggled.anchor == "three"
     }
 
     check("queue reorder keeps one authoritative insertion result", failures: &failures) {
@@ -657,7 +699,7 @@ enum SelfTests {
     }
 
     if failures.isEmpty {
-      print("Coda playback spike self-tests passed (36 checks).")
+      print("Coda playback spike self-tests passed (39 checks).")
       return true
     }
 

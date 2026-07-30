@@ -714,7 +714,8 @@ struct AlbumDetailView: View {
   @State private var isUpdatingRating = false
   @State private var ratingErrorMessage: String?
   @State private var ratingHighlightTrigger = 0
-  @State private var selectedSongID: String?
+  @State private var selectedSongIDs: [String] = []
+  @State private var selectionAnchorSongID: String?
   @FocusState private var trackListHasFocus: Bool
 
   init(albumID: String, highlightsRatingOnAppear: Bool = false) {
@@ -733,7 +734,7 @@ struct AlbumDetailView: View {
                 .frame(minHeight: geometry.size.height)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                  selectedSongID = nil
+                  clearTrackSelection()
                   trackListHasFocus = true
                 }
 
@@ -775,9 +776,11 @@ struct AlbumDetailView: View {
                       song: song,
                       isPlaying: player.currentEntry?.sourceID == song.id,
                       horizontalPadding: geometry.size.width >= 760 ? 11 : 22,
-                      isSelected: selectedSongID == song.id,
-                      selectionAction: {
-                        selectedSongID = song.id
+                      isSelected: selectedSongIDs.contains(song.id),
+                      dragSongIDs: selectedSongIDs.contains(song.id)
+                        ? selectedSongIDs : [song.id],
+                      selectionAction: { modifiers in
+                        selectTrack(song.id, in: page, modifiers: modifiers)
                         trackListHasFocus = true
                       }
                     ) {
@@ -813,20 +816,21 @@ struct AlbumDetailView: View {
     .focusEffectDisabled()
     .onKeyPress(.return) {
       guard let page,
-        let selectedSongID,
+        selectedSongIDs.count == 1,
+        let selectedSongID = selectedSongIDs.first,
         let song = page.songs.first(where: { $0.id == selectedSongID })
       else { return .ignored }
       play(song, from: page)
       return .handled
     }
-    .onExitCommand { selectedSongID = nil }
+    .onExitCommand { clearTrackSelection() }
     .navigationTitle(page?.album.name ?? "Album")
     .focusedSceneValue(
       \.codaRefreshAction,
       CodaRefreshAction { Task { await load() } }
     )
     .task(id: albumID) {
-      selectedSongID = nil
+      clearTrackSelection()
       await load()
       if highlightsRatingOnAppear, !Task.isCancelled {
         await highlightRating()
@@ -859,6 +863,27 @@ struct AlbumDetailView: View {
     } message: {
       Text(ratingErrorMessage ?? "The server rejected the rating.")
     }
+  }
+
+  private func selectTrack(
+    _ songID: String,
+    in page: AlbumPage,
+    modifiers: TrackSelectionModifiers
+  ) {
+    let selection = updatedTrackSelection(
+      current: selectedSongIDs,
+      anchor: selectionAnchorSongID,
+      clicked: songID,
+      ordered: page.songs.map(\.id),
+      modifiers: modifiers
+    )
+    selectedSongIDs = selection.ids
+    selectionAnchorSongID = selection.anchor
+  }
+
+  private func clearTrackSelection() {
+    selectedSongIDs = []
+    selectionAnchorSongID = nil
   }
 
   private func albumDetailHeader(page: AlbumPage) -> some View {
@@ -1028,7 +1053,7 @@ struct PlaylistDetailView: View {
                         song: indexed.song,
                         isPlaying: player.currentEntry?.sourceID == indexed.song.id,
                         isSelected: selectedSongIndex == indexed.index,
-                        selectionAction: {
+                        selectionAction: { _ in
                           selectedSongIndex = indexed.index
                           trackListHasFocus = true
                         }
@@ -1429,7 +1454,8 @@ private struct SongRow: View {
   let isPlaying: Bool
   var horizontalPadding: CGFloat = 22
   var isSelected = false
-  var selectionAction: (() -> Void)?
+  var dragSongIDs: [String] = []
+  var selectionAction: ((TrackSelectionModifiers) -> Void)?
   let action: () -> Void
 
   var body: some View {
@@ -1437,16 +1463,20 @@ private struct SongRow: View {
       .accessibilityAddTraits(.isButton)
       .accessibilityAction {
         if let selectionAction {
-          selectionAction()
+          selectionAction([])
         } else {
           action()
         }
       }
       .accessibilityAction(named: "Play") { action() }
-      .draggable(QueueDropItem.library(.song(song.id))) {
+      .draggable(
+        QueueDropItem.library(
+          dragSongIDs.count > 1 ? .songs(dragSongIDs) : .song(song.id)
+        )
+      ) {
         LibraryDragPreview(
-          title: song.title,
-          detail: formatDuration(song.duration ?? 0)
+          title: dragSongIDs.count > 1 ? "\(dragSongIDs.count) tracks" : song.title,
+          detail: dragSongIDs.count > 1 ? "" : formatDuration(song.duration ?? 0)
         )
       }
       .help(selectionAction == nil ? "Drag track to queue" : "Double-click to play · Drag to queue")
@@ -1456,7 +1486,9 @@ private struct SongRow: View {
   private var interactiveRow: some View {
     if let selectionAction {
       rowContent
-        .onTapGesture(perform: selectionAction)
+        .onTapGesture {
+          selectionAction(currentTrackSelectionModifiers())
+        }
         .simultaneousGesture(
           TapGesture(count: 2)
             .onEnded { action() }

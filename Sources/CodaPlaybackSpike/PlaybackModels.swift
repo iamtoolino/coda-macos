@@ -15,11 +15,13 @@ struct LibraryQueueDragItem: Codable, Hashable, Sendable {
     case albumDisc
     case artist
     case song
+    case songs
   }
 
   let kind: Kind
   let id: String
   var discNumber: Int? = nil
+  var songIDs: [String]? = nil
 
   static func album(_ id: String) -> Self { Self(kind: .album, id: id) }
   static func albumDisc(_ id: String, discNumber: Int) -> Self {
@@ -27,6 +29,9 @@ struct LibraryQueueDragItem: Codable, Hashable, Sendable {
   }
   static func artist(_ id: String) -> Self { Self(kind: .artist, id: id) }
   static func song(_ id: String) -> Self { Self(kind: .song, id: id) }
+  static func songs(_ ids: [String]) -> Self {
+    Self(kind: .songs, id: ids.first ?? "", songIDs: ids)
+  }
 }
 
 struct QueueReorderDragItem: Codable, Hashable, Sendable {
@@ -44,6 +49,10 @@ struct QueueReorderDragItem: Codable, Hashable, Sendable {
 
   static func track(_ entryID: UUID) -> Self {
     Self(kind: .track, entryIDs: [entryID])
+  }
+
+  static func tracks(_ entryIDs: [UUID]) -> Self {
+    Self(kind: .track, entryIDs: entryIDs)
   }
 }
 
