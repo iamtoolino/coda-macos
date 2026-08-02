@@ -3,6 +3,8 @@ import SwiftUI
 
 private enum CodaWindowLayout {
   static let mainContentTopLift: CGFloat = 20
+  static let minimumWidth: CGFloat = 980
+  static let minimumHeight: CGFloat = 650
 }
 
 struct ContentView: View {
@@ -22,8 +24,6 @@ struct ContentView: View {
         let contentWidth = max(0, geometry.size.width - 20)
         let contentHeight = max(0, geometry.size.height - 20)
         let queueWidth = min(330, max(285, geometry.size.width * 0.22))
-        let queueIsVisible =
-          session.hasEstablishedConnection && contentWidth - queueWidth - 10 >= 650
 
         HStack(alignment: .top, spacing: 10) {
           ZStack(alignment: .bottom) {
@@ -44,12 +44,10 @@ struct ContentView: View {
                   .allowsHitTesting(false)
 
                 CompactPlaybackDockHost(
-                  showsMetadata: !queueIsVisible,
                   isVolumeExpanded: $isDockVolumeExpanded
                 )
                   .frame(
                     width: PlaybackDockMetrics.width(
-                      showsMetadata: !queueIsVisible,
                       isVolumeExpanded: isDockVolumeExpanded
                     ),
                     height: 64
@@ -59,9 +57,7 @@ struct ContentView: View {
                   .allowsHitTesting(false)
               }
               .frame(
-                width: PlaybackDockMetrics.anchoredContainerWidth(
-                  showsMetadata: !queueIsVisible
-                ),
+                width: PlaybackDockMetrics.anchoredContainerWidth,
                 height: 64
               )
             }
@@ -70,7 +66,7 @@ struct ContentView: View {
           .frame(height: contentHeight + CodaWindowLayout.mainContentTopLift)
           .offset(y: -CodaWindowLayout.mainContentTopLift)
 
-          if queueIsVisible {
+          if session.hasEstablishedConnection {
             QueuePanel()
               .frame(width: queueWidth)
               .frame(maxHeight: .infinity, alignment: .top)
@@ -85,6 +81,10 @@ struct ContentView: View {
         .padding(10)
       }
     }
+    .frame(
+      minWidth: CodaWindowLayout.minimumWidth,
+      minHeight: CodaWindowLayout.minimumHeight
+    )
     .toolbar {
       ToolbarItemGroup(placement: .navigation) {
         ForEach(SidebarDestination.allCases) { destination in
@@ -203,15 +203,14 @@ private final class PlaybackWindowVisibilityView: NSView {
 }
 
 private struct CompactPlaybackDockHost: NSViewRepresentable {
+  @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
-  let showsMetadata: Bool
   @Binding var isVolumeExpanded: Bool
 
   func makeNSView(context: Context) -> PassthroughDockHostingView {
     let view = PassthroughDockHostingView(rootView: rootView)
     view.dockWidth = dockWidth
-    view.showsMetadata = showsMetadata
     view.hasActiveEntry = player.currentEntry != nil
     return view
   }
@@ -219,46 +218,37 @@ private struct CompactPlaybackDockHost: NSViewRepresentable {
   func updateNSView(_ nsView: PassthroughDockHostingView, context: Context) {
     nsView.dockWidth = dockWidth
     nsView.hasActiveEntry = player.currentEntry != nil
-    // The hosted dock already observes PlayerController and the artwork settings.
-    // Replacing its root view for every playback-position publication forces a
-    // complete AppKit/SwiftUI layout pass four times per second. Only rebuild the
-    // root when the structural metadata mode actually changes.
-    if nsView.showsMetadata != showsMetadata {
-      nsView.showsMetadata = showsMetadata
-      nsView.rootView = rootView
-    }
   }
 
   private var dockWidth: CGFloat {
     PlaybackDockMetrics.width(
-      showsMetadata: showsMetadata,
       isVolumeExpanded: isVolumeExpanded
     )
   }
 
   private var rootView: CompactPlaybackDockHostingRoot {
     CompactPlaybackDockHostingRoot(
+      session: session,
       player: player,
       artworkTreatments: artworkTreatments,
-      showsMetadata: showsMetadata,
       isVolumeExpanded: $isVolumeExpanded
     )
   }
 }
 
 private struct CompactPlaybackDockHostingRoot: View {
+  @ObservedObject var session: AppSession
   @ObservedObject var player: PlayerController
   @ObservedObject var artworkTreatments: ArtworkTreatmentSettings
-  let showsMetadata: Bool
   @Binding var isVolumeExpanded: Bool
 
   var body: some View {
     Group {
       if player.currentEntry != nil {
         CompactPlaybackDock(
-          showsMetadata: showsMetadata,
           isVolumeExpanded: $isVolumeExpanded
         )
+        .environmentObject(session)
         .environmentObject(player)
         .environmentObject(artworkTreatments)
         .padding(.bottom, 12)
@@ -275,8 +265,7 @@ private struct CompactPlaybackDockHostingRoot: View {
 }
 
 private final class PassthroughDockHostingView: NSHostingView<CompactPlaybackDockHostingRoot> {
-  var dockWidth: CGFloat = PlaybackDockMetrics.collapsedWidthWithoutMetadata
-  var showsMetadata = false
+  var dockWidth: CGFloat = PlaybackDockMetrics.collapsedWidth
   var hasActiveEntry = false
 
   override func hitTest(_ point: NSPoint) -> NSView? {
@@ -295,19 +284,13 @@ private final class PassthroughDockHostingView: NSHostingView<CompactPlaybackDoc
 }
 
 private enum PlaybackDockMetrics {
-  static let collapsedWidthWithoutMetadata: CGFloat = 431
-  static let metadataWidth: CGFloat = 200
+  static let collapsedWidth: CGFloat = 431
   static let volumeExpansionWidth: CGFloat = 79
+  static let anchoredContainerWidth = collapsedWidth + (volumeExpansionWidth * 2)
 
-  static func width(showsMetadata: Bool, isVolumeExpanded: Bool) -> CGFloat {
-    collapsedWidthWithoutMetadata
-      + (showsMetadata ? metadataWidth : 0)
+  static func width(isVolumeExpanded: Bool) -> CGFloat {
+    collapsedWidth
       + (isVolumeExpanded ? volumeExpansionWidth : 0)
-  }
-
-  static func anchoredContainerWidth(showsMetadata: Bool) -> CGFloat {
-    width(showsMetadata: showsMetadata, isVolumeExpanded: false)
-      + (volumeExpansionWidth * 2)
   }
 }
 
@@ -348,17 +331,10 @@ private struct CompactPlaybackDock: View {
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   @StateObject private var artworkLoader = AlbumArtworkLoader()
   @State private var seekPreviewPosition: Double?
-  let showsMetadata: Bool
   @Binding var isVolumeExpanded: Bool
 
   var body: some View {
     HStack(spacing: 10) {
-      if showsMetadata {
-        nowPlayingSummary
-        Divider()
-          .frame(height: 30)
-      }
-
       PlaybackTransportControls()
       playbackSectionDivider
       PlaybackProgressControl(
@@ -373,7 +349,6 @@ private struct CompactPlaybackDock: View {
     .padding(.horizontal, 14)
     .frame(
       width: PlaybackDockMetrics.width(
-        showsMetadata: showsMetadata,
         isVolumeExpanded: isVolumeExpanded
       ),
       height: 52
@@ -381,7 +356,6 @@ private struct CompactPlaybackDock: View {
     .floatingPanel(capsule: true)
     .fixedSize(horizontal: true, vertical: true)
     .contentShape(.interaction, Capsule())
-    .animation(.snappy(duration: 0.24), value: showsMetadata)
     .onChange(of: player.currentEntry?.id) {
       seekPreviewPosition = nil
     }
@@ -400,25 +374,6 @@ private struct CompactPlaybackDock: View {
         )
       }
     }
-  }
-
-  private var nowPlayingSummary: some View {
-    HStack(spacing: 9) {
-      ArtworkImage(url: player.currentEntry?.artworkURL, cornerRadius: 6)
-        .frame(width: 38, height: 38)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(player.currentEntry?.title ?? "Nothing Playing")
-          .font(.caption.weight(.semibold))
-          .foregroundStyle(.primary)
-          .lineLimit(1)
-        Text(player.currentEntry?.artist ?? "")
-          .font(.caption2)
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-      }
-      Spacer(minLength: 0)
-    }
-    .frame(width: 178, alignment: .leading)
   }
 
   private var playbackSectionDivider: some View {
