@@ -90,6 +90,7 @@ struct ContentView: View {
       }
     }
     .toolbar(removing: .title)
+    .tint(artworkTreatments.accent.color)
     .sheet(isPresented: $playlistSaver.isPresented) {
       QueuePlaylistSaveSheet()
         .environmentObject(playlistSaver)
