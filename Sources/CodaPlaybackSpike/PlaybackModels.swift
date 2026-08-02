@@ -15,6 +15,7 @@ struct LibraryQueueDragItem: Codable, Hashable, Sendable {
     case album
     case albumDisc
     case artist
+    case playlist
     case song
     case songs
   }
@@ -29,6 +30,7 @@ struct LibraryQueueDragItem: Codable, Hashable, Sendable {
     Self(kind: .albumDisc, id: id, discNumber: max(1, discNumber))
   }
   static func artist(_ id: String) -> Self { Self(kind: .artist, id: id) }
+  static func playlist(_ id: String) -> Self { Self(kind: .playlist, id: id) }
   static func song(_ id: String) -> Self { Self(kind: .song, id: id) }
   static func songs(_ ids: [String]) -> Self {
     Self(kind: .songs, id: ids.first ?? "", songIDs: ids)

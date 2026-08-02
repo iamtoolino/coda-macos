@@ -390,6 +390,8 @@ final class AppSession: ObservableObject {
           )
         case .artist:
           songs.append(contentsOf: try await songsForArtist(id: item.id, client: client))
+        case .playlist:
+          songs.append(contentsOf: try await client.playlist(id: item.id).songs)
         case .song:
           songs.append(try await client.song(id: item.id))
         case .songs:

@@ -176,6 +176,7 @@ enum SelfTests {
         LibraryQueueDragItem.artist("artist/1"),
         LibraryQueueDragItem.album("album/1"),
         LibraryQueueDragItem.albumDisc("album/1", discNumber: 3),
+        LibraryQueueDragItem.playlist("playlist/1"),
         LibraryQueueDragItem.song("song/1"),
         LibraryQueueDragItem.songs(["song/2", "song/3"]),
       ]

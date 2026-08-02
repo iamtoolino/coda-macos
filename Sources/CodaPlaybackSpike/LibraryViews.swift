@@ -1007,7 +1007,8 @@ struct PlaylistDetailView: View {
 
   @State private var playlist: RemotePlaylist?
   @State private var errorMessage: String?
-  @State private var selectedSongIndex: Int?
+  @State private var selectedSongIndices: [Int] = []
+  @State private var selectionAnchorSongIndex: Int?
   @FocusState private var trackListHasFocus: Bool
 
   var body: some View {
@@ -1021,7 +1022,7 @@ struct PlaylistDetailView: View {
                 .frame(minHeight: geometry.size.height)
                 .contentShape(Rectangle())
                 .onTapGesture {
-                  selectedSongIndex = nil
+                  clearTrackSelection()
                   trackListHasFocus = true
                 }
 
@@ -1056,9 +1057,18 @@ struct PlaylistDetailView: View {
                       SongRow(
                         song: indexed.song,
                         isPlaying: player.currentEntry?.sourceID == indexed.song.id,
-                        isSelected: selectedSongIndex == indexed.index,
-                        selectionAction: { _ in
-                          selectedSongIndex = indexed.index
+                        isSelected: selectedSongIndices.contains(indexed.index),
+                        dragSongIDs: selectedSongIndices.contains(indexed.index)
+                          ? selectedSongIndices.compactMap { index in
+                            playlist.songs[safe: index]?.id
+                          }
+                          : [indexed.song.id],
+                        selectionAction: { modifiers in
+                          selectTrack(
+                            indexed.index,
+                            in: playlist,
+                            modifiers: modifiers
+                          )
                           trackListHasFocus = true
                         }
                       ) {
@@ -1091,14 +1101,15 @@ struct PlaylistDetailView: View {
     .focusEffectDisabled()
     .onKeyPress(.return) {
       guard let playlist,
-        let selectedSongIndex,
+        selectedSongIndices.count == 1,
+        let selectedSongIndex = selectedSongIndices.first,
         playlist.songs.indices.contains(selectedSongIndex)
       else { return .ignored }
       session.play(songs: playlist.songs, startAt: selectedSongIndex, with: player)
       return .handled
     }
     .onExitCommand {
-      selectedSongIndex = nil
+      clearTrackSelection()
     }
     .navigationTitle(playlist?.name ?? "Playlist")
     .focusedSceneValue(
@@ -1106,9 +1117,30 @@ struct PlaylistDetailView: View {
       CodaRefreshAction { Task { await load() } }
     )
     .task(id: playlistID) {
-      selectedSongIndex = nil
+      clearTrackSelection()
       await load()
     }
+  }
+
+  private func selectTrack(
+    _ songIndex: Int,
+    in playlist: RemotePlaylist,
+    modifiers: TrackSelectionModifiers
+  ) {
+    let selection = updatedTrackSelection(
+      current: selectedSongIndices,
+      anchor: selectionAnchorSongIndex,
+      clicked: songIndex,
+      ordered: Array(playlist.songs.indices),
+      modifiers: modifiers
+    )
+    selectedSongIndices = selection.ids
+    selectionAnchorSongIndex = selection.anchor
+  }
+
+  private func clearTrackSelection() {
+    selectedSongIndices = []
+    selectionAnchorSongIndex = nil
   }
 
   @MainActor
@@ -1408,6 +1440,14 @@ private struct PlaylistHomeRow: View {
       .padding(.vertical, 5)
     }
     .buttonStyle(.plain)
+    .draggable(QueueDropItem.library(.playlist(playlist.id))) {
+      LibraryDragPreview(
+        title: playlist.name,
+        detail: "\(playlist.songCount ?? 0) tracks"
+      )
+    }
+    .dragConfiguration(.codaInternal())
+    .help("Open playlist · Drag playlist to queue")
   }
 }
 
