@@ -90,7 +90,7 @@ struct ContentView: View {
       }
     }
     .toolbar(removing: .title)
-    .tint(artworkTreatments.accent.color)
+    .focusEffectDisabled()
     .sheet(isPresented: $playlistSaver.isPresented) {
       QueuePlaylistSaveSheet()
         .environmentObject(playlistSaver)
