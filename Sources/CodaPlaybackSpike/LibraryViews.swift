@@ -798,11 +798,6 @@ struct AlbumDetailView: View {
             }
             .background(TransientScrollIndicators())
           }
-          .contentMargins(
-            .top,
-            geometry.size.width >= 760 ? -60 : 0,
-            for: .scrollContent
-          )
         }
       } else if let errorMessage {
         LibraryErrorView(title: "Could Not Load Album", message: errorMessage) {
