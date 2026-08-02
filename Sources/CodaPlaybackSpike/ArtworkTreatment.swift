@@ -67,12 +67,15 @@ final class ArtworkTreatmentSettings: ObservableObject {
   func rememberPlaybackArtwork(
     _ image: NSImage,
     accent: ArtworkColor,
-    identity: String? = nil
+    identity: String? = nil,
+    displaysImmediately: Bool
   ) {
     playbackArtwork = image
     playbackAccent = accent
     playbackArtworkIdentity = identity
-    displayArtwork(image, accent: accent, identity: identity)
+    if displaysImmediately {
+      displayArtwork(image, accent: accent, identity: identity)
+    }
   }
 
   func promoteDisplayedArtworkToPlayback(ifIdentity identity: String?) {

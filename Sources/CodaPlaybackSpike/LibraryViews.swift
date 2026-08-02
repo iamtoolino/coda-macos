@@ -148,7 +148,8 @@ struct HomeView: View {
           artworkTreatments.rememberPlaybackArtwork(
             image,
             accent: artworkLoader.accent,
-            identity: queueSong?.albumId ?? recentAlbum?.id ?? newestAlbum?.id
+            identity: queueSong?.albumId ?? recentAlbum?.id ?? newestAlbum?.id,
+            displaysImmediately: true
           )
         }
       }
@@ -839,6 +840,10 @@ struct AlbumDetailView: View {
     .onAppear {
       applyLoadedArtwork()
     }
+    .onChange(of: session.path.last?.displayedAlbumID) { _, displayedAlbumID in
+      guard displayedAlbumID == albumID else { return }
+      applyLoadedArtwork()
+    }
     .onReceive(
       NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)
     ) { notification in
@@ -984,7 +989,8 @@ struct AlbumDetailView: View {
       artworkTreatments.rememberPlaybackArtwork(
         image,
         accent: artworkLoader.accent,
-        identity: album.id
+        identity: album.id,
+        displaysImmediately: true
       )
     } else {
       artworkTreatments.displayArtwork(

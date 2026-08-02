@@ -35,6 +35,30 @@ enum SelfTests {
         && treatments.accent == currentAccent
     }
 
+    check("remembering hidden playback artwork preserves displayed album", failures: &failures) {
+      let treatments = ArtworkTreatmentSettings()
+      let displayedImage = NSImage(size: NSSize(width: 1, height: 1))
+      let playbackImage = NSImage(size: NSSize(width: 2, height: 2))
+      let displayedAccent = ArtworkColor(red: 0.1, green: 0.3, blue: 0.8)
+      let playbackAccent = ArtworkColor(red: 0.8, green: 0.2, blue: 0.1)
+
+      treatments.displayArtwork(displayedImage, accent: displayedAccent, identity: "displayed")
+      treatments.rememberPlaybackArtwork(
+        playbackImage,
+        accent: playbackAccent,
+        identity: "playing",
+        displaysImmediately: false
+      )
+
+      guard treatments.artwork === displayedImage, treatments.accent == displayedAccent else {
+        return false
+      }
+
+      treatments.restorePlaybackArtwork()
+      return treatments.artwork === playbackImage
+        && treatments.accent == playbackAccent
+    }
+
     check("original stream policy", failures: &failures) {
       let config = try NavidromeConfiguration(
         server: "https://music.example.test/navidrome/",
@@ -699,7 +723,7 @@ enum SelfTests {
     }
 
     if failures.isEmpty {
-      print("Coda playback spike self-tests passed (39 checks).")
+      print("Coda playback spike self-tests passed (40 checks).")
       return true
     }
 

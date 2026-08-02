@@ -77,6 +77,23 @@ struct NavidromeConfiguration: Sendable {
     return request
   }
 
+  func playlistMutationRequest(
+    endpoint: String,
+    parameters: [URLQueryItem],
+    salt: String = Self.makeSalt()
+  ) throws -> URLRequest {
+    var formComponents = URLComponents()
+    formComponents.queryItems = authenticationItems(salt: salt) + parameters
+
+    var request = URLRequest(url: try restEndpointURL(endpoint))
+    request.httpMethod = "POST"
+    request.httpBody = Data((formComponents.percentEncodedQuery ?? "").utf8)
+    request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+    request.timeoutInterval = 30
+    request.cachePolicy = .reloadIgnoringLocalCacheData
+    return request
+  }
+
   func originalStreamURL(songID: String, salt: String = Self.makeSalt()) throws -> URL {
     let trimmedID = songID.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedID.isEmpty else {
@@ -336,6 +353,39 @@ struct NavidromeClient: Sendable {
       throw NavidromeError.server("The server did not return the playlist.")
     }
     return playlist
+  }
+
+  func createPlaylist(name: String, songIDs: [String]) async throws {
+    let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedName.isEmpty else {
+      throw NavidromeError.invalidConfiguration("Enter a playlist name.")
+    }
+    let request = try configuration.playlistMutationRequest(
+      endpoint: "createPlaylist",
+      parameters:
+        [URLQueryItem(name: "name", value: trimmedName)]
+        + songIDs.map { URLQueryItem(name: "songId", value: $0) }
+    )
+    _ = try await checkedResponse(request)
+  }
+
+  func replacePlaylist(id: String, existingSongCount: Int, songIDs: [String]) async throws {
+    let trimmedID = id.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedID.isEmpty else {
+      throw NavidromeError.invalidConfiguration("The playlist ID is empty.")
+    }
+    let removalItems = (0..<max(0, existingSongCount)).map {
+      URLQueryItem(name: "songIndexToRemove", value: String($0))
+    }
+    let additionItems = songIDs.map { URLQueryItem(name: "songIdToAdd", value: $0) }
+    let request = try configuration.playlistMutationRequest(
+      endpoint: "updatePlaylist",
+      parameters:
+        [URLQueryItem(name: "playlistId", value: trimmedID)]
+        + removalItems
+        + additionItems
+    )
+    _ = try await checkedResponse(request)
   }
 
   func playQueue() async throws -> RemotePlayQueue? {

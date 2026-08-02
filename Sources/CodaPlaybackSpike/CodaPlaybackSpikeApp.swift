@@ -10,6 +10,7 @@ struct CodaPlaybackSpikeApp: App {
   @StateObject private var artworkTreatments: ArtworkTreatmentSettings
   @StateObject private var queueHandoff: QueueHandoffCoordinator
   @StateObject private var scrobbler: ScrobbleCoordinator
+  @StateObject private var playlistSaver = QueuePlaylistSaveCoordinator()
 
   init() {
     if CommandLine.arguments.contains("--self-test") {
@@ -39,12 +40,19 @@ struct CodaPlaybackSpikeApp: App {
         .environmentObject(player)
         .environmentObject(artworkTreatments)
         .environmentObject(queueHandoff)
+        .environmentObject(playlistSaver)
     }
     .defaultSize(width: 1_440, height: 900)
     .defaultLaunchBehavior(.presented)
     .commands {
       CodaStatusCommands()
       CodaRefreshCommands()
+      CodaPlaylistCommands(
+        session: session,
+        player: player,
+        playlistSaver: playlistSaver,
+        artworkTreatments: artworkTreatments
+      )
 
       CommandGroup(after: .toolbar) {
         Toggle(
@@ -94,6 +102,33 @@ struct CodaPlaybackSpikeApp: App {
     .defaultSize(width: 540, height: 620)
     .windowResizability(.contentSize)
     .defaultLaunchBehavior(.suppressed)
+  }
+}
+
+private struct CodaPlaylistCommands: Commands {
+  @ObservedObject var session: AppSession
+  @ObservedObject var player: PlayerController
+  @ObservedObject var playlistSaver: QueuePlaylistSaveCoordinator
+  @ObservedObject var artworkTreatments: ArtworkTreatmentSettings
+
+  var body: some Commands {
+    CommandGroup(replacing: .newItem) {
+      Button("Save Queue as Playlist…") {
+        if let client = session.client {
+          playlistSaver.present(
+            client: client,
+            queue: player.queue,
+            accent: artworkTreatments.accent
+          )
+        }
+      }
+      .keyboardShortcut("s", modifiers: [.command])
+      .disabled(
+        player.queue.isEmpty
+          || session.client == nil
+          || !session.hasEstablishedConnection
+      )
+    }
   }
 }
 

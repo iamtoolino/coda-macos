@@ -9,6 +9,7 @@ struct ContentView: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
+  @EnvironmentObject private var playlistSaver: QueuePlaylistSaveCoordinator
   @State private var isDockVolumeExpanded = false
 
   var body: some View {
@@ -95,6 +96,10 @@ struct ContentView: View {
       }
     }
     .toolbar(removing: .title)
+    .sheet(isPresented: $playlistSaver.isPresented) {
+      QueuePlaylistSaveSheet()
+        .environmentObject(playlistSaver)
+    }
     .onAppear {
       session.startAutomaticConnection()
     }
@@ -338,6 +343,7 @@ private struct TitlebarNavigationButton: View {
 }
 
 private struct CompactPlaybackDock: View {
+  @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   @StateObject private var artworkLoader = AlbumArtworkLoader()
@@ -385,10 +391,12 @@ private struct CompactPlaybackDock: View {
       await artworkLoader.load(url: entry?.artworkURL)
       guard player.currentEntry?.artworkURL == entry?.artworkURL else { return }
       if let image = artworkLoader.image {
+        let displayedAlbumID = session.path.last?.displayedAlbumID
         artworkTreatments.rememberPlaybackArtwork(
           image,
           accent: artworkLoader.accent,
-          identity: entry?.albumID
+          identity: entry?.albumID,
+          displaysImmediately: displayedAlbumID == nil || displayedAlbumID == entry?.albumID
         )
       }
     }
