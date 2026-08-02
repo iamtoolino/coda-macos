@@ -1,5 +1,6 @@
 import CoreTransferable
 import Foundation
+import SwiftUI
 import UniformTypeIdentifiers
 
 extension UTType {
@@ -62,6 +63,15 @@ enum QueueDropItem: Codable, Hashable, Sendable, Transferable {
 
   static var transferRepresentation: some TransferRepresentation {
     CodableRepresentation(contentType: .codaQueueDropItem)
+  }
+}
+
+extension DragConfiguration {
+  static func codaInternal(allowMove: Bool = false) -> Self {
+    Self(
+      operationsWithinApp: .init(allowCopy: true, allowMove: allowMove),
+      operationsOutsideApp: .init(allowCopy: false)
+    )
   }
 }
 

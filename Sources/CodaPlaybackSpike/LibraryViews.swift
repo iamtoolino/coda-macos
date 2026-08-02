@@ -637,6 +637,7 @@ struct ArtistDetailView: View {
               )
               .frame(width: 150, height: 150)
               .draggable(QueueDropItem.library(.artist(page.artist.id)))
+              .dragConfiguration(.codaInternal())
               .help("Drag artist discography to queue")
               VStack(alignment: .leading, spacing: 7) {
                 Text(page.artist.name)
@@ -764,6 +765,7 @@ struct AlbumDetailView: View {
                         detail: formatDuration(section.durationSeconds)
                       )
                     }
+                    .dragConfiguration(.codaInternal())
                     .contextMenu {
                       Button("Add Disc to Queue", systemImage: "text.badge.plus") {
                         session.append(songs: section.songs, to: player)
@@ -1296,6 +1298,7 @@ private struct AlbumCard: View {
           }
         }
         .draggable(QueueDropItem.library(.album(album.id)))
+        .dragConfiguration(.codaInternal())
         .help("Drag album to queue")
         Text(album.name)
           .font(.subheadline.weight(.medium))
@@ -1360,6 +1363,7 @@ private struct ArtistCard: View {
         ArtworkImage(url: session.artworkURL(id: artist.coverArt, size: 500), cornerRadius: 9)
           .aspectRatio(1, contentMode: .fit)
           .draggable(QueueDropItem.library(.artist(artist.id)))
+          .dragConfiguration(.codaInternal())
           .help("Drag artist discography to queue")
         Text(artist.name)
           .font(.subheadline.weight(.medium))
@@ -1480,6 +1484,7 @@ private struct SongRow: View {
           detail: dragSongIDs.count > 1 ? "" : formatDuration(song.duration ?? 0)
         )
       }
+      .dragConfiguration(.codaInternal())
       .help(selectionAction == nil ? "Drag track to queue" : "Double-click to play · Drag to queue")
   }
 

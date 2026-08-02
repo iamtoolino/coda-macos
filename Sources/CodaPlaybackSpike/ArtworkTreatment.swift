@@ -616,6 +616,7 @@ struct AlbumMockupHero: View {
     }
     .frame(width: size + 30, height: size + 36)
     .draggable(QueueDropItem.library(queueDragItem))
+    .dragConfiguration(.codaInternal())
     .help("Drag album to queue")
   }
 }

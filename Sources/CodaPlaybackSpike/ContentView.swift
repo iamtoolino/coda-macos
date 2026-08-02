@@ -1518,7 +1518,7 @@ private struct QueueAlbumHeader: View {
       }
     }
     .draggable(QueueDropItem.reorder(.albumBlock(group.entryIDs)))
-    .dragConfiguration(.init(allowMove: true))
+    .dragConfiguration(.codaInternal(allowMove: true))
     .onDragSessionUpdated { dragSession in
       let item = QueueReorderDragItem.albumBlock(group.entryIDs)
       dragStateAction(item, dragSession.phase == .initial || dragSession.phase == .active)
@@ -1700,7 +1700,7 @@ private struct QueueTrackRow: View {
     .accessibilityAction { selectAction([]) }
     .accessibilityAction(named: "Play", playAction)
     .draggable(QueueDropItem.reorder(.tracks(dragEntryIDs)))
-    .dragConfiguration(.init(allowMove: true))
+    .dragConfiguration(.codaInternal(allowMove: true))
     .onDragSessionUpdated { dragSession in
       let item = QueueReorderDragItem.tracks(dragEntryIDs)
       dragStateAction(item, dragSession.phase == .initial || dragSession.phase == .active)
