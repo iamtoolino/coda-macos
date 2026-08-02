@@ -3,8 +3,6 @@ import SwiftUI
 
 private enum CodaWindowLayout {
   static let mainContentTopLift: CGFloat = 20
-  static let minimumWidth: CGFloat = 980
-  static let minimumHeight: CGFloat = 650
 }
 
 struct ContentView: View {
@@ -81,10 +79,6 @@ struct ContentView: View {
         .padding(10)
       }
     }
-    .frame(
-      minWidth: CodaWindowLayout.minimumWidth,
-      minHeight: CodaWindowLayout.minimumHeight
-    )
     .toolbar {
       ToolbarItemGroup(placement: .navigation) {
         ForEach(SidebarDestination.allCases) { destination in
