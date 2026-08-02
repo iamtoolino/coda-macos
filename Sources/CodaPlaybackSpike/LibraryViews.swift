@@ -672,6 +672,7 @@ struct ArtistDetailView: View {
             .padding(.bottom, 22)
           }
           .padding(.bottom, floatingPlaybackDockScrollClearance)
+          .background(TransientScrollIndicators())
         }
       } else if let errorMessage {
         LibraryErrorView(title: "Could Not Load Artist", message: errorMessage) {
