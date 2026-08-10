@@ -514,13 +514,21 @@ struct NowPlayingPresentationView: View {
   }
 
   private func showArtist(_ artistID: String) {
-    presentation.dismiss()
-    session.open(.artist(artistID))
+    let route = LibraryRoute.artist(artistID)
+    if session.path.last == route {
+      presentation.dismiss()
+    } else {
+      session.open(route)
+    }
   }
 
   private func showAlbum(_ albumID: String) {
-    presentation.dismiss()
-    session.open(.album(albumID))
+    let route = LibraryRoute.album(albumID)
+    if session.path.last == route {
+      presentation.dismiss()
+    } else {
+      session.open(route)
+    }
   }
 
   private struct LayoutMetrics {
