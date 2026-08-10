@@ -15,7 +15,6 @@ final class QueuePlaylistSaveCoordinator: ObservableObject {
   @Published var name = ""
   @Published private(set) var phase: Phase = .ready
   @Published private(set) var playlists: [RemotePlaylist] = []
-  @Published private(set) var accent: ArtworkColor = .monochromeFallback
 
   private var client: NavidromeClient?
   private var songIDs: [String] = []
@@ -41,13 +40,11 @@ final class QueuePlaylistSaveCoordinator: ObservableObject {
 
   func present(
     client: NavidromeClient,
-    queue: [QueueEntry],
-    accent: ArtworkColor
+    queue: [QueueEntry]
   ) {
     guard !queue.isEmpty else { return }
     task?.cancel()
     self.client = client
-    self.accent = accent
     songIDs = queue.map(\.sourceID)
     name = Self.defaultPlaylistName()
     playlists = []
@@ -139,6 +136,8 @@ final class QueuePlaylistSaveCoordinator: ObservableObject {
 
 struct QueuePlaylistSaveSheet: View {
   @EnvironmentObject private var saver: QueuePlaylistSaveCoordinator
+  @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
+  @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   @FocusState private var nameFieldIsFocused: Bool
 
   var body: some View {
@@ -159,7 +158,7 @@ struct QueuePlaylistSaveSheet: View {
         Color(nsColor: .windowBackgroundColor)
         RadialGradient(
           colors: [
-            saver.accent.color.opacity(0.12),
+            interfaceAccent.color.opacity(0.12),
             .clear,
           ],
           center: .topLeading,
@@ -208,13 +207,13 @@ struct QueuePlaylistSaveSheet: View {
             RoundedRectangle(cornerRadius: 7, style: .continuous)
               .stroke(
                 nameFieldIsFocused
-                  ? saver.accent.color
+                  ? interfaceAccent.color
                   : Color.primary.opacity(0.12),
                 lineWidth: nameFieldIsFocused ? 2 : 1
               )
           }
-          .tint(saver.accent.color)
-          .accentColor(saver.accent.color)
+          .tint(interfaceAccent.color)
+          .accentColor(interfaceAccent.color)
           .focused($nameFieldIsFocused)
           .disabled(isBusy)
           .onSubmit {
@@ -240,8 +239,8 @@ struct QueuePlaylistSaveSheet: View {
         }
         .buttonStyle(
           PrimaryDialogButtonStyle(
-            background: saver.accent.color,
-            foreground: saver.accent.contrastingColor
+            background: interfaceAccent.color,
+            foreground: interfaceAccent.contrastingColor
           )
         )
         .keyboardShortcut(.defaultAction)
@@ -259,7 +258,7 @@ struct QueuePlaylistSaveSheet: View {
       } icon: {
         ProgressView()
           .controlSize(.small)
-          .tint(saver.accent.color)
+          .tint(interfaceAccent.color)
       }
       .foregroundStyle(.secondary)
     case .ready:
@@ -289,7 +288,7 @@ struct QueuePlaylistSaveSheet: View {
       } icon: {
         ProgressView()
           .controlSize(.small)
-          .tint(saver.accent.color)
+          .tint(interfaceAccent.color)
       }
       .font(.caption)
       .foregroundStyle(.secondary)
@@ -307,7 +306,7 @@ struct QueuePlaylistSaveSheet: View {
     VStack(spacing: 12) {
       Image(systemName: "checkmark.circle.fill")
         .font(.system(size: 42, weight: .medium))
-        .foregroundStyle(saver.accent.color)
+        .foregroundStyle(interfaceAccent.color)
       Text("Playlist Saved")
         .font(.title2.weight(.semibold))
       Text("“\(saver.trimmedName)” was saved to Navidrome.")
@@ -322,6 +321,10 @@ struct QueuePlaylistSaveSheet: View {
 
   private var isBusy: Bool {
     saver.phase == .saving || saver.phase == .saved
+  }
+
+  private var interfaceAccent: ArtworkColor {
+    nowPlayingPresentation.resolvedAccent(artworkTreatments.accent)
   }
 }
 

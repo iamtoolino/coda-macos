@@ -55,8 +55,7 @@ struct CodaPlaybackSpikeApp: App {
       CodaPlaylistCommands(
         session: session,
         player: player,
-        playlistSaver: playlistSaver,
-        artworkTreatments: artworkTreatments
+        playlistSaver: playlistSaver
       )
 
       CommandGroup(after: .toolbar) {
@@ -116,7 +115,6 @@ private struct CodaPlaylistCommands: Commands {
   @ObservedObject var session: AppSession
   @ObservedObject var player: PlayerController
   @ObservedObject var playlistSaver: QueuePlaylistSaveCoordinator
-  @ObservedObject var artworkTreatments: ArtworkTreatmentSettings
 
   var body: some Commands {
     CommandGroup(replacing: .newItem) {
@@ -124,8 +122,7 @@ private struct CodaPlaylistCommands: Commands {
         if let client = session.client {
           playlistSaver.present(
             client: client,
-            queue: player.queue,
-            accent: artworkTreatments.accent
+            queue: player.queue
           )
         }
       }
