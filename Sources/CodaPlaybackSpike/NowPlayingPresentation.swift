@@ -94,7 +94,8 @@ final class NowPlayingPresentationController: ObservableObject {
     }
 
     guard isPlaying else {
-      dismiss(restartsTimer: false)
+      inactivityTask?.cancel()
+      inactivityTask = nil
       return
     }
 

@@ -161,6 +161,30 @@ enum SelfTests {
         && accent.red - accent.blue > 0.12
     }
 
+    check("pausing keeps an active now playing presentation visible", failures: &failures) {
+      let presentation = NowPlayingPresentationController()
+      presentation.prepare(
+        playbackKey: "album:playing",
+        artwork: NSImage(size: NSSize(width: 2, height: 2)),
+        accent: ArtworkColor(red: 0.7, green: 0.3, blue: 0.2)
+      )
+      presentation.updateContext(
+        window: nil,
+        hasEstablishedConnection: true,
+        playbackKey: "album:playing",
+        isPlaying: true
+      )
+      presentation.present()
+      guard presentation.isPresented else { return false }
+      presentation.updateContext(
+        window: nil,
+        hasEstablishedConnection: true,
+        playbackKey: "album:playing",
+        isPlaying: false
+      )
+      return presentation.isPresented
+    }
+
     check("original stream policy", failures: &failures) {
       let config = try NavidromeConfiguration(
         server: "https://music.example.test/navidrome/",
@@ -826,7 +850,7 @@ enum SelfTests {
     }
 
     if failures.isEmpty {
-      print("Coda playback spike self-tests passed (44 checks).")
+      print("Coda playback spike self-tests passed (45 checks).")
       return true
     }
 
