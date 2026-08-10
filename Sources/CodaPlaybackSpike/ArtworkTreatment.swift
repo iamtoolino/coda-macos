@@ -959,9 +959,9 @@ private enum RatingPromptPhase: CaseIterable {
   case illuminated
   case settled
 
-  var brightness: Double { self == .illuminated ? 0.18 : 0 }
-  var scale: CGFloat { self == .illuminated ? 1.025 : 1 }
-  var glowOpacity: Double { self == .illuminated ? 0.34 : 0 }
+  var brightness: Double { self == .illuminated ? 0.10 : 0 }
+  var scale: CGFloat { self == .illuminated ? 1.012 : 1 }
+  var glowOpacity: Double { self == .illuminated ? 0.20 : 0 }
 }
 
 private struct RatingPromptEffectModifier: ViewModifier {
@@ -973,12 +973,12 @@ private struct RatingPromptEffectModifier: ViewModifier {
       view
         .brightness(phase.brightness)
         .scaleEffect(phase.scale)
-        .shadow(color: accent.opacity(phase.glowOpacity), radius: 8)
+        .shadow(color: accent.opacity(phase.glowOpacity), radius: 6)
     } animation: { phase in
       switch phase {
       case .resting: .linear(duration: 0)
-      case .illuminated: .easeOut(duration: 0.22)
-      case .settled: .easeInOut(duration: 0.56)
+      case .illuminated: .easeOut(duration: 0.14)
+      case .settled: .easeInOut(duration: 0.30)
       }
     }
   }
