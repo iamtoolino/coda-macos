@@ -393,15 +393,19 @@ struct NowPlayingPresentationView: View {
 
               if !entry.artist.isEmpty {
                 if let artistID = album?.artistId {
-                  Button(entry.artist) {
-                    presentation.dismiss()
-                    session.open(.artist(artistID))
-                  }
-                  .buttonStyle(.plain)
-                  .font(.title3.weight(.medium))
-                  .foregroundStyle(presentationAccent)
-                  .lineLimit(1)
-                  .help("Show \(entry.artist)")
+                  Text(entry.artist)
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(presentationAccent)
+                    .lineLimit(1)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                      showArtist(artistID)
+                    }
+                    .accessibilityAddTraits(.isLink)
+                    .accessibilityAction {
+                      showArtist(artistID)
+                    }
+                    .help("Show \(entry.artist)")
                 } else {
                   Text(entry.artist)
                     .font(.title3.weight(.medium))
@@ -415,13 +419,17 @@ struct NowPlayingPresentationView: View {
                   Text("From the album")
                     .foregroundStyle(.secondary)
                   if let albumID = entry.albumID {
-                    Button(entry.album) {
-                      presentation.dismiss()
-                      session.open(.album(albumID))
-                    }
-                    .buttonStyle(.plain)
+                    Text(entry.album)
                     .foregroundStyle(.primary)
                     .fontWeight(.semibold)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                      showAlbum(albumID)
+                    }
+                    .accessibilityAddTraits(.isLink)
+                    .accessibilityAction {
+                      showAlbum(albumID)
+                    }
                     .help("Show \(entry.album)")
                   } else {
                     Text(entry.album).fontWeight(.semibold)
@@ -503,6 +511,16 @@ struct NowPlayingPresentationView: View {
 
   private var presentationAccent: Color {
     presentation.preparedTheme?.accent.color ?? ArtworkColor.fallback.color
+  }
+
+  private func showArtist(_ artistID: String) {
+    presentation.dismiss()
+    session.open(.artist(artistID))
+  }
+
+  private func showAlbum(_ albumID: String) {
+    presentation.dismiss()
+    session.open(.album(albumID))
   }
 
   private struct LayoutMetrics {
