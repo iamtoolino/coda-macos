@@ -8,7 +8,7 @@ struct ArtworkColor: Equatable {
   let green: Double
   let blue: Double
 
-  static let fallback = ArtworkColor(red: 0.20, green: 0.72, blue: 0.76)
+  static let fallback = ArtworkColor(red: 43.0 / 255.0, green: 122.0 / 255.0, blue: 130.0 / 255.0)
   static let brandAction = ArtworkColor(red: 0.82, green: 0.58, blue: 0.20)
   static let monochromeFallback = ArtworkColor(red: 0.56, green: 0.58, blue: 0.60)
   var color: Color { Color(red: red, green: green, blue: blue) }
