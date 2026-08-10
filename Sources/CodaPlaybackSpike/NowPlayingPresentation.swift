@@ -496,17 +496,23 @@ struct NowPlayingPresentationView: View {
 
   @ViewBuilder
   private func preparedArtwork(for entry: QueueEntry) -> some View {
-    if let theme = presentation.preparedTheme,
-      theme.playbackKey == entry.nowPlayingPlaybackKey,
-      let artwork = theme.artwork
-    {
-      Image(nsImage: artwork)
-        .resizable()
-        .scaledToFill()
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-    } else {
-      ArtworkImage(url: entry.artworkURL, cornerRadius: 16)
+    ZStack {
+      if let artwork = presentation.preparedTheme?.artwork {
+        Image(nsImage: artwork)
+          .resizable()
+          .scaledToFill()
+          .clipShape(RoundedRectangle(cornerRadius: 16))
+          .id(ObjectIdentifier(artwork))
+          .transition(.opacity.combined(with: .scale(scale: 0.985)))
+      } else {
+        ArtworkImage(url: entry.artworkURL, cornerRadius: 16)
+      }
     }
+    .animation(.easeInOut(duration: 0.45), value: preparedArtworkIdentity)
+  }
+
+  private var preparedArtworkIdentity: ObjectIdentifier? {
+    presentation.preparedTheme?.artwork.map(ObjectIdentifier.init)
   }
 
   private var presentationAccent: Color {
@@ -587,6 +593,7 @@ private struct NowPlayingAlbumRating: View {
               .font(.system(size: 22, weight: .medium))
               .foregroundStyle(accent)
               .contentShape(Rectangle())
+              .contentTransition(.opacity)
           }
           .buttonStyle(.plain)
           .disabled(isUpdating)
@@ -598,6 +605,7 @@ private struct NowPlayingAlbumRating: View {
         }
       }
       .opacity(isUpdating ? 0.62 : 1)
+      .animation(.easeInOut(duration: 0.30), value: albumID)
       .onHover { isHovering in
         if !isHovering { hoveredRating = nil }
       }
