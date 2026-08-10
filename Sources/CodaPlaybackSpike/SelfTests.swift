@@ -95,7 +95,51 @@ enum SelfTests {
         && treatments.displayedIdentity == "blue-playing"
     }
 
-    check("paused and stale playback contexts use fallback theme", failures: &failures) {
+    check("pending themes hold the previous valid treatment", failures: &failures) {
+      let treatments = ArtworkTreatmentSettings()
+      let playbackImage = NSImage(size: NSSize(width: 2, height: 2))
+      let playbackAccent = ArtworkColor(red: 0.1, green: 0.3, blue: 0.9)
+      treatments.rememberPlaybackArtwork(
+        playbackImage,
+        accent: playbackAccent,
+        identity: "playing"
+      )
+      treatments.applyDisplayContext(
+        .standard(activePlaybackIdentity: "playing")
+      )
+      treatments.applyDisplayContext(
+        .standard(activePlaybackIdentity: "stale")
+      )
+      guard treatments.artwork === playbackImage,
+        treatments.accent == playbackAccent,
+        treatments.displayedIdentity == "playing"
+      else { return false }
+
+      treatments.applyDisplayContext(
+        .resolve(
+          displayedAlbumID: nil,
+          playbackIdentity: "playing"
+        )
+      )
+      guard treatments.artwork === playbackImage, treatments.accent == playbackAccent else {
+        return false
+      }
+
+      treatments.applyDisplayContext(.album("red-pending"))
+      guard treatments.artwork === playbackImage else { return false }
+
+      let albumImage = NSImage(size: NSSize(width: 3, height: 3))
+      let albumAccent = ArtworkColor(red: 0.9, green: 0.2, blue: 0.1)
+      treatments.rememberAlbumArtwork(
+        albumImage,
+        accent: albumAccent,
+        identity: "red-pending"
+      )
+      treatments.applyDisplayContext(.album("red-pending"))
+      return treatments.artwork === albumImage && treatments.accent == albumAccent
+    }
+
+    check("empty playback context uses the static Coda brand theme", failures: &failures) {
       let treatments = ArtworkTreatmentSettings()
       let playbackImage = NSImage(size: NSSize(width: 2, height: 2))
       treatments.rememberPlaybackArtwork(
@@ -103,22 +147,18 @@ enum SelfTests {
         accent: ArtworkColor(red: 0.1, green: 0.3, blue: 0.9),
         identity: "playing"
       )
-      treatments.applyDisplayContext(
-        .standard(activePlaybackIdentity: "stale")
-      )
-      guard treatments.artwork == nil,
-        treatments.accent == .fallback,
-        treatments.displayedIdentity == nil
-      else { return false }
+      treatments.applyDisplayContext(.standard(activePlaybackIdentity: "playing"))
+      treatments.applyDisplayContext(.standard(activePlaybackIdentity: nil))
+      return treatments.artwork == nil
+        && treatments.accent == .fallback
+        && treatments.displayedIdentity == nil
+    }
 
-      treatments.applyDisplayContext(
-        .resolve(
-          displayedAlbumID: nil,
-          isPlaying: false,
-          playbackIdentity: "playing"
-        )
-      )
-      return treatments.artwork == nil && treatments.accent == .fallback
+    check("generated Coda cover extracts a warm accent", failures: &failures) {
+      let accent = AlbumArtworkLoader.extractAccent(from: CodaPlaceholderArtwork.image)
+      return accent.red > accent.green
+        && accent.green > accent.blue
+        && accent.red - accent.blue > 0.12
     }
 
     check("original stream policy", failures: &failures) {
@@ -786,7 +826,7 @@ enum SelfTests {
     }
 
     if failures.isEmpty {
-      print("Coda playback spike self-tests passed (42 checks).")
+      print("Coda playback spike self-tests passed (44 checks).")
       return true
     }
 

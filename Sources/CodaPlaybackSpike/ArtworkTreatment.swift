@@ -9,6 +9,7 @@ struct ArtworkColor: Equatable {
   let blue: Double
 
   static let fallback = ArtworkColor(red: 0.20, green: 0.72, blue: 0.76)
+  static let brandAction = ArtworkColor(red: 0.82, green: 0.58, blue: 0.20)
   static let monochromeFallback = ArtworkColor(red: 0.56, green: 0.58, blue: 0.60)
   var color: Color { Color(red: red, green: green, blue: blue) }
 
@@ -31,15 +32,12 @@ enum ArtworkDisplayContext: Equatable {
 
   static func resolve(
     displayedAlbumID: String?,
-    isPlaying: Bool,
     playbackIdentity: String?
   ) -> ArtworkDisplayContext {
     if let displayedAlbumID {
       return .album(displayedAlbumID)
     }
-    return .standard(
-      activePlaybackIdentity: isPlaying ? playbackIdentity : nil
-    )
+    return .standard(activePlaybackIdentity: playbackIdentity)
   }
 }
 
@@ -135,10 +133,9 @@ final class ArtworkTreatmentSettings: ObservableObject {
   func applyDisplayContext(_ context: ArtworkDisplayContext) {
     switch context {
     case .album(let identity):
-      guard let albumTheme, albumTheme.identity == identity else {
-        applyArtwork(nil, accent: .fallback, identity: nil)
-        return
-      }
+      // A route change can arrive before its artwork task. Keep the previous
+      // valid theme until the requested album is ready, then crossfade once.
+      guard let albumTheme, albumTheme.identity == identity else { return }
       applyArtwork(
         albumTheme.artwork,
         accent: albumTheme.accent,
@@ -146,20 +143,27 @@ final class ArtworkTreatmentSettings: ObservableObject {
       )
 
     case .standard(let activePlaybackIdentity):
-      guard let activePlaybackIdentity,
+      guard let activePlaybackIdentity else {
+        applyBrandTheme()
+        return
+      }
+      // Track changes have the same prepare-then-commit behavior as album
+      // navigation. Never insert the brand color while artwork is loading.
+      guard
         playbackArtworkIdentity == activePlaybackIdentity,
         let playbackArtwork,
         let playbackAccent
-      else {
-        applyArtwork(nil, accent: .fallback, identity: nil)
-        return
-      }
+      else { return }
       applyArtwork(
         playbackArtwork,
         accent: playbackAccent,
         identity: activePlaybackIdentity
       )
     }
+  }
+
+  func applyBrandTheme() {
+    applyArtwork(nil, accent: .fallback, identity: nil)
   }
 }
 
@@ -336,6 +340,44 @@ private actor ArtworkDiskCache {
 }
 
 @MainActor
+enum CodaPlaceholderArtwork {
+  static let image: NSImage = {
+    if let url = Bundle.main.url(
+      forResource: "CodaPlaceholderCover",
+      withExtension: "png"
+    ), let image = NSImage(contentsOf: url) {
+      return image
+    }
+
+    // SwiftPM's raw executable does not carry app-bundle resources. Keep a
+    // deterministic Coda-styled fallback for tests and development tools.
+    let size = NSSize(width: 1_024, height: 1_024)
+    let image = NSImage(size: size)
+    image.lockFocus()
+    NSColor(calibratedRed: 0.025, green: 0.030, blue: 0.034, alpha: 1).setFill()
+    NSBezierPath(rect: NSRect(origin: .zero, size: size)).fill()
+
+    let recordRect = NSRect(x: 82, y: 82, width: 860, height: 860)
+    NSColor(calibratedWhite: 0.055, alpha: 1).setFill()
+    NSBezierPath(ovalIn: recordRect).fill()
+    NSColor(calibratedRed: 0.72, green: 0.47, blue: 0.20, alpha: 0.92).setStroke()
+    let arc = NSBezierPath()
+    arc.appendArc(
+      withCenter: NSPoint(x: 512, y: 512),
+      radius: 280,
+      startAngle: 42,
+      endAngle: 318,
+      clockwise: false
+    )
+    arc.lineWidth = 34
+    arc.lineCapStyle = .round
+    arc.stroke()
+    image.unlockFocus()
+    return image
+  }()
+}
+
+@MainActor
 final class ArtworkImageCache {
   static let shared = ArtworkImageCache()
 
@@ -348,7 +390,8 @@ final class ArtworkImageCache {
     images.totalCostLimit = 256 * 1_024 * 1_024
   }
 
-  func image(for url: URL) async -> NSImage? {
+  func image(for url: URL?) async -> NSImage {
+    guard let url else { return CodaPlaceholderArtwork.image }
     if let image = images.object(forKey: url as NSURL) {
       return image
     }
@@ -378,7 +421,9 @@ final class ArtworkImageCache {
 
     let data = await task.value
     loadingTasks[url] = nil
-    guard let data, let image = NSImage(data: data) else { return nil }
+    guard let data, let image = NSImage(data: data) else {
+      return CodaPlaceholderArtwork.image
+    }
     images.setObject(
       image,
       forKey: url as NSURL,
@@ -401,20 +446,24 @@ final class AlbumArtworkLoader: ObservableObject {
   @Published private(set) var image: NSImage?
   @Published private(set) var accent: ArtworkColor = .fallback
 
-  private var loadedURL: URL?
+  private struct Request: Equatable {
+    let url: URL?
+    let placeholderIdentity: String?
+  }
 
-  func load(url: URL?) async {
-    guard loadedURL != url else { return }
-    loadedURL = url
+  private var loadedRequest: Request?
+
+  func load(url: URL?, placeholderIdentity: String? = nil) async {
+    let request = Request(url: url, placeholderIdentity: placeholderIdentity)
+    guard loadedRequest != request else { return }
+    loadedRequest = request
     image = nil
     accent = .fallback
-    guard let url else { return }
 
-    if let artwork = await ArtworkImageCache.shared.image(for: url) {
-      guard loadedURL == url else { return }
-      image = artwork
-      accent = Self.extractAccent(from: artwork)
-    }
+    let artwork = await ArtworkImageCache.shared.image(for: url)
+    guard loadedRequest == request else { return }
+    image = artwork
+    accent = Self.extractAccent(from: artwork)
   }
 
   static func extractAccent(from image: NSImage) -> ArtworkColor {

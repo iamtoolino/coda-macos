@@ -232,21 +232,12 @@ struct NowPlayingPreparationObserver: View {
       .task(id: request) {
         let request = request
         guard let playbackKey = request.playbackKey else { return }
-        guard let artworkURL = request.artworkURL else {
-          presentation.prepare(
-            playbackKey: playbackKey,
-            artwork: nil,
-            accent: .fallback
-          )
-          return
-        }
-
-        let artwork = await ArtworkImageCache.shared.image(for: artworkURL)
+        let artwork = await ArtworkImageCache.shared.image(for: request.artworkURL)
         guard self.request == request else { return }
         presentation.prepare(
           playbackKey: playbackKey,
           artwork: artwork,
-          accent: artwork.map(AlbumArtworkLoader.extractAccent) ?? .fallback
+          accent: AlbumArtworkLoader.extractAccent(from: artwork)
         )
       }
   }

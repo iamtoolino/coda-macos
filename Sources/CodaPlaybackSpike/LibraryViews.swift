@@ -939,7 +939,8 @@ struct AlbumDetailView: View {
       let loadedPage = try await client.album(id: albumID)
       page = loadedPage
       await artworkLoader.load(
-        url: session.artworkURL(id: loadedPage.album.coverArt ?? loadedPage.album.id, size: 700)
+        url: session.artworkURL(id: loadedPage.album.coverArt ?? loadedPage.album.id, size: 700),
+        placeholderIdentity: loadedPage.album.id
       )
       if !Task.isCancelled {
         applyLoadedArtwork()

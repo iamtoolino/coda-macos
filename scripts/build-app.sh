@@ -28,6 +28,8 @@ cp "$root/.build/libmpv/prefix/lib/libmpv.2.dylib" "$app/Contents/Frameworks/lib
 cp "$root/.build/libmpv/prefix/lib/libgraphite2.3.dylib" "$app/Contents/Frameworks/libgraphite2.3.dylib"
 cp "$root/Support/Info.plist" "$app/Contents/Info.plist"
 cp "$root/Support/Coda.icns" "$app/Contents/Resources/Coda.icns"
+cp "$root/Support/CodaPlaceholderCover.png" \
+  "$app/Contents/Resources/CodaPlaceholderCover.png"
 cp "$root/.build/libmpv/sources/mpv-0.41.0/LICENSE.LGPL" \
   "$app/Contents/Resources/Licenses/mpv-LGPL-2.1-or-later.txt"
 cp "$root/.build/libmpv/sources/ffmpeg-8.1.2/COPYING.LGPLv2.1" \

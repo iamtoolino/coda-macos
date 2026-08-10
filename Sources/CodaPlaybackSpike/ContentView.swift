@@ -186,7 +186,7 @@ struct ContentView: View {
       nowPlayingPresentation.dismiss()
       applyArtworkDisplayContext()
     }
-    .onChange(of: player.isPlaying) {
+    .onChange(of: session.hasEstablishedConnection) {
       applyArtworkDisplayContext()
     }
     .onChange(of: player.currentEntry?.id) { _, currentEntryID in
@@ -202,10 +202,13 @@ struct ContentView: View {
   }
 
   private func applyArtworkDisplayContext() {
+    guard session.hasEstablishedConnection else {
+      artworkTreatments.applyBrandTheme()
+      return
+    }
     artworkTreatments.applyDisplayContext(
       .resolve(
         displayedAlbumID: session.path.last?.displayedAlbumID,
-        isPlaying: player.isPlaying,
         playbackIdentity: player.currentEntry?.artworkThemeIdentity
       )
     )
@@ -463,10 +466,8 @@ private struct CompactPlaybackDock: View {
       artworkTreatments.promoteDisplayedArtworkToPlayback(ifIdentity: identity)
       applyArtworkDisplayContext()
 
-      guard let artworkURL = request.artworkURL,
-        let image = await ArtworkImageCache.shared.image(for: artworkURL),
-        playbackArtworkRequest == request
-      else { return }
+      let image = await ArtworkImageCache.shared.image(for: request.artworkURL)
+      guard playbackArtworkRequest == request else { return }
       artworkTreatments.rememberPlaybackArtwork(
         image,
         accent: AlbumArtworkLoader.extractAccent(from: image),
@@ -492,7 +493,6 @@ private struct CompactPlaybackDock: View {
     artworkTreatments.applyDisplayContext(
       .resolve(
         displayedAlbumID: session.path.last?.displayedAlbumID,
-        isPlaying: player.isPlaying,
         playbackIdentity: player.currentEntry?.artworkThemeIdentity
       )
     )
@@ -954,6 +954,7 @@ private struct NavidromeLoginView: View {
       .floatingPanel()
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .tint(ArtworkColor.brandAction.color)
     .task {
       guard !loadedSavedLogin else { return }
       loadedSavedLogin = true
@@ -1023,7 +1024,6 @@ struct ArtworkImage: View {
   let url: URL?
   var cornerRadius: CGFloat = 8
   @State private var image: NSImage?
-  @State private var failed = false
 
   var body: some View {
     ZStack {
@@ -1033,10 +1033,6 @@ struct ArtworkImage: View {
         Image(nsImage: image)
           .resizable()
           .scaledToFill()
-      } else if failed || url == nil {
-        Image(systemName: "music.note")
-          .font(.title2)
-          .foregroundStyle(.tertiary)
       } else {
         ProgressView()
           .controlSize(.small)
@@ -1045,10 +1041,7 @@ struct ArtworkImage: View {
     .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     .task(id: url) {
       image = nil
-      failed = false
-      guard let url else { return }
       image = await ArtworkImageCache.shared.image(for: url)
-      failed = image == nil
     }
   }
 }
