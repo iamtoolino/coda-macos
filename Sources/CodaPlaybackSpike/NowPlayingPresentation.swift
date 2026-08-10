@@ -31,8 +31,7 @@ struct NowPlayingPreparedTheme: Identifiable {
 
 @MainActor
 final class NowPlayingPresentationController: ObservableObject {
-  // Short while the presentation is being evaluated. The release value is 30 seconds.
-  private static let automaticPresentationDelay = Duration.seconds(5)
+  private static let automaticPresentationDelay = Duration.seconds(30)
 
   @Published private(set) var isPresented = false
   @Published private(set) var phase = NowPlayingPresentationPhase.hidden

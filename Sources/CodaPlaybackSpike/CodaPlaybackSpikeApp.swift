@@ -89,6 +89,16 @@ struct CodaPlaybackSpikeApp: App {
         .keyboardShortcut(.space, modifiers: [])
         .disabled(player.currentEntry == nil)
 
+        Button("Show Now Playing") {
+          nowPlayingPresentation.present()
+        }
+        .keyboardShortcut("n", modifiers: [.command, .shift])
+        .disabled(
+          player.currentEntry == nil
+            || !session.hasEstablishedConnection
+            || nowPlayingPresentation.isPresented
+        )
+
         Divider()
 
         Button("Previous Track") { player.previous() }
