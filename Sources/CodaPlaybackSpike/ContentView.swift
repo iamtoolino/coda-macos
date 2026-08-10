@@ -393,7 +393,7 @@ private struct TitlebarNavigationButton: View {
         .background {
           if isHovering {
             Circle()
-              .fill(artworkTreatments.accent.color.opacity(0.18))
+              .fill(interfaceAccent.opacity(0.18))
           }
         }
         .foregroundStyle(isHovering ? .primary : .secondary)
@@ -404,6 +404,10 @@ private struct TitlebarNavigationButton: View {
     .onHover { isHovering = $0 }
     .help(destination.title)
     .accessibilityLabel(destination.title)
+  }
+
+  private var interfaceAccent: Color {
+    nowPlayingPresentation.resolvedAccent(artworkTreatments.accent).color
   }
 }
 
@@ -560,6 +564,7 @@ private struct PlaybackTransportButton: View {
 private struct PlaybackVolumeControl: View {
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
+  @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   @Binding var isExpanded: Bool
   @State private var collapseTask: Task<Void, Never>?
 
@@ -583,7 +588,7 @@ private struct PlaybackVolumeControl: View {
       if isExpanded {
         Slider(value: volumeBinding, in: 0...1)
           .controlSize(.mini)
-          .tint(artworkTreatments.accent.color)
+          .tint(interfaceAccent)
           .frame(width: 72)
           .transition(
             .asymmetric(
@@ -594,6 +599,10 @@ private struct PlaybackVolumeControl: View {
           .help("Volume \(Int((player.audibleVolume * 100).rounded())) percent")
           .accessibilityLabel("Volume")
           .accessibilityValue("\(Int((player.audibleVolume * 100).rounded())) percent")
+          .animation(
+            .easeInOut(duration: NowPlayingPresentationMotion.duration),
+            value: nowPlayingPresentation.isPresented
+          )
       }
     }
     .onHover(perform: updateHover)
@@ -607,6 +616,10 @@ private struct PlaybackVolumeControl: View {
       get: { player.audibleVolume },
       set: { player.setVolume($0) }
     )
+  }
+
+  private var interfaceAccent: Color {
+    nowPlayingPresentation.resolvedAccent(artworkTreatments.accent).color
   }
 
   private var volumeSystemImage: String {
@@ -715,8 +728,7 @@ private struct PlaybackSeekBar: View {
   }
 
   private var activeAccent: Color {
-    nowPlayingPresentation.presentationAccent?.color
-      ?? artworkTreatments.accent.color
+    nowPlayingPresentation.resolvedAccent(artworkTreatments.accent).color
   }
 
   private var displayedPosition: Double {
@@ -1021,6 +1033,7 @@ private struct QueuePanel: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
+  @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   @State private var selectedEntryIDs: [UUID]?
   @State private var selectionAnchorEntryID: UUID?
   @State private var groups: [QueueGroup] = []
@@ -1036,6 +1049,10 @@ private struct QueuePanel: View {
   @State private var isAddingDroppedItems = false
   @State private var viewportHeight: CGFloat = 0
   @FocusState private var queueHasFocus: Bool
+
+  private var interfaceAccent: Color {
+    nowPlayingPresentation.resolvedAccent(artworkTreatments.accent).color
+  }
 
   var body: some View {
     ScrollViewReader { proxy in
@@ -1195,14 +1212,14 @@ private struct QueuePanel: View {
         ZStack(alignment: .top) {
           RoundedRectangle(cornerRadius: FloatingPanelStyle.cornerRadius, style: .continuous)
             .strokeBorder(
-              artworkTreatments.accent.color.opacity(isDropTargeted ? 0.92 : 0),
+              interfaceAccent.opacity(isDropTargeted ? 0.92 : 0),
               lineWidth: 2
             )
             .padding(1)
 
           if let insertionTarget {
             Rectangle()
-              .fill(artworkTreatments.accent.color)
+              .fill(interfaceAccent)
               .frame(height: 2)
               .padding(.horizontal, 18)
               .offset(y: insertionTarget.lineY - 1)
@@ -1460,6 +1477,7 @@ private struct QueuePanel: View {
 private struct QueueAlbumBlock: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
+  @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   @State private var album: RemoteAlbum?
   let group: QueueGroup
   let currentIndex: Int?
@@ -1475,6 +1493,10 @@ private struct QueueAlbumBlock: View {
   let entryFrameAction: (UUID, Int, CGRect) -> Void
   let dragStateAction: (QueueReorderDragItem, Bool) -> Void
   let visibilityAction: (UUID, Bool) -> Void
+
+  private var interfaceAccent: Color {
+    nowPlayingPresentation.resolvedAccent(artworkTreatments.accent).color
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
@@ -1538,13 +1560,13 @@ private struct QueueAlbumBlock: View {
     .background {
       if selectedEntryIDs == group.entryIDs {
         RoundedRectangle(cornerRadius: 9, style: .continuous)
-          .fill(artworkTreatments.accent.color.opacity(0.12))
+          .fill(interfaceAccent.opacity(0.12))
       }
     }
     .overlay {
       if selectedEntryIDs == group.entryIDs {
         RoundedRectangle(cornerRadius: 9, style: .continuous)
-          .strokeBorder(artworkTreatments.accent.color.opacity(0.42), lineWidth: 1)
+          .strokeBorder(interfaceAccent.opacity(0.42), lineWidth: 1)
           .allowsHitTesting(false)
         }
     }
@@ -1682,12 +1704,17 @@ private struct QueueItemContextMenu: View {
 
 private struct QueueDiscHeader: View {
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
+  @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   let number: Int
   let subtitle: String?
   let durationSeconds: Int
   let isSelected: Bool
   let selectAction: () -> Void
   let deleteAction: () -> Void
+
+  private var interfaceAccent: Color {
+    nowPlayingPresentation.resolvedAccent(artworkTreatments.accent).color
+  }
 
   var body: some View {
     HStack(spacing: 6) {
@@ -1716,13 +1743,13 @@ private struct QueueDiscHeader: View {
     .background {
       if isSelected {
         RoundedRectangle(cornerRadius: 6, style: .continuous)
-          .fill(artworkTreatments.accent.color.opacity(0.14))
+          .fill(interfaceAccent.opacity(0.14))
       }
     }
     .overlay {
       if isSelected {
         RoundedRectangle(cornerRadius: 6, style: .continuous)
-          .strokeBorder(artworkTreatments.accent.color.opacity(0.42), lineWidth: 1)
+          .strokeBorder(interfaceAccent.opacity(0.42), lineWidth: 1)
           .allowsHitTesting(false)
       }
     }
@@ -1751,8 +1778,7 @@ private struct QueueTrackRow: View {
   let visibilityAction: (UUID, Bool) -> Void
 
   private var activeAccent: Color {
-    nowPlayingPresentation.presentationAccent?.color
-      ?? artworkTreatments.accent.color
+    nowPlayingPresentation.resolvedAccent(artworkTreatments.accent).color
   }
 
   var body: some View {
@@ -1790,7 +1816,7 @@ private struct QueueTrackRow: View {
           .fill(Color.primary.opacity(0.075))
       } else if isCollectionSelected {
         RoundedRectangle(cornerRadius: 5, style: .continuous)
-          .fill(artworkTreatments.accent.color.opacity(0.14))
+          .fill(activeAccent.opacity(0.14))
       }
     }
     .onTapGesture {

@@ -47,8 +47,12 @@ final class NowPlayingPresentationController: ObservableObject {
   private var phaseTask: Task<Void, Never>?
   private var hoveredRegions: Set<NowPlayingPresentationHoverRegion> = []
 
-  var presentationAccent: ArtworkColor? {
+  private var presentationAccent: ArtworkColor? {
     isPresented ? preparedTheme?.accent : nil
+  }
+
+  func resolvedAccent(_ browsingAccent: ArtworkColor) -> ArtworkColor {
+    presentationAccent ?? browsingAccent
   }
 
   func prepare(
