@@ -645,6 +645,12 @@ private struct NowPlayingAlbumRating: View {
 }
 
 extension QueueEntry {
+  var artworkThemeIdentity: String {
+    if let albumID, !albumID.isEmpty { return albumID }
+    if let artworkURL { return artworkURL.absoluteString }
+    return sourceID
+  }
+
   var nowPlayingPlaybackKey: String {
     if let albumID, !albumID.isEmpty { return "album:\(albumID)" }
     if let artworkURL { return "artwork:\(artworkURL.absoluteString)" }

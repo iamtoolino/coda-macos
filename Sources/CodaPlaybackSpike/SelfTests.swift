@@ -28,8 +28,10 @@ enum SelfTests {
       let staleAccent = ArtworkColor(red: 0.7, green: 0.2, blue: 0.1)
       let currentAccent = ArtworkColor(red: 0.1, green: 0.6, blue: 0.9)
 
-      treatments.displayArtwork(staleImage, accent: staleAccent, identity: "album")
-      treatments.displayArtwork(currentImage, accent: currentAccent, identity: "album")
+      treatments.rememberAlbumArtwork(staleImage, accent: staleAccent, identity: "album")
+      treatments.applyDisplayContext(.album("album"))
+      treatments.rememberAlbumArtwork(currentImage, accent: currentAccent, identity: "album")
+      treatments.applyDisplayContext(.album("album"))
 
       return treatments.artwork === currentImage
         && treatments.accent == currentAccent
@@ -42,21 +44,81 @@ enum SelfTests {
       let displayedAccent = ArtworkColor(red: 0.1, green: 0.3, blue: 0.8)
       let playbackAccent = ArtworkColor(red: 0.8, green: 0.2, blue: 0.1)
 
-      treatments.displayArtwork(displayedImage, accent: displayedAccent, identity: "displayed")
+      treatments.rememberAlbumArtwork(
+        displayedImage,
+        accent: displayedAccent,
+        identity: "displayed"
+      )
+      treatments.applyDisplayContext(.album("displayed"))
       treatments.rememberPlaybackArtwork(
         playbackImage,
         accent: playbackAccent,
-        identity: "playing",
-        displaysImmediately: false
+        identity: "playing"
       )
 
       guard treatments.artwork === displayedImage, treatments.accent == displayedAccent else {
         return false
       }
 
-      treatments.restorePlaybackArtwork()
+      treatments.applyDisplayContext(
+        .standard(activePlaybackIdentity: "playing")
+      )
       return treatments.artwork === playbackImage
         && treatments.accent == playbackAccent
+    }
+
+    check("non-album navigation centrally restores matching playback theme", failures: &failures) {
+      let treatments = ArtworkTreatmentSettings()
+      let playbackImage = NSImage(size: NSSize(width: 2, height: 2))
+      let albumImage = NSImage(size: NSSize(width: 3, height: 3))
+      let playbackAccent = ArtworkColor(red: 0.1, green: 0.3, blue: 0.9)
+      let albumAccent = ArtworkColor(red: 0.9, green: 0.2, blue: 0.1)
+
+      treatments.rememberPlaybackArtwork(
+        playbackImage,
+        accent: playbackAccent,
+        identity: "blue-playing"
+      )
+      treatments.rememberAlbumArtwork(
+        albumImage,
+        accent: albumAccent,
+        identity: "red-album"
+      )
+      treatments.applyDisplayContext(.album("red-album"))
+      guard treatments.artwork === albumImage else { return false }
+
+      treatments.applyDisplayContext(
+        .standard(activePlaybackIdentity: "blue-playing")
+      )
+      return treatments.artwork === playbackImage
+        && treatments.accent == playbackAccent
+        && treatments.displayedIdentity == "blue-playing"
+    }
+
+    check("paused and stale playback contexts use fallback theme", failures: &failures) {
+      let treatments = ArtworkTreatmentSettings()
+      let playbackImage = NSImage(size: NSSize(width: 2, height: 2))
+      treatments.rememberPlaybackArtwork(
+        playbackImage,
+        accent: ArtworkColor(red: 0.1, green: 0.3, blue: 0.9),
+        identity: "playing"
+      )
+      treatments.applyDisplayContext(
+        .standard(activePlaybackIdentity: "stale")
+      )
+      guard treatments.artwork == nil,
+        treatments.accent == .fallback,
+        treatments.displayedIdentity == nil
+      else { return false }
+
+      treatments.applyDisplayContext(
+        .resolve(
+          displayedAlbumID: nil,
+          isPlaying: false,
+          playbackIdentity: "playing"
+        )
+      )
+      return treatments.artwork == nil && treatments.accent == .fallback
     }
 
     check("original stream policy", failures: &failures) {
@@ -724,7 +786,7 @@ enum SelfTests {
     }
 
     if failures.isEmpty {
-      print("Coda playback spike self-tests passed (40 checks).")
+      print("Coda playback spike self-tests passed (42 checks).")
       return true
     }
 

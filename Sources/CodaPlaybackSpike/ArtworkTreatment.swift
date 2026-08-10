@@ -25,6 +25,30 @@ struct ArtworkColor: Equatable {
   }
 }
 
+enum ArtworkDisplayContext: Equatable {
+  case album(String)
+  case standard(activePlaybackIdentity: String?)
+
+  static func resolve(
+    displayedAlbumID: String?,
+    isPlaying: Bool,
+    playbackIdentity: String?
+  ) -> ArtworkDisplayContext {
+    if let displayedAlbumID {
+      return .album(displayedAlbumID)
+    }
+    return .standard(
+      activePlaybackIdentity: isPlaying ? playbackIdentity : nil
+    )
+  }
+}
+
+private struct StoredArtworkTheme {
+  let artwork: NSImage
+  let accent: ArtworkColor
+  let identity: String
+}
+
 @MainActor
 final class ArtworkTreatmentSettings: ObservableObject {
   private static let showsRatingLabelsKey = "shows-album-rating-labels"
@@ -39,8 +63,9 @@ final class ArtworkTreatmentSettings: ObservableObject {
   private var playbackAccent: ArtworkColor?
   private var playbackArtworkIdentity: String?
   private var displayedArtworkIdentity: String?
+  private var albumTheme: StoredArtworkTheme?
 
-  var hasPlaybackArtwork: Bool { playbackArtwork != nil }
+  var displayedIdentity: String? { displayedArtworkIdentity }
 
   init() {
     let defaults = UserDefaults.standard
@@ -48,9 +73,20 @@ final class ArtworkTreatmentSettings: ObservableObject {
       ?? true
   }
 
-  func displayArtwork(_ image: NSImage, accent: ArtworkColor, identity: String? = nil) {
+  private func applyArtwork(
+    _ image: NSImage?,
+    accent: ArtworkColor,
+    identity: String?
+  ) {
     if let artwork,
+      let image,
       artwork === image,
+      self.accent == accent,
+      displayedArtworkIdentity == identity
+    {
+      return
+    }
+    if artwork == nil, image == nil,
       self.accent == accent,
       displayedArtworkIdentity == identity
     {
@@ -67,15 +103,23 @@ final class ArtworkTreatmentSettings: ObservableObject {
   func rememberPlaybackArtwork(
     _ image: NSImage,
     accent: ArtworkColor,
-    identity: String? = nil,
-    displaysImmediately: Bool
+    identity: String
   ) {
     playbackArtwork = image
     playbackAccent = accent
     playbackArtworkIdentity = identity
-    if displaysImmediately {
-      displayArtwork(image, accent: accent, identity: identity)
-    }
+  }
+
+  func rememberAlbumArtwork(
+    _ image: NSImage,
+    accent: ArtworkColor,
+    identity: String
+  ) {
+    albumTheme = StoredArtworkTheme(
+      artwork: image,
+      accent: accent,
+      identity: identity
+    )
   }
 
   func promoteDisplayedArtworkToPlayback(ifIdentity identity: String?) {
@@ -88,13 +132,34 @@ final class ArtworkTreatmentSettings: ObservableObject {
     playbackArtworkIdentity = identity
   }
 
-  func restorePlaybackArtwork() {
-    guard let playbackArtwork, let playbackAccent else { return }
-    displayArtwork(
-      playbackArtwork,
-      accent: playbackAccent,
-      identity: playbackArtworkIdentity
-    )
+  func applyDisplayContext(_ context: ArtworkDisplayContext) {
+    switch context {
+    case .album(let identity):
+      guard let albumTheme, albumTheme.identity == identity else {
+        applyArtwork(nil, accent: .fallback, identity: nil)
+        return
+      }
+      applyArtwork(
+        albumTheme.artwork,
+        accent: albumTheme.accent,
+        identity: albumTheme.identity
+      )
+
+    case .standard(let activePlaybackIdentity):
+      guard let activePlaybackIdentity,
+        playbackArtworkIdentity == activePlaybackIdentity,
+        let playbackArtwork,
+        let playbackAccent
+      else {
+        applyArtwork(nil, accent: .fallback, identity: nil)
+        return
+      }
+      applyArtwork(
+        playbackArtwork,
+        accent: playbackAccent,
+        identity: activePlaybackIdentity
+      )
+    }
   }
 }
 

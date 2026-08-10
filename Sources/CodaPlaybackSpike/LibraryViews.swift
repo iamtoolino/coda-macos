@@ -16,10 +16,8 @@ struct HomeView: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var queueHandoff: QueueHandoffCoordinator
-  @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   let resetToken: UUID?
 
-  @StateObject private var artworkLoader = AlbumArtworkLoader()
   @State private var data: HomeData?
   @State private var isLoading = false
   @State private var errorMessage: String?
@@ -99,9 +97,6 @@ struct HomeView: View {
     .task(id: resetToken) {
       await load()
     }
-    .onAppear {
-      artworkTreatments.restorePlaybackArtwork()
-    }
   }
 
   @MainActor
@@ -131,28 +126,6 @@ struct HomeView: View {
         playQueue: savedQueue
       )
       data = loadedData
-      if player.currentEntry == nil, !artworkTreatments.hasPlaybackArtwork {
-        let queue = loadedData.playQueue
-        let currentQueueIndex = queue?.resolvedCurrentIndex ?? 0
-        let queueSong = queue?.songs[safe: currentQueueIndex]
-        let queueCoverID = queueSong?.albumArtworkID
-        let recentAlbum = loadedData.recentlyPlayed.first
-        let recentCoverID = recentAlbum?.coverArt ?? recentAlbum?.id
-        let newestAlbum = loadedData.newest.first
-        let newestCoverID = newestAlbum?.coverArt ?? newestAlbum?.id
-        let homeCoverID = queueCoverID ?? recentCoverID ?? newestCoverID
-        await artworkLoader.load(url: session.artworkURL(id: homeCoverID, size: 900))
-        if player.currentEntry == nil, !artworkTreatments.hasPlaybackArtwork,
-          let image = artworkLoader.image
-        {
-          artworkTreatments.rememberPlaybackArtwork(
-            image,
-            accent: artworkLoader.accent,
-            identity: queueSong?.albumId ?? recentAlbum?.id ?? newestAlbum?.id,
-            displaysImmediately: true
-          )
-        }
-      }
     } catch {
       errorMessage = error.localizedDescription
     }
@@ -190,7 +163,6 @@ struct HomeView: View {
 struct SearchView: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
-  @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   let resetToken: UUID?
 
   @FocusState private var searchFieldIsFocused: Bool
@@ -264,7 +236,6 @@ struct SearchView: View {
       searchFieldIsFocused = true
     }
     .onAppear {
-      artworkTreatments.restorePlaybackArtwork()
       searchFieldIsFocused = true
     }
     .onExitCommand {
@@ -983,20 +954,19 @@ struct AlbumDetailView: View {
       session.path.last?.displayedAlbumID == album.id,
       let image = artworkLoader.image
     else { return }
-    if player.currentEntry?.albumID == album.id {
+    artworkTreatments.rememberAlbumArtwork(
+      image,
+      accent: artworkLoader.accent,
+      identity: album.id
+    )
+    if player.currentEntry?.artworkThemeIdentity == album.id {
       artworkTreatments.rememberPlaybackArtwork(
-        image,
-        accent: artworkLoader.accent,
-        identity: album.id,
-        displaysImmediately: true
-      )
-    } else {
-      artworkTreatments.displayArtwork(
         image,
         accent: artworkLoader.accent,
         identity: album.id
       )
     }
+    artworkTreatments.applyDisplayContext(.album(album.id))
   }
 }
 

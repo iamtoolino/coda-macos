@@ -176,18 +176,21 @@ struct ContentView: View {
     }
     .onAppear {
       session.startAutomaticConnection()
+      applyArtworkDisplayContext()
     }
-    .onChange(of: session.path) { _, path in
+    .onChange(of: session.path) {
       nowPlayingPresentation.dismiss()
-      if path.isEmpty {
-        artworkTreatments.restorePlaybackArtwork()
-      }
+      applyArtworkDisplayContext()
     }
     .onChange(of: session.selectedRoot) {
       nowPlayingPresentation.dismiss()
-      artworkTreatments.restorePlaybackArtwork()
+      applyArtworkDisplayContext()
+    }
+    .onChange(of: player.isPlaying) {
+      applyArtworkDisplayContext()
     }
     .onChange(of: player.currentEntry?.id) { _, currentEntryID in
+      applyArtworkDisplayContext()
       if currentEntryID == nil {
         Task {
           try? await Task.sleep(for: .milliseconds(220))
@@ -196,6 +199,16 @@ struct ContentView: View {
         }
       }
     }
+  }
+
+  private func applyArtworkDisplayContext() {
+    artworkTreatments.applyDisplayContext(
+      .resolve(
+        displayedAlbumID: session.path.last?.displayedAlbumID,
+        isPlaying: player.isPlaying,
+        playbackIdentity: player.currentEntry?.artworkThemeIdentity
+      )
+    )
   }
 }
 
@@ -415,7 +428,6 @@ private struct CompactPlaybackDock: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
-  @StateObject private var artworkLoader = AlbumArtworkLoader()
   @State private var seekPreviewPosition: Double?
   @Binding var isVolumeExpanded: Bool
 
@@ -445,21 +457,45 @@ private struct CompactPlaybackDock: View {
     .onChange(of: player.currentEntry?.id) {
       seekPreviewPosition = nil
     }
-    .task(id: player.currentEntry?.artworkURL) {
-      let entry = player.currentEntry
-      artworkTreatments.promoteDisplayedArtworkToPlayback(ifIdentity: entry?.albumID)
-      await artworkLoader.load(url: entry?.artworkURL)
-      guard player.currentEntry?.artworkURL == entry?.artworkURL else { return }
-      if let image = artworkLoader.image {
-        let displayedAlbumID = session.path.last?.displayedAlbumID
-        artworkTreatments.rememberPlaybackArtwork(
-          image,
-          accent: artworkLoader.accent,
-          identity: entry?.albumID,
-          displaysImmediately: displayedAlbumID == nil || displayedAlbumID == entry?.albumID
-        )
-      }
+    .task(id: playbackArtworkRequest) {
+      let request = playbackArtworkRequest
+      guard let identity = request.identity else { return }
+      artworkTreatments.promoteDisplayedArtworkToPlayback(ifIdentity: identity)
+      applyArtworkDisplayContext()
+
+      guard let artworkURL = request.artworkURL,
+        let image = await ArtworkImageCache.shared.image(for: artworkURL),
+        playbackArtworkRequest == request
+      else { return }
+      artworkTreatments.rememberPlaybackArtwork(
+        image,
+        accent: AlbumArtworkLoader.extractAccent(from: image),
+        identity: identity
+      )
+      applyArtworkDisplayContext()
     }
+  }
+
+  private struct PlaybackArtworkRequest: Hashable {
+    let identity: String?
+    let artworkURL: URL?
+  }
+
+  private var playbackArtworkRequest: PlaybackArtworkRequest {
+    PlaybackArtworkRequest(
+      identity: player.currentEntry?.artworkThemeIdentity,
+      artworkURL: player.currentEntry?.artworkURL
+    )
+  }
+
+  private func applyArtworkDisplayContext() {
+    artworkTreatments.applyDisplayContext(
+      .resolve(
+        displayedAlbumID: session.path.last?.displayedAlbumID,
+        isPlaying: player.isPlaying,
+        playbackIdentity: player.currentEntry?.artworkThemeIdentity
+      )
+    )
   }
 
   private var playbackSectionDivider: some View {
