@@ -11,6 +11,7 @@ struct CodaPlaybackSpikeApp: App {
   @StateObject private var queueHandoff: QueueHandoffCoordinator
   @StateObject private var scrobbler: ScrobbleCoordinator
   @StateObject private var playlistSaver = QueuePlaylistSaveCoordinator()
+  @StateObject private var nowPlayingPresentation: NowPlayingPresentationController
 
   init() {
     if CommandLine.arguments.contains("--self-test") {
@@ -24,6 +25,9 @@ struct CodaPlaybackSpikeApp: App {
     _session = StateObject(wrappedValue: session)
     _player = StateObject(wrappedValue: player)
     _artworkTreatments = StateObject(wrappedValue: ArtworkTreatmentSettings())
+    _nowPlayingPresentation = StateObject(
+      wrappedValue: NowPlayingPresentationController()
+    )
     let queueHandoff = QueueHandoffCoordinator(session: session, player: player)
     _queueHandoff = StateObject(wrappedValue: queueHandoff)
     _scrobbler = StateObject(
@@ -41,6 +45,7 @@ struct CodaPlaybackSpikeApp: App {
         .environmentObject(artworkTreatments)
         .environmentObject(queueHandoff)
         .environmentObject(playlistSaver)
+        .environmentObject(nowPlayingPresentation)
     }
     .defaultSize(width: 1_440, height: 900)
     .defaultLaunchBehavior(.presented)
@@ -63,6 +68,7 @@ struct CodaPlaybackSpikeApp: App {
 
       CommandMenu("Library") {
         Button("Back") {
+          nowPlayingPresentation.dismiss()
           session.goBack()
         }
         .keyboardShortcut("[", modifiers: [.command])
@@ -71,6 +77,7 @@ struct CodaPlaybackSpikeApp: App {
         Divider()
 
         Button("Search") {
+          nowPlayingPresentation.dismiss()
           session.selectRoot(.search)
         }
         .keyboardShortcut("f", modifiers: [.command])

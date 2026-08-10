@@ -10,6 +10,7 @@ struct ContentView: View {
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   @EnvironmentObject private var playlistSaver: QueuePlaylistSaveCoordinator
+  @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   @State private var isDockVolumeExpanded = false
 
   var body: some View {
@@ -17,66 +18,143 @@ struct ContentView: View {
       AppArtworkBackground()
       PlaybackWindowVisibilityObserver()
         .frame(width: 0, height: 0)
+      NowPlayingActivityObserver()
+        .frame(width: 0, height: 0)
+      NowPlayingPreparationObserver()
+        .frame(width: 0, height: 0)
 
       GeometryReader { geometry in
         let contentWidth = max(0, geometry.size.width - 20)
         let contentHeight = max(0, geometry.size.height - 20)
         let queueWidth = min(330, max(285, geometry.size.width * 0.22))
 
-        HStack(alignment: .top, spacing: 10) {
-          ZStack(alignment: .bottom) {
+        ZStack {
+          HStack(alignment: .top, spacing: 10) {
             NavigationStack(path: $session.path) {
-              RootContentView()
-                .id(session.rootToken)
-                .navigationDestination(for: LibraryRoute.self) { route in
-                  RouteContentView(route: route)
-                }
+                RootContentView()
+                  .id(session.rootToken)
+                  .navigationDestination(for: LibraryRoute.self) { route in
+                    RouteContentView(route: route)
+                  }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.clear)
+            .allowsHitTesting(
+              nowPlayingPresentation.phase.browsingIsInteractive
+            )
+            .accessibilityHidden(
+              !nowPlayingPresentation.phase.browsingIsInteractive
+            )
+            .frame(height: contentHeight + CodaWindowLayout.mainContentTopLift)
+            .offset(y: -CodaWindowLayout.mainContentTopLift)
 
             if session.hasEstablishedConnection {
-              HStack(spacing: 0) {
-                Color.clear
-                  .frame(width: PlaybackDockMetrics.volumeExpansionWidth)
-                  .allowsHitTesting(false)
-
-                CompactPlaybackDockHost(
-                  isVolumeExpanded: $isDockVolumeExpanded
-                )
-                  .frame(
-                    width: PlaybackDockMetrics.width(
-                      isVolumeExpanded: isDockVolumeExpanded
-                    ),
-                    height: 64
-                  )
-
-                Spacer(minLength: 0)
-                  .allowsHitTesting(false)
-              }
-              .frame(
-                width: PlaybackDockMetrics.anchoredContainerWidth,
-                height: 64
-              )
+              Color.clear
+                .frame(width: queueWidth)
+                .allowsHitTesting(false)
             }
           }
-          .frame(maxWidth: .infinity)
-          .frame(height: contentHeight + CodaWindowLayout.mainContentTopLift)
-          .offset(y: -CodaWindowLayout.mainContentTopLift)
+          .frame(
+            width: contentWidth,
+            height: contentHeight,
+            alignment: .topLeading
+          )
+          .padding(10)
 
-          if session.hasEstablishedConnection {
-            QueuePanel()
-              .frame(width: queueWidth)
-              .frame(maxHeight: .infinity, alignment: .top)
-              .floatingPanel(adaptsWhenInactive: true)
+          ZStack {
+            NowPlayingArtworkBackground(
+              theme: nowPlayingPresentation.preparedTheme
+            )
+            Color.clear
+              .contentShape(Rectangle())
+              .onTapGesture { nowPlayingPresentation.dismiss() }
+              .onHover { isInside in
+                withAnimation(.easeInOut(duration: 0.16)) {
+                  nowPlayingPresentation.updatePointerInsidePresentation(
+                    .background,
+                    isInside: isInside
+                  )
+                }
+              }
           }
+          .ignoresSafeArea(.container, edges: .top)
+          .opacity(nowPlayingPresentation.isPresented ? 1 : 0)
+          .allowsHitTesting(
+            nowPlayingPresentation.phase.presentationIsInteractive
+          )
+          .accessibilityHidden(true)
+          .animation(
+            .easeInOut(duration: NowPlayingPresentationMotion.duration),
+            value: nowPlayingPresentation.isPresented
+          )
+
+          HStack(alignment: .top, spacing: 10) {
+            ZStack(alignment: .bottom) {
+              NowPlayingPresentationView()
+                .opacity(nowPlayingPresentation.isPresented ? 1 : 0)
+                .offset(
+                  y: nowPlayingPresentation.isPresented
+                    ? 0 : NowPlayingPresentationMotion.verticalOffset
+                )
+                .allowsHitTesting(
+                  nowPlayingPresentation.phase.presentationIsInteractive
+                )
+                .accessibilityHidden(
+                  !nowPlayingPresentation.phase.presentationIsInteractive
+                )
+                .animation(
+                  .easeInOut(duration: NowPlayingPresentationMotion.duration),
+                  value: nowPlayingPresentation.isPresented
+                )
+
+              Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture {}
+                .allowsHitTesting(nowPlayingPresentation.phase.isTransitioning)
+
+              if session.hasEstablishedConnection {
+                HStack(spacing: 0) {
+                  Color.clear
+                    .frame(width: PlaybackDockMetrics.volumeExpansionWidth)
+                    .allowsHitTesting(false)
+
+                  CompactPlaybackDockHost(
+                    isVolumeExpanded: $isDockVolumeExpanded
+                  )
+                    .frame(
+                      width: PlaybackDockMetrics.width(
+                        isVolumeExpanded: isDockVolumeExpanded
+                      ),
+                      height: 64
+                    )
+
+                  Spacer(minLength: 0)
+                    .allowsHitTesting(false)
+                }
+                .frame(
+                  width: PlaybackDockMetrics.anchoredContainerWidth,
+                  height: 64
+                )
+              }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: contentHeight + CodaWindowLayout.mainContentTopLift)
+            .offset(y: -CodaWindowLayout.mainContentTopLift)
+
+            if session.hasEstablishedConnection {
+              QueuePanel()
+                .frame(width: queueWidth)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .floatingPanel(adaptsWhenInactive: true)
+            }
+          }
+          .frame(
+            width: contentWidth,
+            height: contentHeight,
+            alignment: .topLeading
+          )
+          .padding(10)
         }
-        .frame(
-          width: contentWidth,
-          height: contentHeight,
-          alignment: .topLeading
-        )
-        .padding(10)
       }
     }
     .toolbar {
@@ -100,11 +178,13 @@ struct ContentView: View {
       session.startAutomaticConnection()
     }
     .onChange(of: session.path) { _, path in
+      nowPlayingPresentation.dismiss()
       if path.isEmpty {
         artworkTreatments.restorePlaybackArtwork()
       }
     }
     .onChange(of: session.selectedRoot) {
+      nowPlayingPresentation.dismiss()
       artworkTreatments.restorePlaybackArtwork()
     }
     .onChange(of: player.currentEntry?.id) { _, currentEntryID in
@@ -202,6 +282,7 @@ private struct CompactPlaybackDockHost: NSViewRepresentable {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
+  @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   @Binding var isVolumeExpanded: Bool
 
   func makeNSView(context: Context) -> PassthroughDockHostingView {
@@ -227,6 +308,7 @@ private struct CompactPlaybackDockHost: NSViewRepresentable {
       session: session,
       player: player,
       artworkTreatments: artworkTreatments,
+      nowPlayingPresentation: nowPlayingPresentation,
       isVolumeExpanded: $isVolumeExpanded
     )
   }
@@ -236,6 +318,7 @@ private struct CompactPlaybackDockHostingRoot: View {
   @ObservedObject var session: AppSession
   @ObservedObject var player: PlayerController
   @ObservedObject var artworkTreatments: ArtworkTreatmentSettings
+  @ObservedObject var nowPlayingPresentation: NowPlayingPresentationController
   @Binding var isVolumeExpanded: Bool
 
   var body: some View {
@@ -247,6 +330,7 @@ private struct CompactPlaybackDockHostingRoot: View {
         .environmentObject(session)
         .environmentObject(player)
         .environmentObject(artworkTreatments)
+        .environmentObject(nowPlayingPresentation)
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .transition(
@@ -293,11 +377,13 @@ private enum PlaybackDockMetrics {
 private struct TitlebarNavigationButton: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
+  @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   @State private var isHovering = false
   let destination: SidebarDestination
 
   var body: some View {
     Button {
+      nowPlayingPresentation.dismiss()
       session.selectRoot(destination)
     } label: {
       Image(systemName: destination.systemImage)
@@ -550,6 +636,7 @@ private struct PlaybackVolumeControl: View {
 
 private struct PlaybackSeekBar: View {
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
+  @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   let position: Double
   let duration: Double
   @Binding var previewPosition: Double?
@@ -567,12 +654,12 @@ private struct PlaybackSeekBar: View {
           .frame(height: 3)
 
         Capsule()
-          .fill(artworkTreatments.accent.color)
+          .fill(activeAccent)
           .frame(width: width * progress, height: 3)
 
         if isHovering || previewPosition != nil {
           Circle()
-            .fill(artworkTreatments.accent.color)
+            .fill(activeAccent)
             .frame(width: 8, height: 8)
             .position(
               x: min(max(width * progress, 4), width - 4),
@@ -621,6 +708,15 @@ private struct PlaybackSeekBar: View {
         break
       }
     }
+    .animation(
+      .easeInOut(duration: NowPlayingPresentationMotion.duration),
+      value: nowPlayingPresentation.isPresented
+    )
+  }
+
+  private var activeAccent: Color {
+    nowPlayingPresentation.presentationAccent?.color
+      ?? artworkTreatments.accent.color
   }
 
   private var displayedPosition: Double {
@@ -1638,6 +1734,7 @@ private struct QueueDiscHeader: View {
 
 private struct QueueTrackRow: View {
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
+  @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   let entry: QueueEntry
   let album: RemoteAlbum?
   let isCurrent: Bool
@@ -1653,6 +1750,11 @@ private struct QueueTrackRow: View {
   let dragStateAction: (QueueReorderDragItem, Bool) -> Void
   let visibilityAction: (UUID, Bool) -> Void
 
+  private var activeAccent: Color {
+    nowPlayingPresentation.presentationAccent?.color
+      ?? artworkTreatments.accent.color
+  }
+
   var body: some View {
     HStack(spacing: 8) {
       Group {
@@ -1665,7 +1767,7 @@ private struct QueueTrackRow: View {
       }
       .font(.caption)
       .foregroundStyle(
-        isCurrent ? artworkTreatments.accent.color : Color.secondary
+        isCurrent ? activeAccent : Color.secondary
       )
       .frame(width: 24, alignment: .trailing)
 
@@ -1673,7 +1775,7 @@ private struct QueueTrackRow: View {
         .font(.callout)
         .lineLimit(1)
         .foregroundStyle(
-          isCurrent ? artworkTreatments.accent.color : Color.primary
+          isCurrent ? activeAccent : Color.primary
         )
       Spacer(minLength: 4)
       Text(formatDuration(entry.durationSeconds))
@@ -1701,6 +1803,10 @@ private struct QueueTrackRow: View {
     .accessibilityAddTraits(.isButton)
     .accessibilityAction { selectAction([]) }
     .accessibilityAction(named: "Play", playAction)
+    .animation(
+      .easeInOut(duration: NowPlayingPresentationMotion.duration),
+      value: nowPlayingPresentation.isPresented
+    )
     .draggable(QueueDropItem.reorder(.tracks(dragEntryIDs)))
     .dragConfiguration(.codaInternal(allowMove: true))
     .onDragSessionUpdated { dragSession in

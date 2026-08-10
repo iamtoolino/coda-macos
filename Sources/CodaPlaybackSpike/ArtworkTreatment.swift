@@ -352,7 +352,7 @@ final class AlbumArtworkLoader: ObservableObject {
     }
   }
 
-  private static func extractAccent(from image: NSImage) -> ArtworkColor {
+  static func extractAccent(from image: NSImage) -> ArtworkColor {
     let size = NSSize(width: 32, height: 32)
     guard let bitmap = NSBitmapImageRep(
       bitmapDataPlanes: nil,
@@ -755,6 +755,67 @@ struct AppArtworkBackground: View {
       .animation(.easeInOut(duration: 0.85), value: settings.artworkRevision)
     }
     .ignoresSafeArea()
+    .allowsHitTesting(false)
+  }
+}
+
+struct NowPlayingArtworkBackground: View {
+  let theme: NowPlayingPreparedTheme?
+
+  var body: some View {
+    GeometryReader { geometry in
+      ZStack {
+        Color(red: 0.035, green: 0.043, blue: 0.050)
+
+        if let artwork = theme?.artwork {
+          Image(nsImage: artwork)
+            .resizable()
+            .scaledToFill()
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .scaleEffect(ArtworkBackgroundStyle.artworkScale)
+            .blur(radius: ArtworkBackgroundStyle.artworkBlur)
+            .saturation(ArtworkBackgroundStyle.artworkSaturation)
+            .opacity(ArtworkBackgroundStyle.artworkOpacity)
+            .clipped()
+        }
+
+        let accent = theme?.accent.color ?? ArtworkColor.fallback.color
+        RadialGradient(
+          colors: [accent.opacity(ArtworkBackgroundStyle.accentOpacity), .clear],
+          center: UnitPoint(x: 0.34, y: 0.38),
+          startRadius: 24,
+          endRadius: max(geometry.size.width, geometry.size.height) * 0.72
+        )
+
+        RadialGradient(
+          colors: [
+            accent.opacity(ArtworkBackgroundStyle.glowOpacity),
+            accent.opacity(0.08),
+            .clear,
+          ],
+          center: UnitPoint(x: 0.34, y: 0.27),
+          startRadius: 8,
+          endRadius: max(geometry.size.width, geometry.size.height) * 0.48
+        )
+        RadialGradient(
+          colors: [.clear, Color.black.opacity(0.48)],
+          center: UnitPoint(x: 0.50, y: 0.43),
+          startRadius: min(geometry.size.width, geometry.size.height) * 0.24,
+          endRadius: max(geometry.size.width, geometry.size.height) * 0.78
+        )
+
+        LinearGradient(
+          colors: [
+            Color.black.opacity(0.18),
+            Color(red: 0.025, green: 0.032, blue: 0.038).opacity(0.48),
+            Color.black.opacity(0.72),
+          ],
+          startPoint: .topLeading,
+          endPoint: .bottomTrailing
+        )
+      }
+      .clipped()
+    }
     .allowsHitTesting(false)
   }
 }
