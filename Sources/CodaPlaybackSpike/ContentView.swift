@@ -158,15 +158,24 @@ struct ContentView: View {
       }
     }
     .toolbar {
-      ToolbarItemGroup(placement: .navigation) {
-        ForEach(SidebarDestination.allCases) { destination in
-          TitlebarNavigationButton(destination: destination)
-            .opacity(session.hasEstablishedConnection ? 1 : 0)
-            .disabled(!session.hasEstablishedConnection)
-            .accessibilityHidden(!session.hasEstablishedConnection)
+      if session.hasEstablishedConnection {
+        ToolbarItemGroup(placement: .navigation) {
+          ForEach(SidebarDestination.allCases) { destination in
+            TitlebarNavigationButton(destination: destination)
+          }
         }
+        .sharedBackgroundVisibility(.automatic)
+      } else {
+        ToolbarItemGroup(placement: .navigation) {
+          ForEach(SidebarDestination.allCases) { destination in
+            TitlebarNavigationButton(destination: destination)
+              .opacity(0)
+              .disabled(true)
+              .accessibilityHidden(true)
+          }
+        }
+        .sharedBackgroundVisibility(.hidden)
       }
-      .sharedBackgroundVisibility(session.hasEstablishedConnection ? .automatic : .hidden)
     }
     .toolbar(removing: .title)
     .focusEffectDisabled()
