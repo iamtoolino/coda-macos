@@ -891,6 +891,8 @@ struct NowPlayingArtworkBackground: View {
             .saturation(ArtworkBackgroundStyle.artworkSaturation)
             .opacity(ArtworkBackgroundStyle.artworkOpacity)
             .clipped()
+            .id(ObjectIdentifier(artwork))
+            .transition(.opacity)
         }
 
         let accent = theme?.accent.color ?? ArtworkColor.fallback.color
@@ -929,8 +931,13 @@ struct NowPlayingArtworkBackground: View {
         )
       }
       .clipped()
+      .animation(.easeInOut(duration: 0.85), value: artworkIdentity)
     }
     .allowsHitTesting(false)
+  }
+
+  private var artworkIdentity: ObjectIdentifier? {
+    theme?.artwork.map(ObjectIdentifier.init)
   }
 }
 
