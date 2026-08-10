@@ -817,8 +817,6 @@ private struct RouteContentView: View {
         ArtistDetailView(artistID: id)
       case .album(let id):
         AlbumDetailView(albumID: id)
-      case .albumRating(let id):
-        AlbumDetailView(albumID: id, highlightsRatingOnAppear: true)
       case .playlist(let id):
         PlaylistDetailView(playlistID: id)
       }
@@ -1707,27 +1705,11 @@ private struct QueueItemContextMenu: View {
       }
 
       Divider()
-
-      Button(ratingMenuTitle) {
-        session.open(.albumRating(albumID))
-      }
-
-      Divider()
     }
 
     Button(role: .destructive, action: deleteAction) {
       Label(removalTitle, systemImage: "trash")
     }
-  }
-
-  private var ratingMenuTitle: String {
-    guard let albumID else { return "Rate Album…" }
-    return session.rating(forAlbumID: albumID, fallback: album?.userRating)
-      .map(starLabel) ?? "Rate Album…"
-  }
-
-  private func starLabel(for rating: Int) -> String {
-    String(repeating: "★", count: rating) + String(repeating: "☆", count: 5 - rating)
   }
 }
 

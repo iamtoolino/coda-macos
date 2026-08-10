@@ -33,20 +33,14 @@ enum LibraryRoute: Hashable, Sendable {
   case albumCollection(AlbumCollectionKind)
   case artist(String)
   case album(String)
-  case albumRating(String)
   case playlist(String)
 
   var displayedAlbumID: String? {
     switch self {
-    case .album(let id), .albumRating(let id): id
+    case .album(let id): id
     default: nil
     }
   }
-}
-
-struct AlbumRatingPrompt: Equatable, Sendable {
-  let albumID: String
-  let token = UUID()
 }
 
 enum ConnectionState: Equatable, Sendable {
@@ -68,7 +62,6 @@ final class AppSession: ObservableObject {
   @Published var path: [LibraryRoute] = []
   @Published private(set) var rootToken = UUID()
   @Published private var albumRatingOverrides: [String: Int] = [:]
-  @Published private(set) var albumRatingPrompt: AlbumRatingPrompt?
 
   private var artworkURLs: [String: URL] = [:]
   private var automaticConnectionTask: Task<Void, Never>?
@@ -254,9 +247,6 @@ final class AppSession: ObservableObject {
     if let displayedAlbumID = route.displayedAlbumID,
       path.last?.displayedAlbumID == displayedAlbumID
     {
-      if case .albumRating = route {
-        albumRatingPrompt = AlbumRatingPrompt(albumID: displayedAlbumID)
-      }
       return
     }
     guard path.last != route else { return }

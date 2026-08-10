@@ -680,7 +680,6 @@ struct AlbumDetailView: View {
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   let albumID: String
-  let highlightsRatingOnAppear: Bool
 
   @StateObject private var artworkLoader = AlbumArtworkLoader()
   @State private var page: AlbumPage?
@@ -691,11 +690,6 @@ struct AlbumDetailView: View {
   @State private var selectedSongIDs: [String] = []
   @State private var selectionAnchorSongID: String?
   @FocusState private var trackListHasFocus: Bool
-
-  init(albumID: String, highlightsRatingOnAppear: Bool = false) {
-    self.albumID = albumID
-    self.highlightsRatingOnAppear = highlightsRatingOnAppear
-  }
 
   var body: some View {
     Group {
@@ -802,9 +796,6 @@ struct AlbumDetailView: View {
     .task(id: albumID) {
       clearTrackSelection()
       await load()
-      if highlightsRatingOnAppear, !Task.isCancelled {
-        await highlightRating()
-      }
     }
     .onAppear {
       applyLoadedArtwork()
@@ -821,10 +812,6 @@ struct AlbumDetailView: View {
         window.title != "Coda Status"
       else { return }
       applyLoadedArtwork()
-    }
-    .onChange(of: session.albumRatingPrompt) { _, prompt in
-      guard prompt?.albumID == albumID else { return }
-      Task { await highlightRating() }
     }
     .alert(
       "Could Not Update Rating",
@@ -891,13 +878,6 @@ struct AlbumDetailView: View {
     artworkTreatments.promoteDisplayedArtworkToPlayback(ifIdentity: page.album.id)
     let index = page.songs.firstIndex(where: { $0.id == song.id }) ?? 0
     session.play(songs: page.songs, startAt: index, with: player)
-  }
-
-  @MainActor
-  private func highlightRating() async {
-    try? await Task.sleep(for: .milliseconds(220))
-    guard !Task.isCancelled else { return }
-    ratingHighlightTrigger &+= 1
   }
 
   @MainActor
