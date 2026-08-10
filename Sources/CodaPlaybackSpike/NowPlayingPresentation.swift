@@ -93,6 +93,11 @@ final class NowPlayingPresentationController: ObservableObject {
       return
     }
 
+    guard isPlaying else {
+      dismiss(restartsTimer: false)
+      return
+    }
+
     if contextChanged, !isPresented {
       scheduleAutomaticPresentation()
     }
