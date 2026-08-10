@@ -88,6 +88,7 @@ struct ContentView: View {
             .accessibilityHidden(!session.hasEstablishedConnection)
         }
       }
+      .sharedBackgroundVisibility(session.hasEstablishedConnection ? .automatic : .hidden)
     }
     .toolbar(removing: .title)
     .focusEffectDisabled()
