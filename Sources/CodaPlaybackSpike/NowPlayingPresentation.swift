@@ -573,6 +573,7 @@ private struct NowPlayingAlbumRating: View {
   @State private var hoveredRating: Int?
   @State private var isUpdating = false
   @State private var errorMessage: String?
+  @State private var ratingHighlightTrigger = 0
 
   private var rating: Int? {
     session.rating(forAlbumID: albumID, fallback: confirmedRating ?? fallbackRating)
@@ -587,6 +588,7 @@ private struct NowPlayingAlbumRating: View {
       HStack(spacing: 8) {
         ForEach(1...5, id: \.self) { value in
           Button {
+            ratingHighlightTrigger &+= 1
             Task { await updateRating(value) }
           } label: {
             Image(systemName: value <= displayedRating ? "star.fill" : "star")
@@ -604,8 +606,14 @@ private struct NowPlayingAlbumRating: View {
           .accessibilityLabel("Rate album \(value) out of 5")
         }
       }
-      .opacity(isUpdating ? 0.62 : 1)
+      .opacity(isUpdating ? 0.78 : 1)
       .animation(.easeInOut(duration: 0.30), value: albumID)
+      .animation(.easeInOut(duration: 0.18), value: isUpdating)
+      .animation(.easeInOut(duration: 0.16), value: rating)
+      .ratingPromptEffect(
+        trigger: ratingHighlightTrigger,
+        accent: accent
+      )
       .onHover { isHovering in
         if !isHovering { hoveredRating = nil }
       }

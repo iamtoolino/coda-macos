@@ -872,6 +872,7 @@ struct AlbumDetailView: View {
       ratingIsUpdating: isUpdatingRating,
       ratingHighlightTrigger: ratingHighlightTrigger,
       ratingAction: { rating in
+        ratingHighlightTrigger &+= 1
         Task { await updateRating(rating, albumID: page.album.id) }
       },
       artistAction: page.album.artistId.map { artistID in

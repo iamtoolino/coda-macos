@@ -633,6 +633,7 @@ struct AlbumMockupHero: View {
         } label: {
           Image(systemName: star <= displayedRating ? "star.fill" : "star")
             .contentShape(Rectangle())
+            .contentTransition(.opacity)
         }
         .buttonStyle(.plain)
         .disabled(ratingIsUpdating)
@@ -647,7 +648,9 @@ struct AlbumMockupHero: View {
     }
     .font(.body)
     .foregroundStyle(settings.accent.color)
-    .opacity(ratingIsUpdating ? 0.62 : 1)
+    .opacity(ratingIsUpdating ? 0.78 : 1)
+    .animation(.easeInOut(duration: 0.18), value: ratingIsUpdating)
+    .animation(.easeInOut(duration: 0.16), value: rating)
     .ratingPromptEffect(
       trigger: ratingHighlightTrigger,
       accent: settings.accent.color
