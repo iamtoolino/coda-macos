@@ -45,6 +45,7 @@ struct ContentView: View {
             .accessibilityHidden(
               !nowPlayingPresentation.phase.browsingIsInteractive
             )
+            .frame(minWidth: PlaybackDockMetrics.anchoredContainerWidth)
             .frame(height: contentHeight + CodaWindowLayout.mainContentTopLift)
             .offset(y: -CodaWindowLayout.mainContentTopLift)
 
