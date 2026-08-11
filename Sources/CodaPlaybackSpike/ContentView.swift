@@ -4,6 +4,7 @@ import SwiftUI
 private enum CodaWindowLayout {
   static let mainContentTopLift: CGFloat = 20
   static let minimumWidth = PlaybackDockMetrics.collapsedWidth + 40
+  static let minimumHeight: CGFloat = 580
 }
 
 struct ContentView: View {
@@ -170,7 +171,10 @@ struct ContentView: View {
         }
       }
     }
-    .frame(minWidth: CodaWindowLayout.minimumWidth)
+    .frame(
+      minWidth: CodaWindowLayout.minimumWidth,
+      minHeight: CodaWindowLayout.minimumHeight
+    )
     .toolbar {
       if session.hasEstablishedConnection {
         ToolbarItemGroup(placement: .navigation) {

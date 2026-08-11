@@ -374,7 +374,9 @@ struct NowPlayingPresentationView: View {
     GeometryReader { geometry in
       if let entry = player.currentEntry {
         let layout = layoutMetrics(for: geometry.size)
-        ZStack(alignment: .top) {
+        VStack(spacing: 0) {
+          Spacer(minLength: 0)
+
           VStack(spacing: 0) {
             preparedArtwork(for: entry)
               .frame(width: layout.coverSize, height: layout.coverSize)
@@ -456,33 +458,35 @@ struct NowPlayingPresentationView: View {
               )
               .padding(.top, 18)
             }
-
-            Spacer(minLength: 90)
           }
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-          .padding(.top, layout.topPadding)
-          .padding(.horizontal, 40)
-
-          Button { presentation.dismiss() } label: {
-            Image(systemName: "chevron.down")
-              .font(.system(size: 10, weight: .semibold))
-              .foregroundStyle(.secondary)
-              .frame(width: 30, height: 22)
-              .background(.ultraThinMaterial, in: Capsule())
-              .overlay { Capsule().stroke(Color.white.opacity(0.09), lineWidth: 1) }
-              .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
+          .frame(maxWidth: .infinity)
+          .overlay(alignment: .top) {
+            Button { presentation.dismiss() } label: {
+              Image(systemName: "chevron.down")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 30, height: 22)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay { Capsule().stroke(Color.white.opacity(0.09), lineWidth: 1) }
+                .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
+            }
+            .buttonStyle(.plain)
+            .focusable(false)
+            .focusEffectDisabled()
+            .help("Back to Browsing")
+            .accessibilityLabel("Back to Browsing")
+            .opacity(presentation.isPointerInsidePresentation ? 0.72 : 0)
+            .scaleEffect(presentation.isPointerInsidePresentation ? 1 : 0.94)
+            .offset(y: -26)
+            .allowsHitTesting(presentation.isPointerInsidePresentation)
           }
-          .buttonStyle(.plain)
-          .focusable(false)
-          .focusEffectDisabled()
-          .help("Back to Browsing")
-          .accessibilityLabel("Back to Browsing")
-          .opacity(presentation.isPointerInsidePresentation ? 0.72 : 0)
-          .scaleEffect(presentation.isPointerInsidePresentation ? 1 : 0.94)
-          .offset(y: max(4, layout.topPadding - 26))
-          .allowsHitTesting(presentation.isPointerInsidePresentation)
+
+          Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.top, layout.topClearance)
+        .padding(.bottom, layout.bottomClearance)
+        .padding(.horizontal, 40)
         .task(
           id: AlbumMetadataRequest(
             albumID: entry.albumID,
@@ -546,26 +550,26 @@ struct NowPlayingPresentationView: View {
 
   private struct LayoutMetrics {
     let coverSize: CGFloat
-    let topPadding: CGFloat
+    let topClearance: CGFloat
+    let bottomClearance: CGFloat
   }
 
   private func layoutMetrics(for size: CGSize) -> LayoutMetrics {
-    let minimumCoverSize: CGFloat = 270
+    let minimumCoverSize: CGFloat = 190
     let maximumCoverSize: CGFloat = 550
-    let anchoredTopPadding: CGFloat = 28
-    let reservedVerticalSpace: CGFloat = 280
-    let verticalGrowthFactor: CGFloat = 0.76
+    let topClearance: CGFloat = 18
+    let bottomClearance: CGFloat = 82
+    let reservedVerticalSpace: CGFloat = 210
+    let verticalGrowthFactor: CGFloat = 0.68
     let widthLimitedMaximum = min(maximumCoverSize, max(minimumCoverSize, size.width * 0.60))
     let heightLimitedSize = max(
       minimumCoverSize,
       (size.height - reservedVerticalSpace) * verticalGrowthFactor
     )
-    let coverSize = min(widthLimitedMaximum, heightLimitedSize)
-    let heightAtCoverMaximum = reservedVerticalSpace + widthLimitedMaximum / verticalGrowthFactor
-    let extraHeightAfterMaximum = max(0, size.height - heightAtCoverMaximum)
     return LayoutMetrics(
-      coverSize: coverSize,
-      topPadding: anchoredTopPadding + extraHeightAfterMaximum / 2
+      coverSize: min(widthLimitedMaximum, heightLimitedSize),
+      topClearance: topClearance,
+      bottomClearance: bottomClearance
     )
   }
 }
