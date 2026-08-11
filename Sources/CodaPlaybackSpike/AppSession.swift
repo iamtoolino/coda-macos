@@ -322,7 +322,8 @@ final class AppSession: ObservableObject {
       player.replaceQueue(
         entries,
         startAt: index,
-        positionSeconds: Double(positionMilliseconds) / 1_000
+        positionSeconds: Double(positionMilliseconds) / 1_000,
+        scrollQueueToTop: true
       )
     } catch {
       player.report(error: error)

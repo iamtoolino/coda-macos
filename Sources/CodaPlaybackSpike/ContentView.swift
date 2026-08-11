@@ -1094,44 +1094,6 @@ private struct QueuePanel: View {
   var body: some View {
     ScrollViewReader { proxy in
       VStack(spacing: 0) {
-        HStack {
-          HStack {
-            Text("Queue")
-              .font(.headline)
-            Spacer()
-          }
-          .frame(maxWidth: .infinity)
-          .contentShape(Rectangle())
-          .onTapGesture {
-            clearSelection()
-            queueHasFocus = true
-          }
-          .accessibilityElement()
-          .accessibilityLabel("Deselect Queue Selection")
-          .accessibilityAddTraits(.isButton)
-          .accessibilityAction {
-            clearSelection()
-            queueHasFocus = true
-          }
-          if shouldShowReturnToPlaying {
-            Button("Return to Playing Track", systemImage: "scope") {
-              scrollToPlayingTrack(proxy)
-            }
-            .labelStyle(.iconOnly)
-            .buttonStyle(.borderless)
-            .help("Return to Playing Track")
-          }
-          Button("Clear Queue", systemImage: "trash", role: .destructive) {
-            clearSelection()
-            player.clear()
-          }
-          .labelStyle(.iconOnly)
-          .buttonStyle(.borderless)
-          .disabled(player.queue.isEmpty)
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 44)
-
         if player.queue.isEmpty {
           ContentUnavailableView(
             "Queue Is Empty",
@@ -1146,6 +1108,12 @@ private struct QueuePanel: View {
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: viewportHeight)
                 .onTapGesture { clearSelection() }
+                .contextMenu {
+                  Button("Clear Queue", systemImage: "trash", role: .destructive) {
+                    clearSelection()
+                    player.clear()
+                  }
+                }
 
               LazyVStack(alignment: .leading, spacing: 12) {
                 ForEach(groups) { group in
@@ -1214,7 +1182,14 @@ private struct QueuePanel: View {
         removeSelection()
         return .handled
       }
-      .onExitCommand { clearSelection() }
+      .onExitCommand {
+        if selectedEntryIDs != nil {
+          clearSelection()
+        } else if nowPlayingPresentation.isPresented {
+          nowPlayingPresentation.dismiss()
+        }
+      }
+      .onCommand(#selector(NSResponder.selectAll(_:)), perform: selectAll)
       .onChange(of: player.queue.map(\.id)) { previousIDs, currentIDs in
         groups = queueGroups(player.queue)
         reconcileSelection()
@@ -1231,6 +1206,19 @@ private struct QueuePanel: View {
           }
         }
       }
+      .onChange(of: player.queueTopScrollRequest) { _, request in
+        clearSelection()
+        Task { @MainActor in
+          await Task.yield()
+          guard request == player.queueTopScrollRequest,
+            let firstEntryID = player.queue.first?.id
+          else { return }
+          groups = queueGroups(player.queue)
+          await Task.yield()
+          guard request == player.queueTopScrollRequest else { return }
+          proxy.scrollTo(firstEntryID, anchor: .top)
+        }
+      }
       .onChange(of: player.currentEntry?.id) { oldEntryID, newEntryID in
         followCurrentAlbum(from: oldEntryID, to: newEntryID, proxy: proxy)
       }
@@ -1245,6 +1233,7 @@ private struct QueuePanel: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
       .coordinateSpace(.named(queueDropCoordinateSpace))
       .contentShape(Rectangle())
+      .help(queueDurationHelp)
       .overlay(alignment: .top) {
         ZStack(alignment: .top) {
           RoundedRectangle(cornerRadius: FloatingPanelStyle.cornerRadius, style: .continuous)
@@ -1277,6 +1266,39 @@ private struct QueuePanel: View {
         }
         .allowsHitTesting(false)
       }
+      .overlay(alignment: .topTrailing) {
+        HStack(spacing: 7) {
+          if shouldShowReturnToPlaying {
+            Button("Return to Playing Track", systemImage: "scope") {
+              scrollToPlayingTrack(proxy)
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.plain)
+            .frame(width: 24, height: 24)
+            .padding(5)
+            .glassEffect(.regular, in: Circle())
+            .help("Return to Playing Track")
+            .transition(.opacity)
+          }
+
+          if selectedEntryIDs?.isEmpty == false {
+            Button(selectionRemovalHelp, systemImage: "trash", role: .destructive) {
+              removeSelection()
+            }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.plain)
+            .frame(width: 24, height: 24)
+            .padding(5)
+            .glassEffect(.regular, in: Circle())
+            .help(selectionRemovalHelp)
+            .transition(.opacity)
+          }
+        }
+        .padding(.top, 19)
+        .padding(.trailing, 24)
+      }
+      .animation(.easeOut(duration: 0.14), value: shouldShowReturnToPlaying)
+      .animation(.easeOut(duration: 0.14), value: selectedEntryIDs?.isEmpty == false)
       .animation(.easeOut(duration: 0.16), value: isDropTargeted)
       .dropDestination(for: QueueDropItem.self) { items, dropSession in
         handleDrop(items, at: dropSession.location)
@@ -1291,6 +1313,21 @@ private struct QueuePanel: View {
   private var shouldShowReturnToPlaying: Bool {
     guard let currentID = player.currentEntry?.id else { return false }
     return !visibleEntryIDs.contains(currentID)
+  }
+
+  private var queueDurationHelp: String {
+    let trackCount = player.queue.count
+    let duration = formatCollectionDuration(
+      player.queue.reduce(0) { $0 + $1.durationSeconds }
+    )
+    let count = "\(trackCount) \(trackCount == 1 ? "track" : "tracks")"
+    let summary = duration.isEmpty ? count : "\(count) · \(duration)"
+    return "Queue: \(summary)"
+  }
+
+  private var selectionRemovalHelp: String {
+    let count = selectedEntryIDs?.count ?? 0
+    return count == 1 ? "Remove Selected Track" : "Remove \(count) Selected Tracks"
   }
 
   private func select(_ entryIDs: [UUID]) {
@@ -1333,6 +1370,13 @@ private struct QueuePanel: View {
   private func clearSelection() {
     selectedEntryIDs = nil
     selectionAnchorEntryID = nil
+  }
+
+  private func selectAll() {
+    guard !player.queue.isEmpty else { return }
+    selectedEntryIDs = player.queue.map(\.id)
+    selectionAnchorEntryID = player.queue.first?.id
+    queueHasFocus = true
   }
 
   private func move(_ item: QueueReorderDragItem, before targetID: UUID?) -> Bool {
@@ -1664,15 +1708,6 @@ private struct QueueAlbumHeader: View {
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
-
-      if isSelected {
-        Button("Remove Album from Queue", systemImage: "trash", role: .destructive) {
-          deleteAction()
-        }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
-        .help("Remove Album from Queue")
-      }
     }
     .draggable(QueueDropItem.reorder(.albumBlock(group.entryIDs)))
     .dragConfiguration(.codaInternal(allowMove: true))
@@ -1749,15 +1784,6 @@ private struct QueueDiscHeader: View {
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
-
-      if isSelected {
-        Button("Remove Disc from Queue", systemImage: "trash", role: .destructive) {
-          deleteAction()
-        }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
-        .help("Remove Disc \(number) from Queue")
-      }
     }
     .padding(.horizontal, 5)
     .padding(.vertical, 4)

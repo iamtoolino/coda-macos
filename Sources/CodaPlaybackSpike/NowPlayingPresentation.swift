@@ -343,6 +343,13 @@ final class NowPlayingActivityView: NSView {
         event.keyCode == 53,
         self.presentation?.isPresented == true
       {
+        if NSApp.sendAction(
+          #selector(NSResponder.cancelOperation(_:)),
+          to: nil,
+          from: self
+        ) {
+          return nil
+        }
         self.presentation?.dismiss()
         return nil
       }

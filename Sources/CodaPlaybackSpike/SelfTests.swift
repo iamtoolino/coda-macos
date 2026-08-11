@@ -428,6 +428,28 @@ enum SelfTests {
         && backend.updatedNextURLs == [nil]
     }
 
+    check("queue replacement can explicitly request the top", failures: &failures) {
+      let backend = SelfTestPlaybackBackend()
+      let first = QueueEntry(
+        sourceID: "first-queue",
+        url: URL(string: "https://example.test/first-queue")!,
+        title: "First Queue"
+      )
+      let second = QueueEntry(
+        sourceID: "second-queue",
+        url: URL(string: "https://example.test/second-queue")!,
+        title: "Second Queue"
+      )
+      let player = PlayerController(backend: backend)
+      let initialRequest = player.queueTopScrollRequest
+
+      player.replaceQueue([first])
+      guard player.queueTopScrollRequest == initialRequest else { return false }
+
+      player.replaceQueue([second], scrollQueueToTop: true)
+      return player.queueTopScrollRequest == initialRequest + 1
+    }
+
     check("finishing the queue retains it without an active track", failures: &failures) {
       let backend = SelfTestPlaybackBackend()
       let entry = QueueEntry(
@@ -850,7 +872,7 @@ enum SelfTests {
     }
 
     if failures.isEmpty {
-      print("Coda playback spike self-tests passed (45 checks).")
+      print("Coda playback spike self-tests passed (46 checks).")
       return true
     }
 
