@@ -3,6 +3,7 @@ import SwiftUI
 
 private enum CodaWindowLayout {
   static let mainContentTopLift: CGFloat = 20
+  static let minimumWidth = PlaybackDockMetrics.collapsedWidth + 40
 }
 
 struct ContentView: View {
@@ -11,7 +12,9 @@ struct ContentView: View {
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   @EnvironmentObject private var playlistSaver: QueuePlaylistSaveCoordinator
   @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
-  @State private var isDockVolumeExpanded = false
+  @State private var isVolumePresented = false
+  @State private var isVolumeButtonHovered = false
+  @State private var isVolumePanelHovered = false
 
   var body: some View {
     ZStack {
@@ -27,6 +30,9 @@ struct ContentView: View {
         let contentWidth = max(0, geometry.size.width - 20)
         let contentHeight = max(0, geometry.size.height - 20)
         let queueWidth = min(330, max(285, geometry.size.width * 0.22))
+        let queueIsVisible =
+          session.hasEstablishedConnection
+          && contentWidth - queueWidth - 10 >= PlaybackDockMetrics.minimumMainContentWidth
 
         ZStack {
           HStack(alignment: .top, spacing: 10) {
@@ -45,11 +51,11 @@ struct ContentView: View {
             .accessibilityHidden(
               !nowPlayingPresentation.phase.browsingIsInteractive
             )
-            .frame(minWidth: PlaybackDockMetrics.anchoredContainerWidth)
+            .frame(minWidth: PlaybackDockMetrics.collapsedWidth)
             .frame(height: contentHeight + CodaWindowLayout.mainContentTopLift)
             .offset(y: -CodaWindowLayout.mainContentTopLift)
 
-            if session.hasEstablishedConnection {
+            if queueIsVisible {
               Color.clear
                 .frame(width: queueWidth)
                 .allowsHitTesting(false)
@@ -114,35 +120,49 @@ struct ContentView: View {
                 .allowsHitTesting(nowPlayingPresentation.phase.isTransitioning)
 
               if session.hasEstablishedConnection {
-                HStack(spacing: 0) {
-                  Color.clear
-                    .frame(width: PlaybackDockMetrics.volumeExpansionWidth)
-                    .allowsHitTesting(false)
-
-                  CompactPlaybackDockHost(
-                    isVolumeExpanded: $isDockVolumeExpanded
-                  )
+                if player.currentEntry != nil && isVolumePresented {
+                  PlaybackVolumePanel()
                     .frame(
-                      width: PlaybackDockMetrics.width(
-                        isVolumeExpanded: isDockVolumeExpanded
-                      ),
-                      height: 64
+                      width: PlaybackDockMetrics.volumePanelWidth,
+                      height: PlaybackDockMetrics.volumePanelHeight
                     )
-
-                  Spacer(minLength: 0)
-                    .allowsHitTesting(false)
+                    .offset(x: PlaybackDockMetrics.volumePanelHorizontalOffset)
+                    .padding(.bottom, PlaybackDockMetrics.volumePanelBottomInset)
+                    .onHover { isInside in
+                      isVolumePanelHovered = isInside
+                      if isInside {
+                        withAnimation(.easeOut(duration: 0.12)) {
+                          isVolumePresented = true
+                        }
+                      } else if !isVolumeButtonHovered {
+                        withAnimation(.easeIn(duration: 0.12)) {
+                          isVolumePresented = false
+                        }
+                      }
+                    }
+                    .transition(
+                      .opacity.combined(
+                        with: .scale(scale: 0.94, anchor: .bottom)
+                      )
+                    )
                 }
-                .frame(
-                  width: PlaybackDockMetrics.anchoredContainerWidth,
-                  height: 64
+
+                CompactPlaybackDockHost(
+                  isVolumePresented: $isVolumePresented,
+                  isVolumeButtonHovered: $isVolumeButtonHovered,
+                  isVolumePanelHovered: $isVolumePanelHovered
                 )
+                  .frame(
+                    width: PlaybackDockMetrics.collapsedWidth,
+                    height: 64
+                  )
               }
             }
             .frame(maxWidth: .infinity)
             .frame(height: contentHeight + CodaWindowLayout.mainContentTopLift)
             .offset(y: -CodaWindowLayout.mainContentTopLift)
 
-            if session.hasEstablishedConnection {
+            if queueIsVisible {
               QueuePanel()
                 .frame(width: queueWidth)
                 .frame(maxHeight: .infinity, alignment: .top)
@@ -158,6 +178,7 @@ struct ContentView: View {
         }
       }
     }
+    .frame(minWidth: CodaWindowLayout.minimumWidth)
     .toolbar {
       if session.hasEstablishedConnection {
         ToolbarItemGroup(placement: .navigation) {
@@ -199,15 +220,9 @@ struct ContentView: View {
     .onChange(of: session.hasEstablishedConnection) {
       applyArtworkDisplayContext()
     }
-    .onChange(of: player.currentEntry?.id) { _, currentEntryID in
+    .onChange(of: player.currentEntry?.id) {
       applyArtworkDisplayContext()
-      if currentEntryID == nil {
-        Task {
-          try? await Task.sleep(for: .milliseconds(220))
-          guard player.currentEntry == nil else { return }
-          isDockVolumeExpanded = false
-        }
-      }
+      isVolumePresented = false
     }
   }
 
@@ -309,24 +324,18 @@ private struct CompactPlaybackDockHost: NSViewRepresentable {
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
-  @Binding var isVolumeExpanded: Bool
+  @Binding var isVolumePresented: Bool
+  @Binding var isVolumeButtonHovered: Bool
+  @Binding var isVolumePanelHovered: Bool
 
   func makeNSView(context: Context) -> PassthroughDockHostingView {
     let view = PassthroughDockHostingView(rootView: rootView)
-    view.dockWidth = dockWidth
     view.hasActiveEntry = player.currentEntry != nil
     return view
   }
 
   func updateNSView(_ nsView: PassthroughDockHostingView, context: Context) {
-    nsView.dockWidth = dockWidth
     nsView.hasActiveEntry = player.currentEntry != nil
-  }
-
-  private var dockWidth: CGFloat {
-    PlaybackDockMetrics.width(
-      isVolumeExpanded: isVolumeExpanded
-    )
   }
 
   private var rootView: CompactPlaybackDockHostingRoot {
@@ -335,7 +344,9 @@ private struct CompactPlaybackDockHost: NSViewRepresentable {
       player: player,
       artworkTreatments: artworkTreatments,
       nowPlayingPresentation: nowPlayingPresentation,
-      isVolumeExpanded: $isVolumeExpanded
+      isVolumePresented: $isVolumePresented,
+      isVolumeButtonHovered: $isVolumeButtonHovered,
+      isVolumePanelHovered: $isVolumePanelHovered
     )
   }
 }
@@ -345,13 +356,17 @@ private struct CompactPlaybackDockHostingRoot: View {
   @ObservedObject var player: PlayerController
   @ObservedObject var artworkTreatments: ArtworkTreatmentSettings
   @ObservedObject var nowPlayingPresentation: NowPlayingPresentationController
-  @Binding var isVolumeExpanded: Bool
+  @Binding var isVolumePresented: Bool
+  @Binding var isVolumeButtonHovered: Bool
+  @Binding var isVolumePanelHovered: Bool
 
   var body: some View {
     Group {
       if player.currentEntry != nil {
         CompactPlaybackDock(
-          isVolumeExpanded: $isVolumeExpanded
+          isVolumePresented: $isVolumePresented,
+          isVolumeButtonHovered: $isVolumeButtonHovered,
+          isVolumePanelHovered: $isVolumePanelHovered
         )
         .environmentObject(session)
         .environmentObject(player)
@@ -371,7 +386,6 @@ private struct CompactPlaybackDockHostingRoot: View {
 }
 
 private final class PassthroughDockHostingView: NSHostingView<CompactPlaybackDockHostingRoot> {
-  var dockWidth: CGFloat = PlaybackDockMetrics.collapsedWidth
   var hasActiveEntry = false
 
   override func hitTest(_ point: NSPoint) -> NSView? {
@@ -387,17 +401,19 @@ private final class PassthroughDockHostingView: NSHostingView<CompactPlaybackDoc
     guard dockRect.contains(point) else { return nil }
     return super.hitTest(point)
   }
+
+  private var dockWidth: CGFloat {
+    PlaybackDockMetrics.collapsedWidth
+  }
 }
 
 private enum PlaybackDockMetrics {
   static let collapsedWidth: CGFloat = 431
-  static let volumeExpansionWidth: CGFloat = 79
-  static let anchoredContainerWidth = collapsedWidth + (volumeExpansionWidth * 2)
-
-  static func width(isVolumeExpanded: Bool) -> CGFloat {
-    collapsedWidth
-      + (isVolumeExpanded ? volumeExpansionWidth : 0)
-  }
+  static let minimumMainContentWidth = collapsedWidth + 20
+  static let volumePanelWidth: CGFloat = 36
+  static let volumePanelHeight: CGFloat = 112
+  static let volumePanelBottomInset: CGFloat = 51
+  static let volumePanelHorizontalOffset: CGFloat = 188
 }
 
 private struct TitlebarNavigationButton: View {
@@ -442,7 +458,9 @@ private struct CompactPlaybackDock: View {
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   @State private var seekPreviewPosition: Double?
-  @Binding var isVolumeExpanded: Bool
+  @Binding var isVolumePresented: Bool
+  @Binding var isVolumeButtonHovered: Bool
+  @Binding var isVolumePanelHovered: Bool
 
   var body: some View {
     HStack(spacing: 10) {
@@ -453,15 +471,17 @@ private struct CompactPlaybackDock: View {
         previewPosition: $seekPreviewPosition
       )
       playbackSectionDivider
-      PlaybackVolumeControl(isExpanded: $isVolumeExpanded)
+      PlaybackVolumeControl(
+        isPresented: $isVolumePresented,
+        isButtonHovered: $isVolumeButtonHovered,
+        isPanelHovered: $isVolumePanelHovered
+      )
     }
     .font(.caption2.monospacedDigit())
     .foregroundStyle(.secondary)
     .padding(.horizontal, 14)
     .frame(
-      width: PlaybackDockMetrics.width(
-        isVolumeExpanded: isVolumeExpanded
-      ),
+      width: PlaybackDockMetrics.collapsedWidth,
       height: 52
     )
     .floatingPanel(capsule: true)
@@ -609,63 +629,48 @@ private struct PlaybackTransportButton: View {
 
 private struct PlaybackVolumeControl: View {
   @EnvironmentObject private var player: PlayerController
-  @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
-  @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
-  @Binding var isExpanded: Bool
-  @State private var collapseTask: Task<Void, Never>?
+  @Binding var isPresented: Bool
+  @Binding var isButtonHovered: Bool
+  @Binding var isPanelHovered: Bool
+  @State private var hideTask: Task<Void, Never>?
 
   var body: some View {
-    HStack(spacing: isExpanded ? 7 : 0) {
-      Button {
-        player.toggleMute()
-      } label: {
-        Image(systemName: volumeSystemImage)
-          .font(.system(size: 11, weight: .semibold))
-          .foregroundStyle(Color.primary)
-          .frame(width: 27, height: 27)
-          .contentShape(Circle())
-      }
-      .buttonStyle(.plain)
-      .focusable(false)
-      .focusEffectDisabled()
-      .help(player.isEffectivelyMuted ? "Unmute" : "Mute")
-      .accessibilityLabel(player.isEffectivelyMuted ? "Unmute" : "Mute")
+    Button {
+      player.toggleMute()
+    } label: {
+      Image(systemName: volumeSystemImage)
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(Color.primary)
+        .frame(width: 27, height: 27)
+        .contentShape(Circle())
+    }
+    .buttonStyle(.plain)
+    .focusable(false)
+    .focusEffectDisabled()
+    .help(player.isEffectivelyMuted ? "Unmute" : "Mute")
+    .accessibilityLabel(player.isEffectivelyMuted ? "Unmute" : "Mute")
+    .accessibilityValue("\(Int((player.audibleVolume * 100).rounded())) percent")
+    .onHover { isInside in
+      isButtonHovered = isInside
+      hideTask?.cancel()
 
-      if isExpanded {
-        Slider(value: volumeBinding, in: 0...1)
-          .controlSize(.mini)
-          .tint(interfaceAccent)
-          .frame(width: 72)
-          .transition(
-            .asymmetric(
-              insertion: .opacity.combined(with: .scale(scale: 0.88, anchor: .leading)),
-              removal: .opacity
-            )
-          )
-          .help("Volume \(Int((player.audibleVolume * 100).rounded())) percent")
-          .accessibilityLabel("Volume")
-          .accessibilityValue("\(Int((player.audibleVolume * 100).rounded())) percent")
-          .animation(
-            .easeInOut(duration: NowPlayingPresentationMotion.duration),
-            value: nowPlayingPresentation.isPresented
-          )
+      if isInside {
+        withAnimation(.easeOut(duration: 0.12)) {
+          isPresented = true
+        }
+      } else {
+        hideTask = Task { @MainActor in
+          try? await Task.sleep(for: .milliseconds(140))
+          guard !Task.isCancelled, !isButtonHovered, !isPanelHovered else { return }
+          withAnimation(.easeIn(duration: 0.12)) {
+            isPresented = false
+          }
+        }
       }
     }
-    .onHover(perform: updateHover)
     .onDisappear {
-      collapseTask?.cancel()
+      hideTask?.cancel()
     }
-  }
-
-  private var volumeBinding: Binding<Double> {
-    Binding(
-      get: { player.audibleVolume },
-      set: { player.setVolume($0) }
-    )
-  }
-
-  private var interfaceAccent: Color {
-    nowPlayingPresentation.resolvedAccent(artworkTreatments.accent).color
   }
 
   private var volumeSystemImage: String {
@@ -674,20 +679,87 @@ private struct PlaybackVolumeControl: View {
     if player.volume < 0.67 { return "speaker.wave.2.fill" }
     return "speaker.wave.3.fill"
   }
+}
 
-  private func updateHover(_ isHovering: Bool) {
-    collapseTask?.cancel()
-    if isHovering {
-      withAnimation(.spring(response: 0.24, dampingFraction: 0.88)) {
-        isExpanded = true
+private struct PlaybackVolumePanel: View {
+  @EnvironmentObject private var player: PlayerController
+  @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
+  @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
+
+  var body: some View {
+    VerticalVolumeSlider(
+      value: Binding(
+        get: { player.audibleVolume },
+        set: { player.setVolume($0) }
+      ),
+      accent: interfaceAccent
+    )
+    .frame(width: 22, height: 80)
+    .padding(.top, 12)
+    .padding(.bottom, 20)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .floatingPanel(capsule: true)
+    .animation(
+      .easeInOut(duration: NowPlayingPresentationMotion.duration),
+      value: nowPlayingPresentation.isPresented
+    )
+  }
+
+  private var interfaceAccent: Color {
+    nowPlayingPresentation.resolvedAccent(artworkTreatments.accent).color
+  }
+}
+
+private struct VerticalVolumeSlider: View {
+  @Binding var value: Double
+  let accent: Color
+
+  var body: some View {
+    GeometryReader { geometry in
+      let height = max(geometry.size.height, 1)
+      let clampedValue = min(max(value, 0), 1)
+      let thumbDiameter: CGFloat = 10
+      let travel = max(height - thumbDiameter, 1)
+
+      ZStack(alignment: .bottom) {
+        Capsule()
+          .fill(Color.secondary.opacity(0.28))
+          .frame(width: 4, height: travel)
+
+        Capsule()
+          .fill(accent)
+          .frame(width: 4, height: travel * clampedValue)
+
+        Circle()
+          .fill(Color.primary)
+          .overlay {
+            Circle().strokeBorder(Color.black.opacity(0.35), lineWidth: 0.5)
+          }
+          .shadow(color: .black.opacity(0.30), radius: 2, y: 1)
+          .frame(width: thumbDiameter, height: thumbDiameter)
+          .offset(y: -travel * clampedValue)
       }
-    } else {
-      collapseTask = Task { @MainActor in
-        try? await Task.sleep(for: .milliseconds(350))
-        guard !Task.isCancelled else { return }
-        withAnimation(.easeIn(duration: 0.16)) {
-          isExpanded = false
-        }
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+      .contentShape(Rectangle())
+      .gesture(
+        DragGesture(minimumDistance: 0)
+          .onChanged { gesture in
+            value = min(max(1 - gesture.location.y / height, 0), 1)
+          }
+      )
+    }
+    .help("Volume \(Int((value * 100).rounded())) percent")
+    .accessibilityElement()
+    .accessibilityLabel("Volume")
+    .accessibilityValue("\(Int((value * 100).rounded())) percent")
+    .accessibilityAdjustableAction { direction in
+      switch direction {
+      case .increment:
+        value = min(value + 0.05, 1)
+      case .decrement:
+        value = max(value - 0.05, 0)
+      @unknown default:
+        break
       }
     }
   }
