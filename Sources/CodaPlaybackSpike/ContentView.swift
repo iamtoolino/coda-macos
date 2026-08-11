@@ -118,7 +118,7 @@ struct ContentView: View {
                 .allowsHitTesting(nowPlayingPresentation.phase.isTransitioning)
 
               if session.hasEstablishedConnection {
-                if player.currentEntry != nil && volumePresentation.isPresented {
+                if player.currentEntry != nil {
                   PlaybackVolumePanel()
                     .frame(
                       width: PlaybackDockMetrics.volumePanelWidth,
@@ -129,10 +129,17 @@ struct ContentView: View {
                     .onHover { isInside in
                       volumePresentation.updateHover(.panel, isInside: isInside)
                     }
-                    .transition(
-                      .opacity.combined(
-                        with: .scale(scale: 0.94, anchor: .bottom)
-                      )
+                    .opacity(volumePresentation.isPresented ? 1 : 0)
+                    .scaleEffect(
+                      x: 1,
+                      y: volumePresentation.isPresented ? 1 : 0.82,
+                      anchor: .bottom
+                    )
+                    .allowsHitTesting(volumePresentation.isPresented)
+                    .accessibilityHidden(!volumePresentation.isPresented)
+                    .animation(
+                      .easeOut(duration: 0.16),
+                      value: volumePresentation.isPresented
                     )
                 }
 
@@ -385,11 +392,14 @@ private final class PassthroughDockHostingView: NSHostingView<CompactPlaybackDoc
 
 private enum PlaybackDockMetrics {
   static let collapsedWidth: CGFloat = 431
+  static let horizontalPadding: CGFloat = 14
+  static let controlButtonWidth: CGFloat = 27
   static let minimumMainContentWidth = collapsedWidth + 20
-  static let volumePanelWidth: CGFloat = 36
-  static let volumePanelHeight: CGFloat = 112
-  static let volumePanelBottomInset: CGFloat = 51
-  static let volumePanelHorizontalOffset: CGFloat = 188
+  static let volumePanelWidth: CGFloat = 32
+  static let volumePanelHeight: CGFloat = 96
+  static let volumePanelBottomInset: CGFloat = 72
+  static let volumePanelHorizontalOffset =
+    collapsedWidth / 2 - horizontalPadding - controlButtonWidth / 2
 }
 
 @MainActor
@@ -408,9 +418,7 @@ private final class PlaybackVolumePresentationState: ObservableObject {
       hoveredTargets.insert(target)
       hideTask?.cancel()
       guard !isPresented else { return }
-      withAnimation(.easeOut(duration: 0.12)) {
-        isPresented = true
-      }
+      isPresented = true
       return
     }
 
@@ -419,9 +427,7 @@ private final class PlaybackVolumePresentationState: ObservableObject {
     hideTask = Task { @MainActor [weak self] in
       try? await Task.sleep(for: .milliseconds(140))
       guard let self, !Task.isCancelled, hoveredTargets.isEmpty else { return }
-      withAnimation(.easeIn(duration: 0.12)) {
-        isPresented = false
-      }
+      isPresented = false
     }
   }
 
@@ -489,7 +495,7 @@ private struct CompactPlaybackDock: View {
     }
     .font(.caption2.monospacedDigit())
     .foregroundStyle(.secondary)
-    .padding(.horizontal, 14)
+    .padding(.horizontal, PlaybackDockMetrics.horizontalPadding)
     .frame(
       width: PlaybackDockMetrics.collapsedWidth,
       height: 52
@@ -683,9 +689,8 @@ private struct PlaybackVolumePanel: View {
       ),
       accent: interfaceAccent
     )
-    .frame(width: 22, height: 80)
-    .padding(.top, 12)
-    .padding(.bottom, 20)
+    .frame(width: 22, height: 72)
+    .padding(.vertical, 12)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .floatingPanel(capsule: true)
     .animation(
