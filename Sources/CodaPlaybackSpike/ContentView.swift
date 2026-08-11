@@ -12,9 +12,7 @@ struct ContentView: View {
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   @EnvironmentObject private var playlistSaver: QueuePlaylistSaveCoordinator
   @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
-  @State private var isVolumePresented = false
-  @State private var isVolumeButtonHovered = false
-  @State private var isVolumePanelHovered = false
+  @StateObject private var volumePresentation = PlaybackVolumePresentationState()
 
   var body: some View {
     ZStack {
@@ -120,7 +118,7 @@ struct ContentView: View {
                 .allowsHitTesting(nowPlayingPresentation.phase.isTransitioning)
 
               if session.hasEstablishedConnection {
-                if player.currentEntry != nil && isVolumePresented {
+                if player.currentEntry != nil && volumePresentation.isPresented {
                   PlaybackVolumePanel()
                     .frame(
                       width: PlaybackDockMetrics.volumePanelWidth,
@@ -129,16 +127,7 @@ struct ContentView: View {
                     .offset(x: PlaybackDockMetrics.volumePanelHorizontalOffset)
                     .padding(.bottom, PlaybackDockMetrics.volumePanelBottomInset)
                     .onHover { isInside in
-                      isVolumePanelHovered = isInside
-                      if isInside {
-                        withAnimation(.easeOut(duration: 0.12)) {
-                          isVolumePresented = true
-                        }
-                      } else if !isVolumeButtonHovered {
-                        withAnimation(.easeIn(duration: 0.12)) {
-                          isVolumePresented = false
-                        }
-                      }
+                      volumePresentation.updateHover(.panel, isInside: isInside)
                     }
                     .transition(
                       .opacity.combined(
@@ -147,11 +136,7 @@ struct ContentView: View {
                     )
                 }
 
-                CompactPlaybackDockHost(
-                  isVolumePresented: $isVolumePresented,
-                  isVolumeButtonHovered: $isVolumeButtonHovered,
-                  isVolumePanelHovered: $isVolumePanelHovered
-                )
+                CompactPlaybackDockHost(volumePresentation: volumePresentation)
                   .frame(
                     width: PlaybackDockMetrics.collapsedWidth,
                     height: 64
@@ -222,7 +207,7 @@ struct ContentView: View {
     }
     .onChange(of: player.currentEntry?.id) {
       applyArtworkDisplayContext()
-      isVolumePresented = false
+      volumePresentation.dismiss()
     }
   }
 
@@ -324,9 +309,7 @@ private struct CompactPlaybackDockHost: NSViewRepresentable {
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
-  @Binding var isVolumePresented: Bool
-  @Binding var isVolumeButtonHovered: Bool
-  @Binding var isVolumePanelHovered: Bool
+  @ObservedObject var volumePresentation: PlaybackVolumePresentationState
 
   func makeNSView(context: Context) -> PassthroughDockHostingView {
     let view = PassthroughDockHostingView(rootView: rootView)
@@ -344,9 +327,7 @@ private struct CompactPlaybackDockHost: NSViewRepresentable {
       player: player,
       artworkTreatments: artworkTreatments,
       nowPlayingPresentation: nowPlayingPresentation,
-      isVolumePresented: $isVolumePresented,
-      isVolumeButtonHovered: $isVolumeButtonHovered,
-      isVolumePanelHovered: $isVolumePanelHovered
+      volumePresentation: volumePresentation
     )
   }
 }
@@ -356,22 +337,17 @@ private struct CompactPlaybackDockHostingRoot: View {
   @ObservedObject var player: PlayerController
   @ObservedObject var artworkTreatments: ArtworkTreatmentSettings
   @ObservedObject var nowPlayingPresentation: NowPlayingPresentationController
-  @Binding var isVolumePresented: Bool
-  @Binding var isVolumeButtonHovered: Bool
-  @Binding var isVolumePanelHovered: Bool
+  @ObservedObject var volumePresentation: PlaybackVolumePresentationState
 
   var body: some View {
     Group {
       if player.currentEntry != nil {
-        CompactPlaybackDock(
-          isVolumePresented: $isVolumePresented,
-          isVolumeButtonHovered: $isVolumeButtonHovered,
-          isVolumePanelHovered: $isVolumePanelHovered
-        )
+        CompactPlaybackDock()
         .environmentObject(session)
         .environmentObject(player)
         .environmentObject(artworkTreatments)
         .environmentObject(nowPlayingPresentation)
+        .environmentObject(volumePresentation)
         .padding(.bottom, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .transition(
@@ -416,6 +392,47 @@ private enum PlaybackDockMetrics {
   static let volumePanelHorizontalOffset: CGFloat = 188
 }
 
+@MainActor
+private final class PlaybackVolumePresentationState: ObservableObject {
+  enum HoverTarget: Hashable {
+    case button
+    case panel
+  }
+
+  @Published private(set) var isPresented = false
+  private var hoveredTargets: Set<HoverTarget> = []
+  private var hideTask: Task<Void, Never>?
+
+  func updateHover(_ target: HoverTarget, isInside: Bool) {
+    if isInside {
+      hoveredTargets.insert(target)
+      hideTask?.cancel()
+      guard !isPresented else { return }
+      withAnimation(.easeOut(duration: 0.12)) {
+        isPresented = true
+      }
+      return
+    }
+
+    hoveredTargets.remove(target)
+    hideTask?.cancel()
+    hideTask = Task { @MainActor [weak self] in
+      try? await Task.sleep(for: .milliseconds(140))
+      guard let self, !Task.isCancelled, hoveredTargets.isEmpty else { return }
+      withAnimation(.easeIn(duration: 0.12)) {
+        isPresented = false
+      }
+    }
+  }
+
+  func dismiss() {
+    hideTask?.cancel()
+    hideTask = nil
+    hoveredTargets.removeAll()
+    isPresented = false
+  }
+}
+
 private struct TitlebarNavigationButton: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
@@ -458,9 +475,6 @@ private struct CompactPlaybackDock: View {
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   @State private var seekPreviewPosition: Double?
-  @Binding var isVolumePresented: Bool
-  @Binding var isVolumeButtonHovered: Bool
-  @Binding var isVolumePanelHovered: Bool
 
   var body: some View {
     HStack(spacing: 10) {
@@ -471,11 +485,7 @@ private struct CompactPlaybackDock: View {
         previewPosition: $seekPreviewPosition
       )
       playbackSectionDivider
-      PlaybackVolumeControl(
-        isPresented: $isVolumePresented,
-        isButtonHovered: $isVolumeButtonHovered,
-        isPanelHovered: $isVolumePanelHovered
-      )
+      PlaybackVolumeControl()
     }
     .font(.caption2.monospacedDigit())
     .foregroundStyle(.secondary)
@@ -629,10 +639,7 @@ private struct PlaybackTransportButton: View {
 
 private struct PlaybackVolumeControl: View {
   @EnvironmentObject private var player: PlayerController
-  @Binding var isPresented: Bool
-  @Binding var isButtonHovered: Bool
-  @Binding var isPanelHovered: Bool
-  @State private var hideTask: Task<Void, Never>?
+  @EnvironmentObject private var volumePresentation: PlaybackVolumePresentationState
 
   var body: some View {
     Button {
@@ -651,25 +658,7 @@ private struct PlaybackVolumeControl: View {
     .accessibilityLabel(player.isEffectivelyMuted ? "Unmute" : "Mute")
     .accessibilityValue("\(Int((player.audibleVolume * 100).rounded())) percent")
     .onHover { isInside in
-      isButtonHovered = isInside
-      hideTask?.cancel()
-
-      if isInside {
-        withAnimation(.easeOut(duration: 0.12)) {
-          isPresented = true
-        }
-      } else {
-        hideTask = Task { @MainActor in
-          try? await Task.sleep(for: .milliseconds(140))
-          guard !Task.isCancelled, !isButtonHovered, !isPanelHovered else { return }
-          withAnimation(.easeIn(duration: 0.12)) {
-            isPresented = false
-          }
-        }
-      }
-    }
-    .onDisappear {
-      hideTask?.cancel()
+      volumePresentation.updateHover(.button, isInside: isInside)
     }
   }
 
@@ -1656,7 +1645,6 @@ private struct QueueAlbumBlock: View {
       QueueAlbumHeader(
         group: group,
         album: album,
-        isSelected: selectedEntryIDs == group.entryIDs,
         selectAction: { selectAction(group.entryIDs) },
         deleteAction: { deleteAction(group.entryIDs) },
         dragStateAction: dragStateAction
@@ -1752,7 +1740,6 @@ private struct QueueAlbumBlock: View {
 private struct QueueAlbumHeader: View {
   let group: QueueGroup
   let album: RemoteAlbum?
-  let isSelected: Bool
   let selectAction: () -> Void
   let deleteAction: () -> Void
   let dragStateAction: (QueueReorderDragItem, Bool) -> Void
@@ -1779,7 +1766,7 @@ private struct QueueAlbumHeader: View {
         }
         .contentShape(Rectangle())
       }
-      .buttonStyle(QueueSelectionButtonStyle())
+      .buttonStyle(NoPressEffectButtonStyle())
     }
     .draggable(QueueDropItem.reorder(.albumBlock(group.entryIDs)))
     .dragConfiguration(.codaInternal(allowMove: true))
@@ -1802,7 +1789,7 @@ private struct QueueAlbumHeader: View {
   }
 }
 
-private struct QueueSelectionButtonStyle: ButtonStyle {
+private struct NoPressEffectButtonStyle: ButtonStyle {
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
   }
@@ -1861,7 +1848,7 @@ private struct QueueDiscHeader: View {
         )
         .contentShape(Rectangle())
       }
-      .buttonStyle(QueueSelectionButtonStyle())
+      .buttonStyle(NoPressEffectButtonStyle())
     }
     .padding(.horizontal, 5)
     .padding(.vertical, 4)
