@@ -1295,7 +1295,7 @@ private struct QueuePanel: View {
           }
         }
         .padding(.top, 19)
-        .padding(.trailing, 24)
+        .padding(.trailing, 34)
       }
       .animation(.easeOut(duration: 0.14), value: shouldShowReturnToPlaying)
       .animation(.easeOut(duration: 0.14), value: selectedEntryIDs?.isEmpty == false)
