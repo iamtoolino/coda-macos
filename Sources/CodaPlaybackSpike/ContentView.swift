@@ -1707,7 +1707,7 @@ private struct QueueAlbumHeader: View {
         }
         .contentShape(Rectangle())
       }
-      .buttonStyle(.plain)
+      .buttonStyle(QueueSelectionButtonStyle())
     }
     .draggable(QueueDropItem.reorder(.albumBlock(group.entryIDs)))
     .dragConfiguration(.codaInternal(allowMove: true))
@@ -1727,6 +1727,12 @@ private struct QueueAlbumHeader: View {
 
   private var albumID: String? {
     group.entries.first?.albumID?.nonEmpty
+  }
+}
+
+private struct QueueSelectionButtonStyle: ButtonStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
   }
 }
 
@@ -1783,7 +1789,7 @@ private struct QueueDiscHeader: View {
         )
         .contentShape(Rectangle())
       }
-      .buttonStyle(.plain)
+      .buttonStyle(QueueSelectionButtonStyle())
     }
     .padding(.horizontal, 5)
     .padding(.vertical, 4)
