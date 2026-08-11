@@ -463,12 +463,9 @@ struct NowPlayingPresentationView: View {
           .overlay(alignment: .top) {
             Button { presentation.dismiss() } label: {
               Image(systemName: "chevron.down")
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .frame(width: 30, height: 22)
-                .background(.ultraThinMaterial, in: Capsule())
-                .overlay { Capsule().stroke(Color.white.opacity(0.09), lineWidth: 1) }
-                .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
             }
             .buttonStyle(.plain)
             .focusable(false)
@@ -477,7 +474,7 @@ struct NowPlayingPresentationView: View {
             .accessibilityLabel("Back to Browsing")
             .opacity(presentation.isPointerInsidePresentation ? 0.72 : 0)
             .scaleEffect(presentation.isPointerInsidePresentation ? 1 : 0.94)
-            .offset(y: -26)
+            .offset(y: -18)
             .allowsHitTesting(presentation.isPointerInsidePresentation)
           }
 
