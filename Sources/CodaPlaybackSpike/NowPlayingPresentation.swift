@@ -556,12 +556,12 @@ struct NowPlayingPresentationView: View {
 
   private func layoutMetrics(for size: CGSize) -> LayoutMetrics {
     let minimumCoverSize: CGFloat = 190
-    let maximumCoverSize: CGFloat = 550
+    let maximumCoverSize: CGFloat = 600
     let topClearance: CGFloat = 18
     let bottomClearance: CGFloat = 82
-    let reservedVerticalSpace: CGFloat = 210
-    let verticalGrowthFactor: CGFloat = 0.68
-    let widthLimitedMaximum = min(maximumCoverSize, max(minimumCoverSize, size.width * 0.60))
+    let reservedVerticalSpace: CGFloat = 190
+    let verticalGrowthFactor: CGFloat = 0.78
+    let widthLimitedMaximum = min(maximumCoverSize, max(minimumCoverSize, size.width * 0.68))
     let heightLimitedSize = max(
       minimumCoverSize,
       (size.height - reservedVerticalSpace) * verticalGrowthFactor
