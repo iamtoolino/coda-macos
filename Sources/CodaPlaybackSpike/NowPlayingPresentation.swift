@@ -395,7 +395,9 @@ struct NowPlayingPresentationView: View {
             VStack(spacing: 8) {
               Text(entry.title)
                 .font(.system(size: 32, weight: .bold))
-                .lineLimit(2)
+                .lineLimit(1)
+                .minimumScaleFactor(0.60)
+                .allowsTightening(true)
                 .multilineTextAlignment(.center)
                 .contentShape(Rectangle())
                 .onTapGesture { presentation.dismiss() }
