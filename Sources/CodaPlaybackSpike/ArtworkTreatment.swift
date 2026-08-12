@@ -565,7 +565,8 @@ struct AlbumMockupHero: View {
       albumInfo
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-    .padding(.horizontal, horizontalPadding)
+    .padding(.leading, 22)
+    .padding(.trailing, horizontalPadding)
     .padding(.bottom, 28)
   }
 
