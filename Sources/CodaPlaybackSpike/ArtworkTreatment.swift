@@ -570,7 +570,7 @@ struct AlbumMockupHero: View {
   }
 
   private var coverSize: CGFloat {
-    interpolatedValue(minimum: 154, maximum: AlbumHeroStyle.coverSize, from: 430, to: 760)
+    interpolatedValue(minimum: 188, maximum: AlbumHeroStyle.coverSize, from: 430, to: 760)
   }
 
   private var heroSpacing: CGFloat {
@@ -597,7 +597,7 @@ struct AlbumMockupHero: View {
   }
 
   private var albumIdentity: some View {
-    VStack(alignment: .leading, spacing: 11) {
+    VStack(alignment: .leading, spacing: 8) {
       Text(title)
         .font(.system(size: 32, weight: .bold))
         .lineLimit(1)
@@ -662,14 +662,14 @@ struct AlbumMockupHero: View {
   }
 
   private var albumInfo: some View {
-    VStack(alignment: .leading, spacing: 11) {
+    VStack(alignment: .leading, spacing: 8) {
       albumIdentity
 
       ratingStars
-        .padding(.top, 4)
+        .padding(.top, 2)
 
       controls
-        .padding(.top, 14)
+        .padding(.top, 8)
     }
   }
 
