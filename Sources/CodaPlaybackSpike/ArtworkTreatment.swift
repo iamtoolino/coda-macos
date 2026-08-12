@@ -959,6 +959,7 @@ private struct RatingPromptEffectModifier: ViewModifier {
 }
 
 struct FloatingPanelModifier: ViewModifier {
+  @Environment(\.controlActiveState) private var controlActiveState
   @EnvironmentObject private var settings: ArtworkTreatmentSettings
   let material: Bool
   let capsule: Bool
@@ -986,7 +987,11 @@ struct FloatingPanelModifier: ViewModifier {
             ZStack {
               shape.fill(.ultraThinMaterial)
               shape.fill(Color.black.opacity(0.68))
-              shape.fill(settings.accent.color.opacity(0.055))
+              shape.fill(
+                settings.accent.color.opacity(
+                  controlActiveState == .inactive ? 0.055 : 0.075
+                )
+              )
             }
           } else {
             shape
@@ -1018,6 +1023,10 @@ struct FloatingPanelModifier: ViewModifier {
         ),
         radius: material ? 12 : 18,
         y: material ? 5 : 8
+      )
+      .animation(
+        .easeInOut(duration: 0.20),
+        value: material ? controlActiveState : .key
       )
   }
 }
