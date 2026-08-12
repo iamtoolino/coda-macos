@@ -534,19 +534,11 @@ final class AlbumArtworkLoader: ObservableObject {
   }
 }
 
-private struct AlbumHeroWidthPreferenceKey: PreferenceKey {
-  static let defaultValue: CGFloat = 1_000
-
-  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-    value = nextValue()
-  }
-}
-
 struct AlbumMockupHero: View {
   @EnvironmentObject private var settings: ArtworkTreatmentSettings
-  @State private var availableWidth: CGFloat = 1_000
   @State private var hoveredRating: Int?
 
+  let availableWidth: CGFloat
   let image: NSImage?
   let fallbackURL: URL?
   let title: String
@@ -562,38 +554,53 @@ struct AlbumMockupHero: View {
   let queueDragItem: LibraryQueueDragItem
 
   var body: some View {
-    Group {
-      if availableWidth < 760 {
-        compactHero
-          .frame(height: compactHeroHeight)
-      } else {
-        wideHero
-          .frame(height: wideHeroHeight)
-      }
-    }
+    fluidHero
+      .frame(height: heroHeight)
     .frame(maxWidth: .infinity)
-    .background {
-      GeometryReader { geometry in
-        Color.clear.preference(
-          key: AlbumHeroWidthPreferenceKey.self,
-          value: geometry.size.width
-        )
-      }
-    }
-    .onPreferenceChange(AlbumHeroWidthPreferenceKey.self) { width in
-      guard width > 0, abs(width - availableWidth) > 0.5 else { return }
-      availableWidth = width
-    }
   }
 
-  private var wideHero: some View {
-    HStack(alignment: .center, spacing: 34) {
-      heroArtwork(size: AlbumHeroStyle.coverSize)
-      albumInfo(titleSize: AlbumHeroStyle.titleSize)
+  private var fluidHero: some View {
+    HStack(alignment: .center, spacing: heroSpacing) {
+      heroArtwork(size: coverSize)
+      albumInfo(titleSize: titleSize)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-    .padding(.horizontal, 42)
+    .padding(.horizontal, horizontalPadding)
     .padding(.bottom, 28)
+  }
+
+  // The title yields first. Artwork only starts shrinking once the available
+  // width is already compact, keeping the visual hierarchy steady while
+  // avoiding a breakpoint or a second layout.
+  private var titleSize: CGFloat {
+    interpolatedValue(minimum: 26, maximum: AlbumHeroStyle.titleSize, from: 450, to: 900)
+  }
+
+  private var coverSize: CGFloat {
+    interpolatedValue(minimum: 154, maximum: AlbumHeroStyle.coverSize, from: 430, to: 760)
+  }
+
+  private var heroSpacing: CGFloat {
+    interpolatedValue(minimum: 18, maximum: 34, from: 430, to: 820)
+  }
+
+  private var horizontalPadding: CGFloat {
+    interpolatedValue(minimum: 20, maximum: 42, from: 430, to: 900)
+  }
+
+  private var heroHeight: CGFloat {
+    max(224, coverSize + 70)
+  }
+
+  private func interpolatedValue(
+    minimum: CGFloat,
+    maximum: CGFloat,
+    from lowerWidth: CGFloat,
+    to upperWidth: CGFloat
+  ) -> CGFloat {
+    guard upperWidth > lowerWidth else { return maximum }
+    let progress = min(max((availableWidth - lowerWidth) / (upperWidth - lowerWidth), 0), 1)
+    return minimum + ((maximum - minimum) * progress)
   }
 
   private func albumIdentity(titleSize: CGFloat) -> some View {
@@ -602,7 +609,7 @@ struct AlbumMockupHero: View {
         .font(.system(size: titleSize, weight: .bold, design: .default))
         .tracking(titleTracking)
         .lineLimit(2)
-        .minimumScaleFactor(0.82)
+        .minimumScaleFactor(0.60)
         .allowsTightening(true)
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -668,24 +675,6 @@ struct AlbumMockupHero: View {
     guard !letters.isEmpty else { return -0.7 }
     let uppercaseCount = letters.filter { CharacterSet.uppercaseLetters.contains($0) }.count
     return Double(uppercaseCount) / Double(letters.count) >= 0.85 ? 0.15 : -0.7
-  }
-
-  private var compactHero: some View {
-    VStack(alignment: .leading, spacing: 22) {
-      heroArtwork(size: AlbumHeroStyle.coverSize)
-        .frame(maxWidth: .infinity, alignment: .center)
-      albumInfo(titleSize: min(AlbumHeroStyle.titleSize, 36))
-    }
-    .padding(.horizontal, 28)
-    .padding(.vertical, 26)
-  }
-
-  private var wideHeroHeight: CGFloat {
-    max(306, AlbumHeroStyle.coverSize + 70)
-  }
-
-  private var compactHeroHeight: CGFloat {
-    AlbumHeroStyle.coverSize + 350
   }
 
   private func albumInfo(titleSize: CGFloat) -> some View {

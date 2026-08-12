@@ -707,7 +707,7 @@ struct AlbumDetailView: View {
                 }
 
               LazyVStack(alignment: .leading, spacing: 0) {
-                albumDetailHeader(page: page)
+                albumDetailHeader(page: page, availableWidth: geometry.size.width)
                 ForEach(page.discSections) { section in
                   if page.showsDiscHeadings {
                     DiscSectionHeading(
@@ -847,9 +847,10 @@ struct AlbumDetailView: View {
     selectionAnchorSongID = nil
   }
 
-  private func albumDetailHeader(page: AlbumPage) -> some View {
+  private func albumDetailHeader(page: AlbumPage, availableWidth: CGFloat) -> some View {
     let artworkURL = session.artworkURL(id: page.album.coverArt ?? page.album.id, size: 700)
     return AlbumMockupHero(
+      availableWidth: availableWidth,
       image: artworkLoader.image,
       fallbackURL: artworkURL,
       title: page.album.name,
