@@ -562,18 +562,11 @@ struct AlbumMockupHero: View {
   private var fluidHero: some View {
     HStack(alignment: .center, spacing: heroSpacing) {
       heroArtwork(size: coverSize)
-      albumInfo(titleSize: titleSize)
+      albumInfo(titleSize: 34)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
     .padding(.horizontal, horizontalPadding)
     .padding(.bottom, 28)
-  }
-
-  // The title yields first. Artwork only starts shrinking once the available
-  // width is already compact, keeping the visual hierarchy steady while
-  // avoiding a breakpoint or a second layout.
-  private var titleSize: CGFloat {
-    interpolatedValue(minimum: 26, maximum: AlbumHeroStyle.titleSize, from: 450, to: 900)
   }
 
   private var coverSize: CGFloat {

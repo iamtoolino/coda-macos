@@ -715,7 +715,7 @@ struct AlbumDetailView: View {
                       subtitle: section.subtitle,
                       durationSeconds: section.durationSeconds
                     )
-                    .padding(.horizontal, geometry.size.width >= 760 ? 11 : 22)
+                    .padding(.horizontal, 22)
                     .padding(.top, section.number == page.discSections.first?.number ? 12 : 18)
                     .padding(.bottom, 5)
                     .draggable(
@@ -744,7 +744,7 @@ struct AlbumDetailView: View {
                     SongRow(
                       song: song,
                       isPlaying: player.currentEntry?.sourceID == song.id,
-                      horizontalPadding: geometry.size.width >= 760 ? 11 : 22,
+                      horizontalPadding: 22,
                       isSelected: selectedSongIDs.contains(song.id),
                       dragSongIDs: selectedSongIDs.contains(song.id)
                         ? selectedSongIDs : [song.id],
