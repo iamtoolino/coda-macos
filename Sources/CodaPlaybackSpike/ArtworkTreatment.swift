@@ -562,7 +562,7 @@ struct AlbumMockupHero: View {
   private var fluidHero: some View {
     HStack(alignment: .center, spacing: heroSpacing) {
       heroArtwork(size: coverSize)
-      albumInfo(titleSize: 34)
+      albumInfo
         .frame(maxWidth: .infinity, alignment: .leading)
     }
     .padding(.horizontal, horizontalPadding)
@@ -596,15 +596,13 @@ struct AlbumMockupHero: View {
     return minimum + ((maximum - minimum) * progress)
   }
 
-  private func albumIdentity(titleSize: CGFloat) -> some View {
+  private var albumIdentity: some View {
     VStack(alignment: .leading, spacing: 11) {
       Text(title)
-        .font(.system(size: titleSize, weight: .bold, design: .default))
-        .tracking(titleTracking)
-        .lineLimit(2)
+        .font(.system(size: 32, weight: .bold))
+        .lineLimit(1)
         .minimumScaleFactor(0.60)
         .allowsTightening(true)
-        .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
         .layoutPriority(1)
 
@@ -663,16 +661,9 @@ struct AlbumMockupHero: View {
     .accessibilityElement(children: .contain)
   }
 
-  private var titleTracking: CGFloat {
-    let letters = title.unicodeScalars.filter { CharacterSet.letters.contains($0) }
-    guard !letters.isEmpty else { return -0.7 }
-    let uppercaseCount = letters.filter { CharacterSet.uppercaseLetters.contains($0) }.count
-    return Double(uppercaseCount) / Double(letters.count) >= 0.85 ? 0.15 : -0.7
-  }
-
-  private func albumInfo(titleSize: CGFloat) -> some View {
+  private var albumInfo: some View {
     VStack(alignment: .leading, spacing: 11) {
-      albumIdentity(titleSize: titleSize)
+      albumIdentity
 
       ratingStars
         .padding(.top, 4)
