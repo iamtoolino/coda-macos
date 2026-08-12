@@ -567,7 +567,7 @@ struct AlbumMockupHero: View {
     }
     .padding(.leading, 22)
     .padding(.trailing, horizontalPadding)
-    .padding(.bottom, 28)
+    .padding(.bottom, 10)
   }
 
   private var coverSize: CGFloat {
@@ -575,7 +575,7 @@ struct AlbumMockupHero: View {
   }
 
   private var heroSpacing: CGFloat {
-    interpolatedValue(minimum: 18, maximum: 34, from: 430, to: 820)
+    interpolatedValue(minimum: 18, maximum: 26, from: 430, to: 820)
   }
 
   private var horizontalPadding: CGFloat {
@@ -583,7 +583,7 @@ struct AlbumMockupHero: View {
   }
 
   private var heroHeight: CGFloat {
-    max(224, coverSize + 70)
+    max(224, coverSize + 52)
   }
 
   private func interpolatedValue(
@@ -959,9 +959,8 @@ private struct RatingPromptEffectModifier: ViewModifier {
 }
 
 struct FloatingPanelModifier: ViewModifier {
-  @Environment(\.controlActiveState) private var controlActiveState
   @EnvironmentObject private var settings: ArtworkTreatmentSettings
-  let adaptsWhenInactive: Bool
+  let material: Bool
   let capsule: Bool
 
   @ViewBuilder
@@ -983,8 +982,9 @@ struct FloatingPanelModifier: ViewModifier {
     content
       .background {
         Group {
-          if adaptsWhenInactive && controlActiveState == .inactive {
+          if material {
             ZStack {
+              shape.fill(.ultraThinMaterial)
               shape.fill(Color.black.opacity(0.68))
               shape.fill(settings.accent.color.opacity(0.055))
             }
@@ -1014,15 +1014,10 @@ struct FloatingPanelModifier: ViewModifier {
       }
       .shadow(
         color: .black.opacity(
-          adaptsWhenInactive && controlActiveState == .inactive
-            ? 0.22 : FloatingPanelStyle.shadow
+          material ? 0.22 : FloatingPanelStyle.shadow
         ),
-        radius: adaptsWhenInactive && controlActiveState == .inactive ? 12 : 18,
-        y: adaptsWhenInactive && controlActiveState == .inactive ? 5 : 8
-      )
-      .animation(
-        .easeInOut(duration: 0.20),
-        value: adaptsWhenInactive ? controlActiveState : .key
+        radius: material ? 12 : 18,
+        y: material ? 5 : 8
       )
   }
 }
@@ -1035,10 +1030,10 @@ extension View {
     modifier(RatingPromptEffectModifier(trigger: trigger, accent: accent))
   }
 
-  func floatingPanel(adaptsWhenInactive: Bool = false, capsule: Bool = false) -> some View {
+  func floatingPanel(material: Bool = false, capsule: Bool = false) -> some View {
     modifier(
       FloatingPanelModifier(
-        adaptsWhenInactive: adaptsWhenInactive,
+        material: material,
         capsule: capsule
       )
     )

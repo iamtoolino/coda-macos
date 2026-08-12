@@ -716,6 +716,7 @@ struct AlbumDetailView: View {
                       durationSeconds: section.durationSeconds
                     )
                     .padding(.horizontal, 22)
+                    .frame(maxWidth: 840, alignment: .leading)
                     .padding(.top, section.number == page.discSections.first?.number ? 12 : 18)
                     .padding(.bottom, 5)
                     .draggable(
@@ -755,9 +756,7 @@ struct AlbumDetailView: View {
                     ) {
                       play(song, from: page)
                     }
-                    Divider()
-                      .padding(.horizontal, 22)
-                      .opacity(0.14)
+                    .frame(maxWidth: 840, alignment: .leading)
                   }
                 }
               }

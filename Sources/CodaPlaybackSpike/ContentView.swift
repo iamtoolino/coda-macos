@@ -159,7 +159,7 @@ struct ContentView: View {
               QueuePanel()
                 .frame(width: queueWidth)
                 .frame(maxHeight: .infinity, alignment: .top)
-                .floatingPanel(adaptsWhenInactive: true)
+                .floatingPanel(material: true)
             }
           }
           .frame(
