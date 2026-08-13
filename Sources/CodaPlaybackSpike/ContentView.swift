@@ -159,7 +159,11 @@ struct ContentView: View {
               QueuePanel()
                 .frame(width: queueWidth)
                 .frame(maxHeight: .infinity, alignment: .top)
-                .floatingPanel(material: true)
+                .floatingPanel(
+                  material: true,
+                  materialAccent: nowPlayingPresentation
+                    .resolvedAccent(artworkTreatments.accent).color
+                )
             }
           }
           .frame(

@@ -962,6 +962,7 @@ struct FloatingPanelModifier: ViewModifier {
   @Environment(\.controlActiveState) private var controlActiveState
   @EnvironmentObject private var settings: ArtworkTreatmentSettings
   let material: Bool
+  let materialAccent: Color?
   let capsule: Bool
 
   @ViewBuilder
@@ -988,7 +989,7 @@ struct FloatingPanelModifier: ViewModifier {
               shape.fill(.ultraThinMaterial)
               shape.fill(Color.black.opacity(0.68))
               shape.fill(
-                settings.accent.color.opacity(
+                (materialAccent ?? settings.accent.color).opacity(
                   controlActiveState == .inactive ? 0.055 : 0.075
                 )
               )
@@ -1039,10 +1040,15 @@ extension View {
     modifier(RatingPromptEffectModifier(trigger: trigger, accent: accent))
   }
 
-  func floatingPanel(material: Bool = false, capsule: Bool = false) -> some View {
+  func floatingPanel(
+    material: Bool = false,
+    materialAccent: Color? = nil,
+    capsule: Bool = false
+  ) -> some View {
     modifier(
       FloatingPanelModifier(
         material: material,
+        materialAccent: materialAccent,
         capsule: capsule
       )
     )
