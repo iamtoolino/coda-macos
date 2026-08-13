@@ -592,58 +592,22 @@ struct AlbumsView: View {
 
 struct ArtistDetailView: View {
   @EnvironmentObject private var session: AppSession
+  @EnvironmentObject private var player: PlayerController
   let artistID: String
 
   @State private var page: ArtistPage?
   @State private var errorMessage: String?
+  @State private var isPreparingPlayback = false
 
   var body: some View {
     Group {
       if let page {
-        ScrollView {
-          LazyVStack(alignment: .leading, spacing: 20) {
-            HStack(alignment: .center, spacing: 20) {
-              ArtworkImage(
-                url: session.artworkURL(id: page.artist.coverArt, size: 500), cornerRadius: 12
-              )
-              .frame(width: 150, height: 150)
-              .draggable(QueueDropItem.library(.artist(page.artist.id)))
-              .dragConfiguration(.codaInternal())
-              .help("Drag artist discography to queue")
-              VStack(alignment: .leading, spacing: 7) {
-                Text(page.artist.name)
-                  .font(.system(size: 32, weight: .bold))
-                Text("\(page.albums.count) albums")
-                  .foregroundStyle(.secondary)
-                if let genre = page.artist.genre, !genre.isEmpty {
-                  Text(genre)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                }
-              }
-              Spacer()
-            }
-            .padding(.horizontal, 22)
-            .padding(.top, 18)
-
-            Text("Discography")
-              .font(.title2.bold())
-              .padding(.horizontal, 22)
-
-            LazyVGrid(
-              columns: [GridItem(.adaptive(minimum: 145, maximum: 200), spacing: 18)],
-              alignment: .leading,
-              spacing: 22
-            ) {
-              ForEach(page.albums) { album in
-                AlbumCard(album: album, showsArtist: false)
-              }
-            }
-            .padding(.horizontal, 22)
-            .padding(.bottom, 22)
+        GeometryReader { geometry in
+          ScrollView {
+            artistPage(page, availableWidth: geometry.size.width)
+              .padding(.bottom, floatingPlaybackDockScrollClearance)
+              .background(TransientScrollIndicators())
           }
-          .padding(.bottom, floatingPlaybackDockScrollClearance)
-          .background(TransientScrollIndicators())
         }
       } else if let errorMessage {
         LibraryErrorView(title: "Could Not Load Artist", message: errorMessage) {
@@ -663,6 +627,114 @@ struct ArtistDetailView: View {
     }
   }
 
+  private func artistPage(_ page: ArtistPage, availableWidth: CGFloat) -> some View {
+    VStack(alignment: .leading, spacing: 20) {
+      ArtistCodaHero(
+        availableWidth: availableWidth,
+        page: page,
+        artworkURL: artistArtworkURL(page),
+        isPreparingPlayback: isPreparingPlayback,
+        playAction: { play(page, shuffled: false) },
+        queueAction: { queue(page) }
+      )
+
+      discographyGrid(page.albums, availableWidth: availableWidth)
+    }
+  }
+
+  private func discographyGrid(
+    _ albums: [RemoteAlbum],
+    minimumWidth: CGFloat = 145,
+    maximumWidth: CGFloat = 200,
+    availableWidth: CGFloat? = nil
+  ) -> some View {
+    let leadingInset: CGFloat = 37
+    let trailingInset: CGFloat = 22
+    let columns: [GridItem]
+    if let availableWidth {
+      let spacing: CGFloat = 18
+      let maximumCardWidth: CGFloat = 200
+      let contentWidth = max(0, availableWidth - leadingInset - trailingInset)
+      let fittedColumnCount = max(
+        1,
+        Int((contentWidth + spacing) / (maximumCardWidth + spacing))
+      )
+      let minimumColumnCount = min(albums.count, 3)
+      let columnCount = min(
+        albums.count,
+        max(minimumColumnCount, fittedColumnCount)
+      )
+      let cardWidth = min(
+        maximumCardWidth,
+        (contentWidth - (CGFloat(columnCount - 1) * spacing)) / CGFloat(columnCount)
+      )
+      columns = Array(
+        repeating: GridItem(.fixed(cardWidth), spacing: spacing),
+        count: columnCount
+      )
+    } else {
+      columns = [
+        GridItem(.adaptive(minimum: minimumWidth, maximum: maximumWidth), spacing: 18)
+      ]
+    }
+
+    return VStack(alignment: .leading, spacing: 18) {
+      Text("Discography")
+        .font(.system(size: 18, weight: .semibold))
+        .foregroundStyle(.primary.opacity(0.78))
+
+      LazyVGrid(
+        columns: columns,
+        alignment: .leading,
+        spacing: 22
+      ) {
+        ForEach(albums) { album in
+          AlbumCard(album: album, showsArtist: false)
+        }
+      }
+    }
+    .padding(.leading, leadingInset)
+    .padding(.trailing, trailingInset)
+    .padding(.bottom, 22)
+  }
+
+  private func artistArtworkURL(_ page: ArtistPage) -> URL? {
+    session.artworkURL(id: page.artist.coverArt, size: 900)
+  }
+
+  private func play(_ page: ArtistPage, shuffled: Bool) {
+    prepareSongs(page) { songs in
+      session.play(songs: shuffled ? songs.shuffled() : songs, with: player)
+    }
+  }
+
+  private func queue(_ page: ArtistPage) {
+    prepareSongs(page) { songs in
+      session.append(songs: songs, to: player)
+    }
+  }
+
+  private func prepareSongs(
+    _ page: ArtistPage,
+    action: @escaping @MainActor ([RemoteSong]) -> Void
+  ) {
+    guard !isPreparingPlayback else { return }
+    isPreparingPlayback = true
+    Task { @MainActor in
+      defer { isPreparingPlayback = false }
+      guard let client = session.client else { return }
+      do {
+        var songs: [RemoteSong] = []
+        for album in page.albums {
+          songs.append(contentsOf: try await client.album(id: album.id).songs)
+        }
+        action(songs)
+      } catch {
+        player.report(error: error)
+      }
+    }
+  }
+
   @MainActor
   private func load() async {
     guard let client = session.client else { return }
@@ -671,6 +743,138 @@ struct ArtistDetailView: View {
       page = try await client.artist(id: artistID)
     } catch {
       errorMessage = error.localizedDescription
+    }
+  }
+}
+
+private struct ArtistCodaHero: View {
+  let availableWidth: CGFloat
+  let page: ArtistPage
+  let artworkURL: URL?
+  let isPreparingPlayback: Bool
+  let playAction: () -> Void
+  let queueAction: () -> Void
+
+  var body: some View {
+    HStack(alignment: .center, spacing: heroSpacing) {
+      heroArtwork(size: imageSize)
+
+      VStack(alignment: .leading, spacing: 8) {
+        Text(page.artist.name)
+          .font(.system(size: 32, weight: .bold))
+          .lineLimit(1)
+          .minimumScaleFactor(0.60)
+          .allowsTightening(true)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .layoutPriority(1)
+
+        Text("\(page.albums.count) albums")
+          .font(.callout)
+          .foregroundStyle(.secondary)
+
+        CollectionPlaybackControls(
+          collectionKind: "artist",
+          playAction: playAction,
+          queueAction: queueAction
+        )
+        .disabled(isPreparingPlayback)
+        .opacity(isPreparingPlayback ? 0.55 : 1)
+        .padding(.top, 8)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .padding(.leading, 22)
+    .padding(.trailing, horizontalPadding)
+    .padding(.bottom, 10)
+    .frame(height: heroHeight)
+    .padding(.bottom, -discographyLift)
+  }
+
+  private var imageSize: CGFloat {
+    interpolatedValue(minimum: 188, maximum: AlbumHeroStyle.coverSize, from: 430, to: 760)
+  }
+
+  private var heroSpacing: CGFloat {
+    interpolatedValue(minimum: 18, maximum: 26, from: 430, to: 820)
+  }
+
+  private var horizontalPadding: CGFloat {
+    interpolatedValue(minimum: 20, maximum: 42, from: 430, to: 900)
+  }
+
+  private var heroHeight: CGFloat {
+    max(224, imageSize + 52)
+  }
+
+  private var discographyLift: CGFloat {
+    heroHeight - max(224, imageSize + 24)
+  }
+
+  private func interpolatedValue(
+    minimum: CGFloat,
+    maximum: CGFloat,
+    from lowerWidth: CGFloat,
+    to upperWidth: CGFloat
+  ) -> CGFloat {
+    guard upperWidth > lowerWidth else { return maximum }
+    let progress = min(max((availableWidth - lowerWidth) / (upperWidth - lowerWidth), 0), 1)
+    return minimum + ((maximum - minimum) * progress)
+  }
+
+  private func heroArtwork(size: CGFloat) -> some View {
+    ZStack(alignment: .bottom) {
+      Ellipse()
+        .fill(Color.black.opacity(0.66))
+        .frame(width: size * 0.78, height: 28)
+        .blur(radius: 11)
+        .offset(y: 12)
+
+      ArtistContainedImage(url: artworkURL, cornerRadius: 13)
+        .frame(width: size, height: size)
+        .scaleEffect(0.98)
+        .shadow(color: .black.opacity(0.58), radius: 16, y: 9)
+    }
+    .frame(width: size + 30, height: size + 36)
+    .artistDragSource(page.artist.id)
+  }
+}
+
+private extension View {
+  func artistDragSource(_ artistID: String) -> some View {
+    draggable(QueueDropItem.library(.artist(artistID)))
+      .dragConfiguration(.codaInternal())
+      .help("Drag artist discography to queue")
+  }
+}
+
+private struct ArtistContainedImage: View {
+  let url: URL?
+  let cornerRadius: CGFloat
+  @State private var image: NSImage?
+
+  var body: some View {
+    GeometryReader { geometry in
+      ZStack {
+        if let image {
+          Image(nsImage: image)
+            .resizable()
+            .scaledToFill()
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
+        } else {
+          Color.secondary.opacity(0.12)
+          ProgressView().controlSize(.small)
+        }
+      }
+      .frame(width: geometry.size.width, height: geometry.size.height)
+    }
+    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        .strokeBorder(.white.opacity(0.10), lineWidth: 0.7)
+    }
+    .task(id: url) {
+      image = await ArtworkImageCache.shared.image(for: url)
     }
   }
 }
@@ -1345,7 +1549,10 @@ private struct ArtistCard: View {
       session.open(.artist(artist.id))
     } label: {
       VStack(alignment: .leading, spacing: 6) {
-        ArtworkImage(url: session.artworkURL(id: artist.coverArt, size: 500), cornerRadius: 9)
+        ArtistContainedImage(
+          url: session.artworkURL(id: artist.coverArt, size: 500),
+          cornerRadius: 10
+        )
           .aspectRatio(1, contentMode: .fit)
           .draggable(QueueDropItem.library(.artist(artist.id)))
           .dragConfiguration(.codaInternal())

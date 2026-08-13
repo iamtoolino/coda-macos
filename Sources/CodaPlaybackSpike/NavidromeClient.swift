@@ -299,7 +299,10 @@ struct NavidromeClient: Sendable {
       if left != right { return left < right }
       return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
     }
-    return ArtistPage(artist: detail.summary, albums: albums)
+    return ArtistPage(
+      artist: detail.summary,
+      albums: albums
+    )
   }
 
   func album(id: String) async throws -> AlbumPage {
