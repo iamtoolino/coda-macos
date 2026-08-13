@@ -990,7 +990,7 @@ struct FloatingPanelModifier: ViewModifier {
               shape.fill(Color.black.opacity(0.68))
               shape.fill(
                 (materialAccent ?? settings.accent.color).opacity(
-                  controlActiveState == .inactive ? 0.055 : 0.075
+                  controlActiveState == .inactive ? 0.012 : 0.040
                 )
               )
             }
