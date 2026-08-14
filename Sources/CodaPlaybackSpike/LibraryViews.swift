@@ -1551,7 +1551,6 @@ private struct AlbumCard: View {
 }
 
 private struct AlbumRatingBadge: View {
-  @Environment(\.controlActiveState) private var controlActiveState
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   let rating: Int
 
@@ -1594,11 +1593,7 @@ private struct AlbumRatingBadge: View {
       shape.fill(.ultraThinMaterial)
       shape.fill(Color.black.opacity(0.68))
       shape.fill(
-        artworkTreatments.accent.color.opacity(
-          controlActiveState == .inactive
-            ? AlbumRatingBadgeStyle.inactiveTintOpacity
-            : AlbumRatingBadgeStyle.activeTintOpacity
-        )
+        artworkTreatments.accent.color.opacity(AlbumRatingBadgeStyle.tintOpacity)
       )
     }
     .clipShape(shape)
