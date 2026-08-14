@@ -405,7 +405,7 @@ private enum PlaybackDockMetrics {
   static let minimumMainContentWidth = collapsedWidth + 20
   static let volumePanelWidth: CGFloat = 32
   static let volumePanelHeight: CGFloat = 96
-  static let volumePanelBottomInset: CGFloat = 72
+  static let volumePanelBottomInset: CGFloat = 64
   static let volumePanelHorizontalOffset =
     collapsedWidth / 2 - horizontalPadding - controlButtonWidth / 2
 }
@@ -507,7 +507,7 @@ private struct CompactPlaybackDock: View {
     .padding(.horizontal, PlaybackDockMetrics.horizontalPadding)
     .frame(
       width: PlaybackDockMetrics.collapsedWidth,
-      height: 52
+      height: 44
     )
     .floatingPanel(capsule: true)
     .fixedSize(horizontal: true, vertical: true)
