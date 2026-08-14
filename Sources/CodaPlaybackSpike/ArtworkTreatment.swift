@@ -173,10 +173,11 @@ enum AlbumHeroStyle {
 
 enum AlbumRatingBadgeStyle {
   static let size: CGFloat = 24
-  static let opacity = 1.0
   static let fontSize: CGFloat = 14
   static let fontWeight = Font.Weight.regular
   static let cornerInset: CGFloat = 4
+  static let activeTintOpacity = 0.35
+  static let inactiveTintOpacity = 0.105
 }
 
 private enum ArtworkBackgroundStyle {

@@ -1518,7 +1518,7 @@ private struct AlbumCard: View {
           .aspectRatio(1, contentMode: .fit)
 
           if let rating = visibleRating, artworkTreatments.showsAlbumRatingLabels {
-            artworkStamp(rating)
+            AlbumRatingBadge(rating: rating)
           }
         }
         .draggable(QueueDropItem.library(.album(album.id)))
@@ -1548,10 +1548,22 @@ private struct AlbumCard: View {
     guard let rating = session.rating(for: album), (1...5).contains(rating) else { return nil }
     return rating
   }
+}
 
-  private func artworkStamp(_ rating: Int) -> some View {
-    let size = AlbumRatingBadgeStyle.size
-    return Text(rating.formatted())
+private struct AlbumRatingBadge: View {
+  @Environment(\.controlActiveState) private var controlActiveState
+  @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
+  let rating: Int
+
+  private var shape: RoundedRectangle {
+    RoundedRectangle(
+      cornerRadius: AlbumRatingBadgeStyle.size * 0.31,
+      style: .continuous
+    )
+  }
+
+  var body: some View {
+    Text(rating.formatted())
       .font(
         .system(
           size: AlbumRatingBadgeStyle.fontSize,
@@ -1560,18 +1572,36 @@ private struct AlbumCard: View {
         )
       )
       .monospacedDigit()
-      .foregroundStyle(artworkTreatments.accent.contrastingColor)
-      .frame(width: size, height: size)
-      .background(
-        artworkTreatments.accent.color.opacity(AlbumRatingBadgeStyle.opacity),
-        in: RoundedRectangle(cornerRadius: size * 0.31, style: .continuous)
-      )
+      .foregroundStyle(.white.opacity(0.94))
+      .frame(width: AlbumRatingBadgeStyle.size, height: AlbumRatingBadgeStyle.size)
+      .background { materialBackground }
       .overlay {
-        RoundedRectangle(cornerRadius: size * 0.31, style: .continuous)
-          .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.6)
+        shape.strokeBorder(
+          LinearGradient(
+            colors: [.white.opacity(0.10), .white.opacity(0.025)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+          ),
+          lineWidth: 0.6
+        )
       }
       .shadow(color: .black.opacity(0.22), radius: 3, y: 1)
       .padding(AlbumRatingBadgeStyle.cornerInset)
+  }
+
+  private var materialBackground: some View {
+    ZStack {
+      shape.fill(.ultraThinMaterial)
+      shape.fill(Color.black.opacity(0.68))
+      shape.fill(
+        artworkTreatments.accent.color.opacity(
+          controlActiveState == .inactive
+            ? AlbumRatingBadgeStyle.inactiveTintOpacity
+            : AlbumRatingBadgeStyle.activeTintOpacity
+        )
+      )
+    }
+    .clipShape(shape)
   }
 }
 

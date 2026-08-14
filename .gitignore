@@ -3,5 +3,6 @@ dist/
 .DS_Store
 .swiftpm/
 DerivedData/
+__pycache__/
 *.xcuserstate
 xcuserdata/
