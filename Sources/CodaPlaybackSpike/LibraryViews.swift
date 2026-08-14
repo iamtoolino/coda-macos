@@ -430,9 +430,9 @@ struct ArtistsView: View {
           selectedKind = kind
         } label: {
           if selectedKind == kind {
-            Label(kind.title, systemImage: "checkmark")
+            Label(kind.sortTitle, systemImage: "checkmark")
           } else {
-            Text(kind.title)
+            Text(kind.sortTitle)
           }
         }
       }
@@ -445,8 +445,8 @@ struct ArtistsView: View {
     .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
     .fixedSize()
-    .help("Sort Artists — \(selectedKind.title)")
-    .accessibilityLabel("Artist order: \(selectedKind.title)")
+    .help("Sort Artists — \(selectedKind.sortTitle)")
+    .accessibilityLabel("Artist order: \(selectedKind.sortTitle)")
   }
 
   @MainActor
@@ -560,9 +560,9 @@ struct AlbumsView: View {
           selectedKind = kind
         } label: {
           if selectedKind == kind {
-            Label(kind.title, systemImage: "checkmark")
+            Label(kind.sortTitle, systemImage: "checkmark")
           } else {
-            Text(kind.title)
+            Text(kind.sortTitle)
           }
         }
       }
@@ -575,8 +575,8 @@ struct AlbumsView: View {
     .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
     .fixedSize()
-    .help("Sort Albums — \(selectedKind.title)")
-    .accessibilityLabel("Album order: \(selectedKind.title)")
+    .help("Sort Albums — \(selectedKind.sortTitle)")
+    .accessibilityLabel("Album order: \(selectedKind.sortTitle)")
   }
 
   @MainActor

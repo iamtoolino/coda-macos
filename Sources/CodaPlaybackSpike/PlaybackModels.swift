@@ -389,7 +389,14 @@ enum AlbumCollectionKind: String, CaseIterable, Hashable, Sendable {
     case .topRated: "Top Rated"
     case .mostPlayed: "Most Played"
     case .recentlyPlayed: "Recently Played"
-    case .alphabetical: "Albums A–Z"
+    case .alphabetical: "Albums"
+    }
+  }
+
+  var sortTitle: String {
+    switch self {
+    case .alphabetical: "Title"
+    default: title
     }
   }
 
@@ -412,7 +419,14 @@ enum ArtistCollectionKind: String, CaseIterable, Hashable, Sendable {
   var title: String {
     switch self {
     case .recentlyAdded: "Recently Added Artists"
-    case .alphabetical: "Artists A–Z"
+    case .alphabetical: "Artists"
+    }
+  }
+
+  var sortTitle: String {
+    switch self {
+    case .recentlyAdded: "Recently Added"
+    case .alphabetical: "Name"
     }
   }
 }
