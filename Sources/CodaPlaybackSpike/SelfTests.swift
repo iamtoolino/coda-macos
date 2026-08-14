@@ -211,6 +211,52 @@ enum SelfTests {
       return presentation.isPresented
     }
 
+    check("now playing automatic presentation preference persists", failures: &failures) {
+      let suiteName = "CodaSelfTests-NowPlaying-\(UUID().uuidString)"
+      guard let defaults = UserDefaults(suiteName: suiteName) else { return false }
+      defer { defaults.removePersistentDomain(forName: suiteName) }
+
+      let presentation = NowPlayingPresentationController(defaults: defaults)
+      guard presentation.automaticallyPresents else { return false }
+      presentation.automaticallyPresents = false
+
+      return !NowPlayingPresentationController(defaults: defaults).automaticallyPresents
+    }
+
+    check("now playing preference migrates the experimental key", failures: &failures) {
+      let suiteName = "CodaSelfTests-NowPlayingMigration-\(UUID().uuidString)"
+      guard let defaults = UserDefaults(suiteName: suiteName) else { return false }
+      defer { defaults.removePersistentDomain(forName: suiteName) }
+      defaults.set(false, forKey: "automatically-shows-now-playing")
+
+      let presentation = NowPlayingPresentationController(defaults: defaults)
+      return !presentation.automaticallyPresents
+        && defaults.object(forKey: "automatically-show-now-playing") as? Bool == false
+        && defaults.object(forKey: "automatically-shows-now-playing") == nil
+    }
+
+    check("manual now playing remains available when automatic presentation is off", failures: &failures) {
+      let suiteName = "CodaSelfTests-ManualNowPlaying-\(UUID().uuidString)"
+      guard let defaults = UserDefaults(suiteName: suiteName) else { return false }
+      defer { defaults.removePersistentDomain(forName: suiteName) }
+
+      let presentation = NowPlayingPresentationController(defaults: defaults)
+      presentation.automaticallyPresents = false
+      presentation.prepare(
+        playbackKey: "album:manual",
+        artwork: NSImage(size: NSSize(width: 2, height: 2)),
+        accent: ArtworkColor(red: 0.7, green: 0.3, blue: 0.2)
+      )
+      presentation.updateContext(
+        window: nil,
+        hasEstablishedConnection: true,
+        playbackKey: "album:manual",
+        isPlaying: true
+      )
+      presentation.present()
+      return presentation.isPresented
+    }
+
     check("original stream policy", failures: &failures) {
       let config = try NavidromeConfiguration(
         server: "https://music.example.test/navidrome/",
@@ -898,7 +944,7 @@ enum SelfTests {
     }
 
     if failures.isEmpty {
-      print("Coda playback spike self-tests passed (49 checks).")
+      print("Coda playback spike self-tests passed (52 checks).")
       return true
     }
 

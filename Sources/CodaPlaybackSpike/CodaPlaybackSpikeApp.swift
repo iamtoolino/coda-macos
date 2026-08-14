@@ -59,6 +59,26 @@ struct CodaPlaybackSpikeApp: App {
       )
 
       CommandGroup(after: .toolbar) {
+        Button(nowPlayingPresentation.isPresented ? "Hide Now Playing" : "Show Now Playing") {
+          if nowPlayingPresentation.isPresented {
+            nowPlayingPresentation.dismiss()
+          } else {
+            nowPlayingPresentation.present()
+          }
+        }
+        .keyboardShortcut("e", modifiers: [.command])
+        .disabled(
+          !nowPlayingPresentation.isPresented
+            && (player.currentEntry == nil || !session.hasEstablishedConnection)
+        )
+
+        Toggle(
+          "Automatically Show Now Playing",
+          isOn: $nowPlayingPresentation.automaticallyPresents
+        )
+
+        Divider()
+
         Toggle(
           "Show Album Rating Badges",
           isOn: $artworkTreatments.showsAlbumRatingLabels
@@ -88,16 +108,6 @@ struct CodaPlaybackSpikeApp: App {
         }
         .keyboardShortcut(.space, modifiers: [])
         .disabled(player.currentEntry == nil)
-
-        Button("Show Now Playing") {
-          nowPlayingPresentation.present()
-        }
-        .keyboardShortcut("n", modifiers: [.command, .shift])
-        .disabled(
-          player.currentEntry == nil
-            || !session.hasEstablishedConnection
-            || nowPlayingPresentation.isPresented
-        )
 
         Divider()
 

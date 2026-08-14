@@ -32,19 +32,47 @@ struct NowPlayingPreparedTheme: Identifiable {
 @MainActor
 final class NowPlayingPresentationController: ObservableObject {
   private static let automaticPresentationDelay = Duration.seconds(30)
+  private static let automaticallyPresentsKey = "automatically-show-now-playing"
+  private static let experimentalAutomaticallyPresentsKey =
+    "automatically-shows-now-playing"
 
   @Published private(set) var isPresented = false
   @Published private(set) var phase = NowPlayingPresentationPhase.hidden
   @Published private(set) var preparedTheme: NowPlayingPreparedTheme?
   @Published private(set) var isPointerInsidePresentation = false
+  @Published var automaticallyPresents: Bool {
+    didSet {
+      defaults.set(automaticallyPresents, forKey: Self.automaticallyPresentsKey)
+      if automaticallyPresents {
+        scheduleAutomaticPresentation()
+      } else {
+        inactivityTask?.cancel()
+        inactivityTask = nil
+        presentationRetryTask?.cancel()
+        presentationRetryTask = nil
+      }
+    }
+  }
 
+  private let defaults: UserDefaults
   private weak var observedWindow: NSWindow?
   private var hasEstablishedConnection = false
   private var playbackKey: String?
   private var isPlaying = false
   private var inactivityTask: Task<Void, Never>?
+  private var presentationRetryTask: Task<Void, Never>?
   private var phaseTask: Task<Void, Never>?
   private var hoveredRegions: Set<NowPlayingPresentationHoverRegion> = []
+
+  init(defaults: UserDefaults = .standard) {
+    self.defaults = defaults
+    automaticallyPresents =
+      defaults.object(forKey: Self.automaticallyPresentsKey) as? Bool
+      ?? defaults.object(forKey: Self.experimentalAutomaticallyPresentsKey) as? Bool
+      ?? true
+    defaults.set(automaticallyPresents, forKey: Self.automaticallyPresentsKey)
+    defaults.removeObject(forKey: Self.experimentalAutomaticallyPresentsKey)
+  }
 
   private var presentationAccent: ArtworkColor? {
     isPresented ? preparedTheme?.accent : nil
@@ -126,20 +154,27 @@ final class NowPlayingPresentationController: ObservableObject {
   }
 
   func present() {
+    present(automatically: false)
+  }
+
+  private func present(automatically: Bool) {
     guard !isPresented,
       phase == .hidden,
       hasEstablishedConnection,
-      let playbackKey,
-      preparedTheme?.playbackKey == playbackKey
-    else {
-      if !isPresented {
-        scheduleAutomaticPresentation(after: .milliseconds(250))
-      }
+      let playbackKey
+    else { return }
+    if automatically {
+      guard automaticallyPresents, isPlaying else { return }
+    }
+    guard preparedTheme?.playbackKey == playbackKey else {
+      schedulePresentationRetry(automatically: automatically)
       return
     }
 
     inactivityTask?.cancel()
     inactivityTask = nil
+    presentationRetryTask?.cancel()
+    presentationRetryTask = nil
     phaseTask?.cancel()
     observedWindow?.makeFirstResponder(nil)
     phase = .presenting
@@ -152,6 +187,8 @@ final class NowPlayingPresentationController: ObservableObject {
   func dismiss(restartsTimer: Bool = true) {
     inactivityTask?.cancel()
     inactivityTask = nil
+    presentationRetryTask?.cancel()
+    presentationRetryTask = nil
     guard isPresented else {
       if restartsTimer { scheduleAutomaticPresentation() }
       return
@@ -187,7 +224,8 @@ final class NowPlayingPresentationController: ObservableObject {
   ) {
     inactivityTask?.cancel()
     inactivityTask = nil
-    guard !isPresented,
+    guard automaticallyPresents,
+      !isPresented,
       hasEstablishedConnection,
       playbackKey != nil,
       isPlaying
@@ -200,13 +238,26 @@ final class NowPlayingPresentationController: ObservableObject {
         return
       }
       guard let self,
+        self.automaticallyPresents,
         !self.isPresented,
         self.phase == .hidden,
         self.hasEstablishedConnection,
         self.playbackKey != nil,
         self.isPlaying
       else { return }
-      self.present()
+      self.present(automatically: true)
+    }
+  }
+
+  private func schedulePresentationRetry(automatically: Bool) {
+    presentationRetryTask?.cancel()
+    presentationRetryTask = Task { @MainActor [weak self] in
+      do {
+        try await Task.sleep(for: .milliseconds(250))
+      } catch {
+        return
+      }
+      self?.present(automatically: automatically)
     }
   }
 }
@@ -349,20 +400,6 @@ final class NowPlayingActivityView: NSView {
       ]
     ) { [weak self, weak window] event in
       guard let self, event.window === window else { return event }
-      if event.type == .keyDown,
-        event.keyCode == 53,
-        self.presentation?.isPresented == true
-      {
-        if NSApp.sendAction(
-          #selector(NSResponder.cancelOperation(_:)),
-          to: nil,
-          from: self
-        ) {
-          return nil
-        }
-        self.presentation?.dismiss()
-        return nil
-      }
       self.presentation?.noteMeaningfulInteraction()
       return event
     }
@@ -436,22 +473,20 @@ struct NowPlayingPresentationView: View {
               }
 
               if !entry.album.isEmpty {
-                HStack(spacing: 5) {
-                  Text("From the album")
-                    .foregroundStyle(.secondary)
+                Group {
                   if let albumID = entry.albumID {
                     Text(entry.album)
-                    .foregroundStyle(.primary)
-                    .fontWeight(.semibold)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                      showAlbum(albumID)
-                    }
-                    .accessibilityAddTraits(.isLink)
-                    .accessibilityAction {
-                      showAlbum(albumID)
-                    }
-                    .help("Show \(entry.album)")
+                      .foregroundStyle(.primary)
+                      .fontWeight(.semibold)
+                      .contentShape(Rectangle())
+                      .onTapGesture {
+                        showAlbum(albumID)
+                      }
+                      .accessibilityAddTraits(.isLink)
+                      .accessibilityAction {
+                        showAlbum(albumID)
+                      }
+                      .help("Show \(entry.album)")
                   } else {
                     Text(entry.album).fontWeight(.semibold)
                   }
