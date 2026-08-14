@@ -63,14 +63,14 @@
 
 ### Documentation and build workflow
 
-- Verify documentation against the scripts and current runtime behavior, especially prerequisites, bundled libmpv, signing, debug versus release credential storage, `.build/Coda.app`, and available self-tests.
+- Verify documentation against the scripts and current runtime behavior, especially prerequisites, bundled libmpv, signing, debug versus release credential storage, `.build/Coda.app`, and available automated tests.
 - Update documentation in the same change when user-facing behavior, required setup, build commands, or verification commands change.
 - Keep build instructions reproducible for a fresh checkout. Do not preserve obsolete commands merely because they once worked.
 
 ### Experiment residue
 
 - Look for dead UI variants, abandoned feature switches, stale preview/debug controls, unused styles, obsolete compatibility paths, and abstractions left behind by prototypes.
-- Distinguish intentional diagnostics and self-tests from experiment residue. Do not delete useful instrumentation solely because it is not part of the visible product.
+- Distinguish intentional diagnostics and test support from experiment residue. Do not delete useful instrumentation solely because it is not part of the visible product.
 - Do not restore discarded designs or prototype behavior based only on Git history.
 
 ### Security, packaging, and native behavior
@@ -83,9 +83,9 @@
 
 - Match verification effort to the risk and scope of the change, and report checks that were not run.
 - For documentation-only changes, run `git diff --check` and verify referenced commands and paths. A full build is not required unless build scripts or generated bundle behavior changed.
-- For normal code changes, use `scripts/build-app.sh` and run `.build/Coda.app/Contents/MacOS/Coda --self-test` unless the change clearly cannot affect compilation or behavior.
+- For normal code changes, use `scripts/build-app.sh` and run `swift test` unless the change clearly cannot affect compilation or behavior.
 - Use `--mpv-local-transition-test` or `--mpv-stream-test` only when the affected playback path warrants it and the required local media, server, and credentials are available. Do not silently substitute live tests for deterministic checks.
-- UI self-tests do not validate visual quality. For visual changes, also describe the states and window sizes that need human inspection.
+- Automated tests do not validate visual quality. For visual changes, also describe the states and window sizes that need human inspection.
 
 ## Scope discipline
 

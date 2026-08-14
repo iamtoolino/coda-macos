@@ -130,9 +130,7 @@ Developer ID signed or notarized for public distribution.
 Run deterministic authentication, metadata, queue, playback-policy, and scrobbling checks with:
 
 ```sh
-SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" \
-  DYLD_LIBRARY_PATH=.build/libmpv/prefix/lib \
-  swift run CodaPlaybackSpike --self-test
+swift test
 ```
 
 Test real decoding and the preloaded transition between two server tracks with:

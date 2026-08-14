@@ -29,6 +29,16 @@ let package = Package(
       name: "CodaPlaybackSpike",
       dependencies: ["CMpv"]
     ),
+    .testTarget(
+      name: "CodaPlaybackSpikeTests",
+      dependencies: ["CodaPlaybackSpike"],
+      linkerSettings: [
+        .unsafeFlags([
+          "-Xlinker", "-rpath",
+          "-Xlinker", "@loader_path/../../../../../libmpv/prefix/lib",
+        ])
+      ]
+    ),
   ],
   swiftLanguageModes: [.v6]
 )

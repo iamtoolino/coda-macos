@@ -14,10 +14,6 @@ struct CodaPlaybackSpikeApp: App {
   @StateObject private var nowPlayingPresentation: NowPlayingPresentationController
 
   init() {
-    if CommandLine.arguments.contains("--self-test") {
-      exit(SelfTests.run() ? EXIT_SUCCESS : EXIT_FAILURE)
-    }
-
     let isPlaybackTest = CommandLine.arguments.contains("--mpv-local-transition-test")
       || CommandLine.arguments.contains("--mpv-stream-test")
     let session = AppSession(loadCredentials: !isPlaybackTest)
@@ -204,7 +200,7 @@ private final class CodaAppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     if CommandLine.arguments.contains("--mpv-local-transition-test") {
       Task {
-        let success = await SelfTests.runMPVLocalTransitionTest()
+        let success = await PlaybackDiagnostics.runMPVLocalTransitionTest()
         exit(success ? EXIT_SUCCESS : EXIT_FAILURE)
       }
       return
@@ -212,7 +208,7 @@ private final class CodaAppDelegate: NSObject, NSApplicationDelegate {
 
     if CommandLine.arguments.contains("--mpv-stream-test") {
       Task {
-        let success = await SelfTests.runMPVStreamTest()
+        let success = await PlaybackDiagnostics.runMPVStreamTest()
         exit(success ? EXIT_SUCCESS : EXIT_FAILURE)
       }
       return
