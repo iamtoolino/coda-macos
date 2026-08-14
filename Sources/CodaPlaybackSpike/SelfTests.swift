@@ -21,6 +21,32 @@ enum SelfTests {
       NavidromeConfiguration.md5("passwordsalt") == "b305cadbb3bce54f3aa59c64fec00dea"
     }
 
+    check("artwork purposes use one browsing size and one Retina presentation size", failures: &failures) {
+      ArtworkPurpose.standard.rawValue == 500
+        && ArtworkPurpose.nowPlaying.rawValue == 1_200
+    }
+
+    check("artwork invalidation advances the shared cache generation", failures: &failures) {
+      let cache = ArtworkImageCache.shared
+      let previousGeneration = cache.generation
+      cache.invalidateAll()
+      return cache.generation == previousGeneration + 1
+    }
+
+    check("queue entries keep browsing and now playing artwork separate", failures: &failures) {
+      let browsingURL = URL(string: "https://example.test/cover?size=500")!
+      let nowPlayingURL = URL(string: "https://example.test/cover?size=1200")!
+      let entry = QueueEntry(
+        sourceID: "song",
+        url: URL(string: "https://example.test/song")!,
+        artworkURL: browsingURL,
+        nowPlayingArtworkURL: nowPlayingURL,
+        title: "Song"
+      )
+      return entry.artworkURL == browsingURL
+        && entry.nowPlayingArtworkURL == nowPlayingURL
+    }
+
     check("same album identity can repair stale artwork treatment", failures: &failures) {
       let treatments = ArtworkTreatmentSettings()
       let staleImage = NSImage(size: NSSize(width: 1, height: 1))
@@ -872,7 +898,7 @@ enum SelfTests {
     }
 
     if failures.isEmpty {
-      print("Coda playback spike self-tests passed (46 checks).")
+      print("Coda playback spike self-tests passed (49 checks).")
       return true
     }
 

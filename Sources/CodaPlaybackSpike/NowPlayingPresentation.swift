@@ -214,16 +214,21 @@ final class NowPlayingPresentationController: ObservableObject {
 struct NowPlayingPreparationObserver: View {
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var presentation: NowPlayingPresentationController
+  @ObservedObject private var artworkCache = ArtworkImageCache.shared
 
   private struct Request: Hashable {
     let playbackKey: String?
     let artworkURL: URL?
+    let nextArtworkURL: URL?
+    let cacheGeneration: Int
   }
 
   private var request: Request {
     Request(
       playbackKey: player.currentEntry?.nowPlayingPlaybackKey,
-      artworkURL: player.currentEntry?.artworkURL
+      artworkURL: player.currentEntry?.nowPlayingArtworkURL ?? player.currentEntry?.artworkURL,
+      nextArtworkURL: player.nextEntry?.nowPlayingArtworkURL ?? player.nextEntry?.artworkURL,
+      cacheGeneration: artworkCache.generation
     )
   }
 
@@ -232,13 +237,18 @@ struct NowPlayingPreparationObserver: View {
       .task(id: request) {
         let request = request
         guard let playbackKey = request.playbackKey else { return }
-        let artwork = await ArtworkImageCache.shared.image(for: request.artworkURL)
+        let artwork = await artworkCache.image(for: request.artworkURL)
         guard self.request == request else { return }
         presentation.prepare(
           playbackKey: playbackKey,
           artwork: artwork,
           accent: AlbumArtworkLoader.extractAccent(from: artwork)
         )
+        if let nextArtworkURL = request.nextArtworkURL,
+          nextArtworkURL != request.artworkURL
+        {
+          _ = await artworkCache.image(for: nextArtworkURL)
+        }
       }
   }
 }
@@ -515,7 +525,10 @@ struct NowPlayingPresentationView: View {
           .id(ObjectIdentifier(artwork))
           .transition(.opacity.combined(with: .scale(scale: 0.985)))
       } else {
-        ArtworkImage(url: entry.artworkURL, cornerRadius: 16)
+        ArtworkImage(
+          url: entry.nowPlayingArtworkURL ?? entry.artworkURL,
+          cornerRadius: 16
+        )
       }
     }
     .animation(.easeInOut(duration: 0.45), value: preparedArtworkIdentity)

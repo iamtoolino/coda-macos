@@ -488,6 +488,7 @@ private struct CompactPlaybackDock: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
+  @ObservedObject private var artworkCache = ArtworkImageCache.shared
   @State private var seekPreviewPosition: Double?
 
   var body: some View {
@@ -520,7 +521,7 @@ private struct CompactPlaybackDock: View {
       artworkTreatments.promoteDisplayedArtworkToPlayback(ifIdentity: identity)
       applyArtworkDisplayContext()
 
-      let image = await ArtworkImageCache.shared.image(for: request.artworkURL)
+      let image = await artworkCache.image(for: request.artworkURL)
       guard playbackArtworkRequest == request else { return }
       artworkTreatments.rememberPlaybackArtwork(
         image,
@@ -534,12 +535,14 @@ private struct CompactPlaybackDock: View {
   private struct PlaybackArtworkRequest: Hashable {
     let identity: String?
     let artworkURL: URL?
+    let cacheGeneration: Int
   }
 
   private var playbackArtworkRequest: PlaybackArtworkRequest {
     PlaybackArtworkRequest(
       identity: player.currentEntry?.artworkThemeIdentity,
-      artworkURL: player.currentEntry?.artworkURL
+      artworkURL: player.currentEntry?.artworkURL,
+      cacheGeneration: artworkCache.generation
     )
   }
 
@@ -1105,7 +1108,17 @@ private struct NavidromeLoginView: View {
 struct ArtworkImage: View {
   let url: URL?
   var cornerRadius: CGFloat = 8
+  @ObservedObject private var cache = ArtworkImageCache.shared
   @State private var image: NSImage?
+
+  private struct Request: Hashable {
+    let url: URL?
+    let cacheGeneration: Int
+  }
+
+  private var request: Request {
+    Request(url: url, cacheGeneration: cache.generation)
+  }
 
   var body: some View {
     ZStack {
@@ -1121,9 +1134,12 @@ struct ArtworkImage: View {
       }
     }
     .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-    .task(id: url) {
+    .task(id: request) {
+      let request = request
       image = nil
-      image = await ArtworkImageCache.shared.image(for: url)
+      let loadedImage = await cache.image(for: request.url)
+      guard self.request == request else { return }
+      image = loadedImage
     }
   }
 }

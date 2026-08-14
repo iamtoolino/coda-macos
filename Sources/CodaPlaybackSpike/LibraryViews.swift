@@ -92,7 +92,10 @@ struct HomeView: View {
     .navigationTitle("Home")
     .focusedSceneValue(
       \.codaRefreshAction,
-      CodaRefreshAction { Task { await load() } }
+      CodaRefreshAction {
+        session.refreshArtwork()
+        Task { await load() }
+      }
     )
     .task(id: resetToken) {
       await load()
@@ -226,7 +229,10 @@ struct SearchView: View {
     .navigationTitle("Search")
     .focusedSceneValue(
       \.codaRefreshAction,
-      CodaRefreshAction { Task { await performSearch(for: query) } }
+      CodaRefreshAction {
+        session.refreshArtwork()
+        Task { await performSearch(for: query) }
+      }
     )
     .task(id: query) {
       await performSearch(for: query)
@@ -407,7 +413,10 @@ struct ArtistsView: View {
     .navigationTitle(selectedKind.title)
     .focusedSceneValue(
       \.codaRefreshAction,
-      CodaRefreshAction { Task { await load(selectedKind) } }
+      CodaRefreshAction {
+        session.refreshArtwork()
+        Task { await load(selectedKind) }
+      }
     )
     .task(id: ArtistsLoadRequest(kind: selectedKind, resetToken: resetToken)) {
       await load(selectedKind)
@@ -534,7 +543,10 @@ struct AlbumsView: View {
     .navigationTitle(selectedKind.title)
     .focusedSceneValue(
       \.codaRefreshAction,
-      CodaRefreshAction { Task { await load(selectedKind) } }
+      CodaRefreshAction {
+        session.refreshArtwork()
+        Task { await load(selectedKind) }
+      }
     )
     .task(id: AlbumsLoadRequest(kind: selectedKind, resetToken: resetToken)) {
       await load(selectedKind)
@@ -620,7 +632,10 @@ struct ArtistDetailView: View {
     .navigationTitle(page?.artist.name ?? "Artist")
     .focusedSceneValue(
       \.codaRefreshAction,
-      CodaRefreshAction { Task { await load() } }
+      CodaRefreshAction {
+        session.refreshArtwork()
+        Task { await load() }
+      }
     )
     .task(id: artistID) {
       await load()
@@ -699,7 +714,7 @@ struct ArtistDetailView: View {
   }
 
   private func artistArtworkURL(_ page: ArtistPage) -> URL? {
-    session.artworkURL(id: page.artist.coverArt, size: 900)
+    session.artworkURL(id: page.artist.coverArt)
   }
 
   private func play(_ page: ArtistPage, shuffled: Bool) {
@@ -850,7 +865,17 @@ private extension View {
 private struct ArtistContainedImage: View {
   let url: URL?
   let cornerRadius: CGFloat
+  @ObservedObject private var cache = ArtworkImageCache.shared
   @State private var image: NSImage?
+
+  private struct Request: Hashable {
+    let url: URL?
+    let cacheGeneration: Int
+  }
+
+  private var request: Request {
+    Request(url: url, cacheGeneration: cache.generation)
+  }
 
   var body: some View {
     GeometryReader { geometry in
@@ -873,8 +898,12 @@ private struct ArtistContainedImage: View {
       RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
         .strokeBorder(.white.opacity(0.10), lineWidth: 0.7)
     }
-    .task(id: url) {
-      image = await ArtworkImageCache.shared.image(for: url)
+    .task(id: request) {
+      let request = request
+      image = nil
+      let loadedImage = await cache.image(for: request.url)
+      guard self.request == request else { return }
+      image = loadedImage
     }
   }
 }
@@ -994,7 +1023,10 @@ struct AlbumDetailView: View {
     .navigationTitle(page?.album.name ?? "Album")
     .focusedSceneValue(
       \.codaRefreshAction,
-      CodaRefreshAction { Task { await load() } }
+      CodaRefreshAction {
+        session.refreshArtwork()
+        Task { await load() }
+      }
     )
     .task(id: albumID) {
       clearTrackSelection()
@@ -1051,7 +1083,7 @@ struct AlbumDetailView: View {
   }
 
   private func albumDetailHeader(page: AlbumPage, availableWidth: CGFloat) -> some View {
-    let artworkURL = session.artworkURL(id: page.album.coverArt ?? page.album.id, size: 700)
+    let artworkURL = session.artworkURL(id: page.album.coverArt ?? page.album.id)
     return AlbumMockupHero(
       availableWidth: availableWidth,
       image: artworkLoader.image,
@@ -1124,7 +1156,7 @@ struct AlbumDetailView: View {
       let loadedPage = try await client.album(id: albumID)
       page = loadedPage
       await artworkLoader.load(
-        url: session.artworkURL(id: loadedPage.album.coverArt ?? loadedPage.album.id, size: 700),
+        url: session.artworkURL(id: loadedPage.album.coverArt ?? loadedPage.album.id),
         placeholderIdentity: loadedPage.album.id
       )
       if !Task.isCancelled {
@@ -1270,7 +1302,10 @@ struct PlaylistDetailView: View {
     .navigationTitle(playlist?.name ?? "Playlist")
     .focusedSceneValue(
       \.codaRefreshAction,
-      CodaRefreshAction { Task { await load() } }
+      CodaRefreshAction {
+        session.refreshArtwork()
+        Task { await load() }
+      }
     )
     .task(id: playlistID) {
       clearTrackSelection()
@@ -1478,7 +1513,7 @@ private struct AlbumCard: View {
       VStack(alignment: .leading, spacing: 6) {
         ZStack(alignment: .topTrailing) {
           ArtworkImage(
-            url: session.artworkURL(id: album.coverArt ?? album.id, size: 500), cornerRadius: 9
+            url: session.artworkURL(id: album.coverArt ?? album.id), cornerRadius: 9
           )
           .aspectRatio(1, contentMode: .fit)
 
@@ -1550,7 +1585,7 @@ private struct ArtistCard: View {
     } label: {
       VStack(alignment: .leading, spacing: 6) {
         ArtistContainedImage(
-          url: session.artworkURL(id: artist.coverArt, size: 500),
+          url: session.artworkURL(id: artist.coverArt),
           cornerRadius: 10
         )
           .aspectRatio(1, contentMode: .fit)
@@ -1581,7 +1616,7 @@ private struct PlaylistHomeRow: View {
       session.open(.playlist(playlist.id))
     } label: {
       HStack(spacing: 12) {
-        ArtworkImage(url: session.artworkURL(id: playlist.coverArt, size: 240), cornerRadius: 7)
+        ArtworkImage(url: session.artworkURL(id: playlist.coverArt), cornerRadius: 7)
           .frame(width: 48, height: 48)
         VStack(alignment: .leading, spacing: 2) {
           Text(playlist.name)
@@ -1620,10 +1655,7 @@ private struct ContinuePlayingCard: View {
       let currentSong = queue.songs[safe: queue.resolvedCurrentIndex]
       HStack(spacing: 14) {
         ArtworkImage(
-          url: session.artworkURL(
-            id: currentSong?.albumArtworkID,
-            size: 700
-          ),
+          url: session.artworkURL(id: currentSong?.albumArtworkID),
           cornerRadius: 9
         )
         .frame(width: 76, height: 76)
@@ -1811,7 +1843,7 @@ private struct SearchSongRow: View {
     Button(action: action) {
       HStack(spacing: 12) {
         ArtworkImage(
-          url: session.artworkURL(id: song.albumArtworkID, size: 240),
+          url: session.artworkURL(id: song.albumArtworkID),
           cornerRadius: 7
         )
         .frame(width: 48, height: 48)
@@ -1867,10 +1899,7 @@ private struct PlaylistAlbumHeader: View {
   var body: some View {
     HStack(spacing: 12) {
       ArtworkImage(
-        url: session.artworkURL(
-          id: group.songs.first?.song.albumArtworkID,
-          size: 300
-        ),
+        url: session.artworkURL(id: group.songs.first?.song.albumArtworkID),
         cornerRadius: 8
       )
       .frame(width: 62, height: 62)

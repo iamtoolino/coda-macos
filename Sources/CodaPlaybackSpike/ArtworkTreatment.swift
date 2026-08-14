@@ -1,6 +1,5 @@
 import AppKit
 import Combine
-import ImageIO
 import SwiftUI
 
 struct ArtworkColor: Equatable {
@@ -189,156 +188,6 @@ private enum ArtworkBackgroundStyle {
   static let glowOpacity = 0.26
 }
 
-private actor ArtworkDiskCache {
-  static let shared = ArtworkDiskCache()
-
-  private static let maximumBytes: Int64 = 3 * 1_024 * 1_024 * 1_024
-  private static let trimTargetBytes: Int64 = 2_700 * 1_024 * 1_024
-  private static let maximumAge: TimeInterval = 30 * 24 * 60 * 60
-
-  private let directoryURL: URL?
-  private var isPrepared = false
-  private var writesUntilTrim = 1
-
-  private init() {
-    let cacheRoot = FileManager.default.urls(
-      for: .cachesDirectory,
-      in: .userDomainMask
-    ).first
-    let currentDirectory = cacheRoot?
-      .appendingPathComponent("io.github.iamtoolino.coda.macos", isDirectory: true)
-      .appendingPathComponent("Artwork", isDirectory: true)
-    let legacyDirectory = cacheRoot?
-      .appendingPathComponent("com.toolino.coda.macos", isDirectory: true)
-      .appendingPathComponent("Artwork", isDirectory: true)
-
-    if let currentDirectory, let legacyDirectory,
-      !FileManager.default.fileExists(atPath: currentDirectory.path),
-      FileManager.default.fileExists(atPath: legacyDirectory.path)
-    {
-      try? FileManager.default.createDirectory(
-        at: currentDirectory.deletingLastPathComponent(),
-        withIntermediateDirectories: true
-      )
-      try? FileManager.default.moveItem(at: legacyDirectory, to: currentDirectory)
-    }
-    directoryURL = currentDirectory
-  }
-
-  func data(for url: URL) -> Data? {
-    guard prepare(), let fileURL = fileURL(for: url) else { return nil }
-
-    do {
-      let values = try fileURL.resourceValues(forKeys: [
-        .creationDateKey,
-        .contentModificationDateKey,
-      ])
-      let created = values.creationDate ?? values.contentModificationDate ?? .distantPast
-      guard Date().timeIntervalSince(created) <= Self.maximumAge else {
-        try? FileManager.default.removeItem(at: fileURL)
-        return nil
-      }
-
-      let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
-      guard Self.isArtworkData(data) else {
-        try? FileManager.default.removeItem(at: fileURL)
-        return nil
-      }
-      try? FileManager.default.setAttributes(
-        [.modificationDate: Date()],
-        ofItemAtPath: fileURL.path
-      )
-      return data
-    } catch {
-      return nil
-    }
-  }
-
-  func store(_ data: Data, for url: URL) {
-    guard Self.isArtworkData(data), prepare(), let fileURL = fileURL(for: url) else { return }
-    do {
-      try data.write(to: fileURL, options: .atomic)
-      writesUntilTrim -= 1
-      if writesUntilTrim <= 0 {
-        trimToBudget()
-        writesUntilTrim = 25
-      }
-    } catch {
-      // Artwork remains available from the RAM cache for this session.
-    }
-  }
-
-  private func prepare() -> Bool {
-    guard let directoryURL else { return false }
-    if isPrepared { return true }
-    do {
-      try FileManager.default.createDirectory(
-        at: directoryURL,
-        withIntermediateDirectories: true
-      )
-      isPrepared = true
-      return true
-    } catch {
-      return false
-    }
-  }
-
-  private func fileURL(for url: URL) -> URL? {
-    directoryURL?.appendingPathComponent(
-      NavidromeConfiguration.md5(url.absoluteString),
-      isDirectory: false
-    )
-  }
-
-  private func trimToBudget() {
-    guard let directoryURL else { return }
-    let keys: Set<URLResourceKey> = [
-      .fileAllocatedSizeKey,
-      .fileSizeKey,
-      .contentModificationDateKey,
-    ]
-    guard
-      let files = try? FileManager.default.contentsOfDirectory(
-        at: directoryURL,
-        includingPropertiesForKeys: Array(keys),
-        options: [.skipsHiddenFiles]
-      )
-    else { return }
-
-    let entries = files.compactMap { fileURL -> DiskEntry? in
-      guard let values = try? fileURL.resourceValues(forKeys: keys) else { return nil }
-      let size = Int64(values.fileAllocatedSize ?? values.fileSize ?? 0)
-      return DiskEntry(
-        url: fileURL,
-        size: size,
-        lastAccess: values.contentModificationDate ?? .distantPast
-      )
-    }
-    var totalBytes = entries.reduce(Int64(0)) { $0 + $1.size }
-    guard totalBytes > Self.maximumBytes else { return }
-
-    for entry in entries.sorted(by: { $0.lastAccess < $1.lastAccess }) {
-      guard totalBytes > Self.trimTargetBytes else { break }
-      do {
-        try FileManager.default.removeItem(at: entry.url)
-        totalBytes -= entry.size
-      } catch {
-        continue
-      }
-    }
-  }
-
-  private static func isArtworkData(_ data: Data) -> Bool {
-    CGImageSourceCreateWithData(data as CFData, nil) != nil
-  }
-
-  private struct DiskEntry {
-    let url: URL
-    let size: Int64
-    let lastAccess: Date
-  }
-}
-
 @MainActor
 enum CodaPlaceholderArtwork {
   static let image: NSImage = {
@@ -378,12 +227,19 @@ enum CodaPlaceholderArtwork {
 }
 
 @MainActor
-final class ArtworkImageCache {
+final class ArtworkImageCache: ObservableObject {
   static let shared = ArtworkImageCache()
 
+  @Published private(set) var generation = 0
+
+  private struct LoadingRequest: Hashable {
+    let url: URL
+    let generation: Int
+  }
+
   private let images = NSCache<NSURL, NSImage>()
-  private var loadingTasks: [URL: Task<Data?, Never>] = [:]
-  private let diskCache = ArtworkDiskCache.shared
+  private var loadingTasks: [LoadingRequest: Task<Data?, Never>] = [:]
+  private var requestedURLs: Set<URL> = []
 
   private init() {
     images.countLimit = 300
@@ -396,31 +252,36 @@ final class ArtworkImageCache {
       return image
     }
 
+    requestedURLs.insert(url)
+    let loadingRequest = LoadingRequest(url: url, generation: generation)
     let task: Task<Data?, Never>
-    if let existingTask = loadingTasks[url] {
+    if let existingTask = loadingTasks[loadingRequest] {
       task = existingTask
     } else {
-      let diskCache = diskCache
       task = Task {
-        if let data = await diskCache.data(for: url) {
-          return data
-        }
         do {
-          let (data, response) = try await URLSession.shared.data(from: url)
+          let request = URLRequest(
+            url: url,
+            cachePolicy: .reloadRevalidatingCacheData,
+            timeoutInterval: 30
+          )
+          let (data, response) = try await URLSession.shared.data(for: request)
           if let response = response as? HTTPURLResponse {
             guard (200..<300).contains(response.statusCode) else { return nil }
           }
-          await diskCache.store(data, for: url)
           return data
         } catch {
           return nil
         }
       }
-      loadingTasks[url] = task
+      loadingTasks[loadingRequest] = task
     }
 
     let data = await task.value
-    loadingTasks[url] = nil
+    loadingTasks[loadingRequest] = nil
+    guard loadingRequest.generation == generation else {
+      return CodaPlaceholderArtwork.image
+    }
     guard let data, let image = NSImage(data: data) else {
       return CodaPlaceholderArtwork.image
     }
@@ -430,6 +291,17 @@ final class ArtworkImageCache {
       cost: Self.decodedMemoryCost(of: image, fallback: data.count)
     )
     return image
+  }
+
+  func invalidateAll() {
+    generation &+= 1
+    images.removeAllObjects()
+    loadingTasks.values.forEach { $0.cancel() }
+    loadingTasks.removeAll()
+    for url in requestedURLs {
+      URLCache.shared.removeCachedResponse(for: URLRequest(url: url))
+    }
+    requestedURLs.removeAll()
   }
 
   private static func decodedMemoryCost(of image: NSImage, fallback: Int) -> Int {
@@ -449,12 +321,17 @@ final class AlbumArtworkLoader: ObservableObject {
   private struct Request: Equatable {
     let url: URL?
     let placeholderIdentity: String?
+    let cacheGeneration: Int
   }
 
   private var loadedRequest: Request?
 
   func load(url: URL?, placeholderIdentity: String? = nil) async {
-    let request = Request(url: url, placeholderIdentity: placeholderIdentity)
+    let request = Request(
+      url: url,
+      placeholderIdentity: placeholderIdentity,
+      cacheGeneration: ArtworkImageCache.shared.generation
+    )
     guard loadedRequest != request else { return }
     loadedRequest = request
     image = nil

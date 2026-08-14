@@ -82,6 +82,11 @@ final class PlayerController: ObservableObject {
     return queue[currentIndex]
   }
 
+  var nextEntry: QueueEntry? {
+    guard let currentIndex, queue.indices.contains(currentIndex + 1) else { return nil }
+    return queue[currentIndex + 1]
+  }
+
   var canGoPrevious: Bool {
     guard let currentIndex else { return false }
     return currentIndex > 0 || position > 3

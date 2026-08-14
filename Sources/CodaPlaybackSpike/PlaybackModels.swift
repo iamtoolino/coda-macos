@@ -114,6 +114,7 @@ struct QueueEntry: Identifiable, Hashable, Sendable {
   let sourceID: String
   let url: URL
   let artworkURL: URL?
+  let nowPlayingArtworkURL: URL?
   let title: String
   let artist: String
   let album: String
@@ -131,6 +132,7 @@ struct QueueEntry: Identifiable, Hashable, Sendable {
     sourceID: String,
     url: URL,
     artworkURL: URL? = nil,
+    nowPlayingArtworkURL: URL? = nil,
     title: String,
     artist: String = "",
     album: String = "",
@@ -147,6 +149,7 @@ struct QueueEntry: Identifiable, Hashable, Sendable {
     self.sourceID = sourceID
     self.url = url
     self.artworkURL = artworkURL
+    self.nowPlayingArtworkURL = nowPlayingArtworkURL
     self.title = title
     self.artist = artist
     self.album = album
@@ -419,12 +422,14 @@ extension QueueEntry {
     _ song: RemoteSong,
     streamURL: URL,
     artworkURL: URL?,
+    nowPlayingArtworkURL: URL?,
     queueGroupID: UUID? = nil
   ) -> QueueEntry {
     QueueEntry(
       sourceID: song.id,
       url: streamURL,
       artworkURL: artworkURL,
+      nowPlayingArtworkURL: nowPlayingArtworkURL,
       title: song.title,
       artist: song.artistName,
       album: song.albumName,

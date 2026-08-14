@@ -50,6 +50,11 @@ enum ConnectionState: Equatable, Sendable {
   case failed(String)
 }
 
+enum ArtworkPurpose: Int, Sendable {
+  case standard = 500
+  case nowPlaying = 1_200
+}
+
 @MainActor
 final class AppSession: ObservableObject {
   @Published private(set) var client: NavidromeClient?
@@ -281,8 +286,13 @@ final class AppSession: ObservableObject {
     handledPlayQueueIdentity = queue.handoffIdentity
   }
 
-  func artworkURL(id: String?, size: Int) -> URL? {
+  func refreshArtwork() {
+    ArtworkImageCache.shared.invalidateAll()
+  }
+
+  func artworkURL(id: String?, purpose: ArtworkPurpose = .standard) -> URL? {
     guard let id, !id.isEmpty, let configuration else { return nil }
+    let size = purpose.rawValue
     let key = "\(id):\(size)"
     if let cached = artworkURLs[key] { return cached }
     let salt = String(NavidromeConfiguration.md5("artwork:\(key)").prefix(12))
@@ -305,7 +315,8 @@ final class AppSession: ObservableObject {
       return QueueEntry.remoteSong(
         song,
         streamURL: streamURL,
-        artworkURL: artworkURL(id: song.albumArtworkID, size: 700),
+        artworkURL: artworkURL(id: song.albumArtworkID),
+        nowPlayingArtworkURL: artworkURL(id: song.albumArtworkID, purpose: .nowPlaying),
         queueGroupID: currentGroupID
       )
     }
