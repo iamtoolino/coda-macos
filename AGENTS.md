@@ -32,6 +32,23 @@
 - Separate confirmed defects, credible risks, architectural options, and optional cleanup. Do not present personal style preferences as correctness issues.
 - If no actionable findings are found, say so and identify any important verification gaps or areas not exercised.
 
+## Multi-agent review orchestration
+
+- Use subagents only when the user explicitly requests a multi-agent review, a full Coda review, or named review passes with subagents. Do not spawn review agents for ordinary implementation, questions, or a normal single-agent review.
+- Before delegation, record the reviewed commit or working-tree state and identify whether uncommitted changes are in scope. Never clean, reset, or modify the tree to make a review easier.
+- A full review must cover these specialist passes, using waves when concurrency is limited rather than omitting a pass:
+  1. Architecture fitness and shared-policy ownership.
+  2. Correctness, concurrency, security, packaging, and native macOS behavior.
+  3. Code quality, semantic duplication, maintainability, and experiment residue.
+  4. Performance and resource-use risks.
+  5. Documentation, build reproducibility, and verification coverage.
+- If the user requests only particular review areas, delegate only those passes. Keep each assignment concrete, bounded, and as non-overlapping as practical.
+- Specialist agents are read-only unless the user separately requests implementation. They must not edit files, launch the app, run live server tests, create commits, or delegate further review work.
+- Each specialist must report findings ordered by severity with file and line references, concrete evidence, user impact, and a concise remediation direction. It must distinguish confirmed defects from risks or optional design ideas and explicitly say when it found no actionable issues.
+- The coordinating agent must independently inspect important claims, reconcile conflicts, remove duplicates, and deliver one findings-first report. Do not concatenate raw subagent reports or treat agreement between agents as proof.
+- Keep architectural alternatives separate from defects. For substantial redesign suggestions, present the status quo, a minimal refactor, and a broader option with their costs and risks.
+- After delivering the review, wait for the user to choose remediation scope. A review request alone does not authorize fixes.
+
 ## Review priorities
 
 ### Architecture fitness
