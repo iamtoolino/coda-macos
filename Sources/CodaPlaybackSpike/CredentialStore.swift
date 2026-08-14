@@ -32,13 +32,6 @@ struct StoredLogin: Codable, Equatable, Sendable {
 enum CredentialStore {
   private static let service = "io.github.iamtoolino.coda.macos.navidrome"
   private static let account = "default"
-  private static let accessPolicyMigrationKey =
-    "CredentialStore.stableSignedApplicationAccess.v4"
-  private static let legacyAccessPolicyMigrationKeys = [
-    "CredentialStore.stableSignedApplicationAccess.v1",
-    "CredentialStore.stableSignedApplicationAccess.v2",
-    "CredentialStore.stableSignedApplicationAccess.v3",
-  ]
 
   static func load() throws -> StoredLogin? {
     #if DEBUG
@@ -112,9 +105,6 @@ enum CredentialStore {
     } catch {
       throw CredentialStoreError.invalidStoredLogin
     }
-    #if !DEBUG
-      try migrateAccessPolicyIfNeeded()
-    #endif
     return login
   }
 
@@ -127,27 +117,23 @@ enum CredentialStore {
     }
 
     let updatedValues: [String: Any] = [
-      kSecValueData as String: data
+      kSecValueData as String: data,
     ]
     let updateStatus = SecItemUpdate(baseQuery as CFDictionary, updatedValues as CFDictionary)
     if updateStatus == errSecSuccess {
-      try migrateAccessPolicyIfNeeded()
       return
     }
     guard updateStatus == errSecItemNotFound else {
       throw CredentialStoreError.keychain(updateStatus)
     }
 
-    let access = try applicationAccess()
     var item = baseQuery
     item.merge(updatedValues) { _, new in new }
     item[kSecAttrLabel as String] = "Coda Navidrome Login"
-    item[kSecAttrAccess as String] = access
     let addStatus = SecItemAdd(item as CFDictionary, nil)
     guard addStatus == errSecSuccess else {
       throw CredentialStoreError.keychain(addStatus)
     }
-    markAccessPolicyCurrent()
   }
 
   private static func deleteFromKeychain() throws {
@@ -155,7 +141,6 @@ enum CredentialStore {
     guard status == errSecSuccess || status == errSecItemNotFound else {
       throw CredentialStoreError.keychain(status)
     }
-    UserDefaults.standard.removeObject(forKey: accessPolicyMigrationKey)
   }
 
   private static var baseQuery: [String: Any] {
@@ -164,59 +149,6 @@ enum CredentialStore {
       kSecAttrService as String: service,
       kSecAttrAccount as String: account,
     ]
-  }
-
-  private static func migrateAccessPolicyIfNeeded() throws {
-    guard !UserDefaults.standard.bool(forKey: accessPolicyMigrationKey) else { return }
-    let access = try applicationAccess()
-    var query = baseQuery
-    query[kSecMatchLimit as String] = kSecMatchLimitOne
-    query[kSecReturnRef as String] = true
-
-    var result: CFTypeRef?
-    let lookupStatus = SecItemCopyMatching(query as CFDictionary, &result)
-    guard lookupStatus == errSecSuccess, let result,
-      CFGetTypeID(result) == SecKeychainItemGetTypeID()
-    else {
-      throw CredentialStoreError.keychain(lookupStatus)
-    }
-    let item = unsafeDowncast(result, to: SecKeychainItem.self)
-
-    // SecItemUpdate can merge a new application ACL with the item's old
-    // partition ACL. Replacing the complete access object removes stale code
-    // hashes left by prototype bundles and gives the stable signed app one
-    // durable authorization.
-    let status = SecKeychainItemSetAccess(item, access)
-    guard status == errSecSuccess else {
-      throw CredentialStoreError.keychain(status)
-    }
-    markAccessPolicyCurrent()
-  }
-
-  private static func applicationAccess() throws -> SecAccess {
-    var trustedApplication: SecTrustedApplication?
-    let trustedStatus = SecTrustedApplicationCreateFromPath(nil, &trustedApplication)
-    guard trustedStatus == errSecSuccess, let trustedApplication else {
-      throw CredentialStoreError.keychain(trustedStatus)
-    }
-
-    var access: SecAccess?
-    let accessStatus = SecAccessCreate(
-      "Coda Navidrome Login" as CFString,
-      [trustedApplication] as CFArray,
-      &access
-    )
-    guard accessStatus == errSecSuccess, let access else {
-      throw CredentialStoreError.keychain(accessStatus)
-    }
-    return access
-  }
-
-  private static func markAccessPolicyCurrent() {
-    UserDefaults.standard.set(true, forKey: accessPolicyMigrationKey)
-    for key in legacyAccessPolicyMigrationKeys {
-      UserDefaults.standard.removeObject(forKey: key)
-    }
   }
 
   #if DEBUG
