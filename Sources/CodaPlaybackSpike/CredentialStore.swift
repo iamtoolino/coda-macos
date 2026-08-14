@@ -33,10 +33,11 @@ enum CredentialStore {
   private static let service = "io.github.iamtoolino.coda.macos.navidrome"
   private static let account = "default"
   private static let accessPolicyMigrationKey =
-    "CredentialStore.stableSignedApplicationAccess.v3"
+    "CredentialStore.stableSignedApplicationAccess.v4"
   private static let legacyAccessPolicyMigrationKeys = [
     "CredentialStore.stableSignedApplicationAccess.v1",
     "CredentialStore.stableSignedApplicationAccess.v2",
+    "CredentialStore.stableSignedApplicationAccess.v3",
   ]
 
   static func load() throws -> StoredLogin? {
@@ -125,23 +126,23 @@ enum CredentialStore {
       throw CredentialStoreError.encoding(error.localizedDescription)
     }
 
-    let access = try applicationAccess()
     let updatedValues: [String: Any] = [
-      kSecValueData as String: data,
-      kSecAttrAccess as String: access,
+      kSecValueData as String: data
     ]
     let updateStatus = SecItemUpdate(baseQuery as CFDictionary, updatedValues as CFDictionary)
     if updateStatus == errSecSuccess {
-      markAccessPolicyCurrent()
+      try migrateAccessPolicyIfNeeded()
       return
     }
     guard updateStatus == errSecItemNotFound else {
       throw CredentialStoreError.keychain(updateStatus)
     }
 
+    let access = try applicationAccess()
     var item = baseQuery
     item.merge(updatedValues) { _, new in new }
     item[kSecAttrLabel as String] = "Coda Navidrome Login"
+    item[kSecAttrAccess as String] = access
     let addStatus = SecItemAdd(item as CFDictionary, nil)
     guard addStatus == errSecSuccess else {
       throw CredentialStoreError.keychain(addStatus)
@@ -168,10 +169,24 @@ enum CredentialStore {
   private static func migrateAccessPolicyIfNeeded() throws {
     guard !UserDefaults.standard.bool(forKey: accessPolicyMigrationKey) else { return }
     let access = try applicationAccess()
-    let status = SecItemUpdate(
-      baseQuery as CFDictionary,
-      [kSecAttrAccess as String: access] as CFDictionary
-    )
+    var query = baseQuery
+    query[kSecMatchLimit as String] = kSecMatchLimitOne
+    query[kSecReturnRef as String] = true
+
+    var result: CFTypeRef?
+    let lookupStatus = SecItemCopyMatching(query as CFDictionary, &result)
+    guard lookupStatus == errSecSuccess, let result,
+      CFGetTypeID(result) == SecKeychainItemGetTypeID()
+    else {
+      throw CredentialStoreError.keychain(lookupStatus)
+    }
+    let item = unsafeDowncast(result, to: SecKeychainItem.self)
+
+    // SecItemUpdate can merge a new application ACL with the item's old
+    // partition ACL. Replacing the complete access object removes stale code
+    // hashes left by prototype bundles and gives the stable signed app one
+    // durable authorization.
+    let status = SecKeychainItemSetAccess(item, access)
     guard status == errSecSuccess else {
       throw CredentialStoreError.keychain(status)
     }
