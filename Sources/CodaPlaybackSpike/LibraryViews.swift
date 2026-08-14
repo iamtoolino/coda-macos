@@ -87,7 +87,7 @@ struct HomeView: View {
       }
       .padding(.vertical, 20)
       .padding(.bottom, floatingPlaybackDockScrollClearance)
-      .background(TransientScrollIndicators())
+      .background(NativeScrollIndicators())
     }
     .navigationTitle("Home")
     .focusedSceneValue(
@@ -407,6 +407,7 @@ struct ArtistsView: View {
           .padding(.top, 18)
           .padding(.bottom, 22)
           .padding(.bottom, floatingPlaybackDockScrollClearance)
+          .background(NativeScrollIndicators(visibility: .inherited))
         }
       }
     }
@@ -537,6 +538,7 @@ struct AlbumsView: View {
           .padding(.top, 18)
           .padding(.bottom, 22)
           .padding(.bottom, floatingPlaybackDockScrollClearance)
+          .background(NativeScrollIndicators(visibility: .inherited))
         }
       }
     }
@@ -618,7 +620,7 @@ struct ArtistDetailView: View {
           ScrollView {
             artistPage(page, availableWidth: geometry.size.width)
               .padding(.bottom, floatingPlaybackDockScrollClearance)
-              .background(TransientScrollIndicators())
+              .background(NativeScrollIndicators())
           }
         }
       } else if let errorMessage {
@@ -996,7 +998,7 @@ struct AlbumDetailView: View {
               .padding(.bottom, 22)
               .padding(.bottom, floatingPlaybackDockScrollClearance)
             }
-            .background(TransientScrollIndicators())
+            .background(NativeScrollIndicators())
           }
         }
       } else if let errorMessage {
@@ -1273,7 +1275,7 @@ struct PlaylistDetailView: View {
               .padding(.bottom, 22)
               .padding(.bottom, floatingPlaybackDockScrollClearance)
             }
-            .background(TransientScrollIndicators())
+            .background(NativeScrollIndicators())
           }
         }
       } else if let errorMessage {

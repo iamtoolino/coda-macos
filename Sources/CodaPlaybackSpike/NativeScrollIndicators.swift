@@ -1,16 +1,27 @@
 import AppKit
 import SwiftUI
 
-/// Applies transient overlay scrollers to the nearest containing `NSScrollView` without changing
-/// the application's or user's global scrollbar preference.
-struct TransientScrollIndicators: NSViewRepresentable {
+/// Applies a native small control size to the nearest containing `NSScrollView`, optionally
+/// keeping its indicators transient without changing the application-wide scrollbar preference.
+struct NativeScrollIndicators: NSViewRepresentable {
+  enum Visibility {
+    case inherited
+    case transient
+  }
+
+  var visibility: Visibility = .transient
+
   @MainActor
   final class Coordinator: NSObject {
+    private let visibility: Visibility
     private weak var scrollView: NSScrollView?
     private var originalStyle: NSScroller.Style?
     private var originallyAutohidScrollers: Bool?
+    private var originalVerticalControlSize: NSControl.ControlSize?
+    private var originalHorizontalControlSize: NSControl.ControlSize?
 
-    override init() {
+    init(visibility: Visibility) {
+      self.visibility = visibility
       super.init()
       NotificationCenter.default.addObserver(
         self,
@@ -27,15 +38,17 @@ struct TransientScrollIndicators: NSViewRepresentable {
         scrollView = candidate
         originalStyle = candidate.scrollerStyle
         originallyAutohidScrollers = candidate.autohidesScrollers
+        originalVerticalControlSize = candidate.verticalScroller?.controlSize
+        originalHorizontalControlSize = candidate.horizontalScroller?.controlSize
       }
 
-      applyTransientStyle()
+      applyNativeStyle()
     }
 
     func restore() {
       NSObject.cancelPreviousPerformRequests(
         withTarget: self,
-        selector: #selector(reapplyTransientStyle),
+        selector: #selector(reapplyNativeStyle),
         object: nil
       )
       NotificationCenter.default.removeObserver(self)
@@ -43,40 +56,58 @@ struct TransientScrollIndicators: NSViewRepresentable {
     }
 
     private func restoreScrollView() {
-      if let originalStyle {
-        scrollView?.scrollerStyle = originalStyle
+      if visibility == .transient {
+        if let originalStyle {
+          scrollView?.scrollerStyle = originalStyle
+        }
+        if let originallyAutohidScrollers {
+          scrollView?.autohidesScrollers = originallyAutohidScrollers
+        }
       }
-      if let originallyAutohidScrollers {
-        scrollView?.autohidesScrollers = originallyAutohidScrollers
+      if let originalVerticalControlSize {
+        scrollView?.verticalScroller?.controlSize = originalVerticalControlSize
+      }
+      if let originalHorizontalControlSize {
+        scrollView?.horizontalScroller?.controlSize = originalHorizontalControlSize
       }
       scrollView = nil
       originalStyle = nil
       originallyAutohidScrollers = nil
+      originalVerticalControlSize = nil
+      originalHorizontalControlSize = nil
     }
 
-    private func applyTransientStyle() {
+    private func applyNativeStyle() {
       guard let scrollView else { return }
-      if scrollView.scrollerStyle != .overlay {
-        scrollView.scrollerStyle = .overlay
+      if visibility == .transient {
+        if scrollView.scrollerStyle != .overlay {
+          scrollView.scrollerStyle = .overlay
+        }
+        if !scrollView.autohidesScrollers {
+          scrollView.autohidesScrollers = true
+        }
       }
-      if !scrollView.autohidesScrollers {
-        scrollView.autohidesScrollers = true
+      if scrollView.verticalScroller?.controlSize != .small {
+        scrollView.verticalScroller?.controlSize = .small
+      }
+      if scrollView.horizontalScroller?.controlSize != .small {
+        scrollView.horizontalScroller?.controlSize = .small
       }
     }
 
     @objc private func preferredScrollerStyleDidChange() {
       // AppKit also updates every NSScrollView in response to this notification. Reapply on the
-      // next run-loop turn so our album-only override wins regardless of observer ordering.
-      perform(#selector(reapplyTransientStyle), with: nil, afterDelay: 0)
+      // next run-loop turn so our local override wins regardless of observer ordering.
+      perform(#selector(reapplyNativeStyle), with: nil, afterDelay: 0)
     }
 
-    @objc private func reapplyTransientStyle() {
-      applyTransientStyle()
+    @objc private func reapplyNativeStyle() {
+      applyNativeStyle()
     }
   }
 
   func makeCoordinator() -> Coordinator {
-    Coordinator()
+    Coordinator(visibility: visibility)
   }
 
   func makeNSView(context: Context) -> ScrollViewProbe {

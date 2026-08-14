@@ -1246,6 +1246,7 @@ private struct QueuePanel: View {
               }
               .padding(12)
             }
+            .background(NativeScrollIndicators(visibility: .inherited))
           }
           .onGeometryChange(for: CGFloat.self) { geometry in
             geometry.size.height
