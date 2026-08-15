@@ -17,6 +17,7 @@ libplacebo_version="7.360.1"
 libplacebo_sha="937aa5eeea596798b3274d362de2e3bd32bc537a66d149dd85043349c74dffb6"
 mpv_version="0.41.0"
 mpv_sha="ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209"
+metadata_format_version="1"
 
 mkdir -p "$downloads" "$sources" "$prefix"
 
@@ -140,10 +141,38 @@ if [[ ! -f "$prefix/lib/libplacebo.a" ]]; then
   meson install -C "$libplacebo_build"
 fi
 
+brew_version() {
+  brew list --versions "$1" | awk '{ print $2 }'
+}
+
+brew_dependency_versions="$({
+  brew list --versions libunibreak
+  brew list --versions harfbuzz
+  brew list --versions fribidi
+  brew list --versions freetype
+  brew list --versions libpng
+  brew list --versions graphite2
+})"
+dependency_fingerprint="metadata ${metadata_format_version}
+mpv ${mpv_version}
+FFmpeg ${ffmpeg_version}
+libass ${libass_version}
+libplacebo ${libplacebo_version}
+${brew_dependency_versions}"
+
 libmpv="$prefix/lib/libmpv.2.dylib"
-if [[ ! -f "$libmpv" || "${CODA_REBUILD_LIBMPV:-0}" == "1" ]]; then
+dependency_manifest="$prefix/share/coda/BundledLibraries.txt"
+dependency_fingerprint_file="$prefix/share/coda/DependencyFingerprint.txt"
+rebuild_libmpv=0
+if [[ ! -f "$libmpv" || ! -f "$dependency_manifest" || ! -f "$dependency_fingerprint_file" || \
+      "$(<"$dependency_fingerprint_file")" != "$dependency_fingerprint" || \
+      "${CODA_REBUILD_LIBMPV:-0}" == "1" ]]; then
+  rebuild_libmpv=1
   mpv_build="$work/build-mpv"
   rm -rf "$mpv_build"
+  # mpv 0.41 requires libass and libplacebo unconditionally. Coda does not use
+  # subtitles, but removing either dependency would require maintaining an
+  # invasive source fork instead of using the supported upstream build.
   PKG_CONFIG_ALL_STATIC=1 meson setup "$mpv_build" "$sources/mpv-${mpv_version}" \
   --prefix="$prefix" \
   --buildtype=release \
@@ -171,7 +200,7 @@ fi
 
 graphite_source="/opt/homebrew/opt/graphite2/lib/libgraphite2.3.dylib"
 graphite="$prefix/lib/libgraphite2.3.dylib"
-if [[ ! -f "$graphite" ]]; then
+if [[ ! -f "$graphite" || "$rebuild_libmpv" == "1" ]]; then
   cp "$graphite_source" "$graphite"
   chmod u+w "$graphite"
 fi
@@ -182,6 +211,81 @@ install_name_tool \
   "$libmpv"
 codesign --force --sign - "$graphite"
 codesign --force --sign - "$libmpv"
+
+if [[ "$rebuild_libmpv" == "1" ]]; then
+  license_dir="$prefix/share/coda/Licenses"
+  rm -rf "$license_dir"
+  mkdir -p "$license_dir"
+
+  cp "$sources/mpv-${mpv_version}/LICENSE.LGPL" \
+    "$license_dir/mpv-LGPL-2.1-or-later.txt"
+  cp "$sources/ffmpeg-${ffmpeg_version}/COPYING.LGPLv2.1" \
+    "$license_dir/FFmpeg-LGPL-2.1-or-later.txt"
+  cp "$sources/libass-${libass_version}/COPYING" \
+    "$license_dir/libass-ISC.txt"
+  cp "$sources/libplacebo-v${libplacebo_version}/LICENSE" \
+    "$license_dir/libplacebo-LGPL-2.1.txt"
+  cp "$(brew --prefix harfbuzz)/COPYING" \
+    "$license_dir/HarfBuzz-Old-MIT.txt"
+  cp "$(brew --prefix fribidi)/COPYING" \
+    "$license_dir/FriBidi-LGPL-2.1.txt"
+  cp "$(brew --prefix freetype)/LICENSE.TXT" \
+    "$license_dir/FreeType-License-Overview.txt"
+  cp "$root/Support/Licenses/FreeType-FTL.txt" \
+    "$license_dir/FreeType-FTL.txt"
+  cp "$(brew --prefix libpng)/LICENSE" \
+    "$license_dir/libpng-LICENSE.txt"
+  cp "$root/Support/Licenses/libunibreak-Zlib.txt" \
+    "$license_dir/libunibreak-Zlib.txt"
+  cp "$(brew --prefix graphite2)/LICENSE" \
+    "$license_dir/Graphite2-LICENSE.txt"
+
+  print -rn -- "$dependency_fingerprint" > "$dependency_fingerprint_file"
+fi
+
+coda_commit="$(git -C "$root" rev-parse HEAD 2>/dev/null || print unknown)"
+coda_revision="$(git -C "$root" describe --always --dirty 2>/dev/null || print unknown)"
+mkdir -p "${dependency_manifest:h}"
+{
+  print "Coda bundled playback libraries"
+  print -r -- "================================="
+  print
+  print "This file records the dependency versions and linkage used to build libmpv."
+  print "The accompanying Licenses directory contains the required license texts and notices."
+  print
+  print "Relinking and source"
+  print -r -- "--------------------"
+  print "Coda dynamically links libmpv and Graphite2 from the app bundle. The remaining"
+  print "libraries below are statically incorporated into libmpv. Coda's source tree,"
+  print "including scripts/build-libmpv.sh, provides the build and relinking instructions:"
+  print "https://github.com/iamtoolino/coda-macos/tree/${coda_commit}"
+  print "Local source revision: ${coda_revision}"
+  print "A -dirty suffix means the build included uncommitted changes not present at that URL."
+  print "The four primary source archives are checksum-pinned by that script; Homebrew"
+  print "resolves the recorded text-stack versions from their upstream projects."
+  print
+  print "Acknowledgements"
+  print -r -- "----------------"
+  print "This software is based in part on the work of the FreeType Team."
+  print
+  print "Components"
+  print -r -- "----------"
+  print "mpv ${mpv_version} | LGPL-2.1-or-later | dynamic | https://github.com/mpv-player/mpv"
+  print "FFmpeg ${ffmpeg_version} | LGPL-2.1-or-later | static | https://ffmpeg.org"
+  print "libass ${libass_version} | ISC | static | https://github.com/libass/libass"
+  print "libplacebo ${libplacebo_version} | LGPL-2.1-or-later | static | https://code.videolan.org/videolan/libplacebo"
+  print "libunibreak $(brew_version libunibreak) | Zlib | static | https://github.com/adah1972/libunibreak"
+  print "HarfBuzz $(brew_version harfbuzz) | Old MIT | static | https://github.com/harfbuzz/harfbuzz"
+  print "FriBidi $(brew_version fribidi) | LGPL-2.1-or-later | static | https://github.com/fribidi/fribidi"
+  print "FreeType $(brew_version freetype) | FreeType License | static | https://freetype.org"
+  print "libpng $(brew_version libpng) | libpng | static | https://github.com/pnggroup/libpng"
+  print "Graphite2 $(brew_version graphite2) | MIT or MPL-2.0 or LGPL-2.1-or-later or GPL-2.0-or-later | dynamic | https://github.com/silnrsi/graphite"
+  print
+  print "macOS system libraries"
+  print -r -- "----------------------"
+  print "libmpv also uses macOS-provided frameworks plus libiconv, libbz2, and zlib."
+  print "Those system libraries are not redistributed in Coda.app."
+} > "$dependency_manifest"
 
 print "Built $libmpv"
 otool -L "$libmpv"

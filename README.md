@@ -174,4 +174,6 @@ and Macs, and focused contributions are welcome.
 Copyright 2026 iamtoolino.
 
 Coda's source code is licensed under the [Apache License, Version 2.0](LICENSE). Bundled playback
-libraries retain their respective licenses; their license texts are included in the built app.
+libraries retain their respective licenses. The built app includes their license texts and a
+`BundledLibraries.txt` manifest recording the resolved versions, linkage, upstream sources, and
+relinking instructions under `Contents/Resources/Licenses`.
