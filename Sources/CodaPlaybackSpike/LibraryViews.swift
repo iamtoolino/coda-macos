@@ -919,7 +919,6 @@ struct AlbumDetailView: View {
   @StateObject private var artworkLoader = AlbumArtworkLoader()
   @State private var page: AlbumPage?
   @State private var errorMessage: String?
-  @State private var isUpdatingRating = false
   @State private var ratingErrorMessage: String?
   @State private var ratingHighlightTrigger = 0
   @State private var selectedSongIDs: [String] = []
@@ -1094,7 +1093,7 @@ struct AlbumDetailView: View {
       artist: page.album.artistName,
       metadata: albumMetadata(page),
       rating: session.rating(for: page.album),
-      ratingIsUpdating: isUpdatingRating,
+      ratingIsUpdating: session.isUpdatingAlbumRating,
       ratingHighlightTrigger: ratingHighlightTrigger,
       ratingAction: { rating in
         ratingHighlightTrigger &+= 1
@@ -1120,16 +1119,17 @@ struct AlbumDetailView: View {
 
   @MainActor
   private func updateRating(_ rating: Int, albumID: String) async {
-    guard !isUpdatingRating, let client = session.client, let currentPage = page,
+    guard let client = session.client, let currentPage = page,
       currentPage.album.id == albumID
     else { return }
+    guard session.beginAlbumRatingUpdate() else { return }
+    defer { session.finishAlbumRatingUpdate() }
 
     let previousRating = session.rating(for: currentPage.album)
     var updatedAlbum = currentPage.album
     updatedAlbum.userRating = rating
     page = AlbumPage(album: updatedAlbum, songs: currentPage.songs)
     session.rememberRating(rating, forAlbumID: albumID)
-    isUpdatingRating = true
 
     do {
       try await client.setRating(id: albumID, rating: rating)
@@ -1143,10 +1143,6 @@ struct AlbumDetailView: View {
         session.rememberRating(previousRating, forAlbumID: albumID)
       }
       ratingErrorMessage = error.localizedDescription
-    }
-
-    if page?.album.id == albumID {
-      isUpdatingRating = false
     }
   }
 

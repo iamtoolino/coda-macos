@@ -67,6 +67,7 @@ final class AppSession: ObservableObject {
   @Published var path: [LibraryRoute] = []
   @Published private(set) var rootToken = UUID()
   @Published private var albumRatingOverrides: [String: Int] = [:]
+  @Published private(set) var isUpdatingAlbumRating = false
 
   private var artworkURLs: [String: URL] = [:]
   private var automaticConnectionTask: Task<Void, Never>?
@@ -276,6 +277,16 @@ final class AppSession: ObservableObject {
 
   func rememberRating(_ rating: Int?, forAlbumID albumID: String) {
     albumRatingOverrides[albumID] = rating ?? 0
+  }
+
+  func beginAlbumRatingUpdate() -> Bool {
+    guard !isUpdatingAlbumRating else { return false }
+    isUpdatingAlbumRating = true
+    return true
+  }
+
+  func finishAlbumRatingUpdate() {
+    isUpdatingAlbumRating = false
   }
 
   func hasHandledPlayQueue(_ queue: RemotePlayQueue) -> Bool {

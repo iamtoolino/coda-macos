@@ -629,7 +629,6 @@ private struct NowPlayingAlbumRating: View {
 
   @State private var confirmedRating: Int?
   @State private var hoveredRating: Int?
-  @State private var isUpdating = false
   @State private var errorMessage: String?
   @State private var ratingHighlightTrigger = 0
 
@@ -656,7 +655,7 @@ private struct NowPlayingAlbumRating: View {
               .contentTransition(.opacity)
           }
           .buttonStyle(.plain)
-          .disabled(isUpdating)
+          .disabled(session.isUpdatingAlbumRating)
           .onHover { isHovering in
             if isHovering { hoveredRating = value }
           }
@@ -664,9 +663,9 @@ private struct NowPlayingAlbumRating: View {
           .accessibilityLabel("Rate album \(value) out of 5")
         }
       }
-      .opacity(isUpdating ? 0.78 : 1)
+      .opacity(session.isUpdatingAlbumRating ? 0.78 : 1)
       .animation(.easeInOut(duration: 0.30), value: albumID)
-      .animation(.easeInOut(duration: 0.18), value: isUpdating)
+      .animation(.easeInOut(duration: 0.18), value: session.isUpdatingAlbumRating)
       .animation(.easeInOut(duration: 0.16), value: rating)
       .ratingPromptEffect(
         trigger: ratingHighlightTrigger,
@@ -686,7 +685,6 @@ private struct NowPlayingAlbumRating: View {
     .onChange(of: albumID) {
       confirmedRating = nil
       hoveredRating = nil
-      isUpdating = false
       errorMessage = nil
     }
   }
@@ -697,10 +695,12 @@ private struct NowPlayingAlbumRating: View {
 
   @MainActor
   private func updateRating(_ newRating: Int) async {
-    guard !isUpdating, let client = session.client else { return }
+    guard let client = session.client else { return }
+    guard session.beginAlbumRatingUpdate() else { return }
+    defer { session.finishAlbumRatingUpdate() }
+
     let requestedAlbumID = albumID
     let previousRating = rating
-    isUpdating = true
     errorMessage = nil
     session.rememberRating(newRating, forAlbumID: requestedAlbumID)
     do {
@@ -710,7 +710,6 @@ private struct NowPlayingAlbumRating: View {
       session.rememberRating(previousRating, forAlbumID: requestedAlbumID)
       if albumID == requestedAlbumID { errorMessage = "Could not update rating" }
     }
-    if albumID == requestedAlbumID { isUpdating = false }
   }
 }
 

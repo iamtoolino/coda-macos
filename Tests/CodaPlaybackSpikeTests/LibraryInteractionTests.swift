@@ -9,6 +9,22 @@ import Testing
 @Suite("Library interactions")
 @MainActor
 struct LibraryInteractionTests {
+  @Test("album rating updates are globally serialized")
+  func albumRatingUpdatesAreGloballySerialized() {
+    let session = AppSession(loadCredentials: false)
+
+    #expect(!session.isUpdatingAlbumRating)
+    #expect(session.beginAlbumRatingUpdate())
+    #expect(session.isUpdatingAlbumRating)
+    #expect(!session.beginAlbumRatingUpdate())
+
+    session.finishAlbumRatingUpdate()
+
+    #expect(!session.isUpdatingAlbumRating)
+    #expect(session.beginAlbumRatingUpdate())
+    session.finishAlbumRatingUpdate()
+  }
+
   @Test("album collection sort options")
   func albumCollectionSortOptions() throws {
     let passed = try { () throws -> Bool in
