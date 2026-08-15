@@ -9,7 +9,6 @@ private struct HomeData {
   let recentArtists: [RemoteArtist]
   let recentlyPlayed: [RemoteAlbum]
   let playlists: [RemotePlaylist]
-  let playQueue: RemotePlayQueue?
 }
 
 struct HomeView: View {
@@ -95,10 +94,14 @@ struct HomeView: View {
       CodaRefreshAction {
         session.refreshArtwork()
         Task { await load() }
+        Task { await loadPlayQueue() }
       }
     )
     .task(id: resetToken) {
       await load()
+    }
+    .task(id: resetToken) {
+      await loadPlayQueue()
     }
   }
 
@@ -113,11 +116,7 @@ struct HomeView: View {
       async let artistsTask = client.artists()
       async let recentTask = client.albums(.recentlyPlayed, size: 20)
       async let playlistsTask = client.playlists()
-      async let queueTask = client.playQueue()
 
-      let savedQueue = try await queueTask
-      queueHandoff.observeRemoteQueue(savedQueue)
-      autoRestoreIfNeeded(savedQueue)
       let newest = try await newestTask
       let artists = try await artistsTask
       let loadedData = HomeData(
@@ -125,14 +124,25 @@ struct HomeView: View {
         recentReleases: try await releasesTask,
         recentArtists: recentArtists(newestAlbums: newest, artists: artists),
         recentlyPlayed: try await recentTask,
-        playlists: try await playlistsTask,
-        playQueue: savedQueue
+        playlists: try await playlistsTask
       )
       data = loadedData
     } catch {
       errorMessage = error.localizedDescription
     }
     isLoading = false
+  }
+
+  @MainActor
+  private func loadPlayQueue() async {
+    guard let client = session.client else { return }
+    do {
+      let savedQueue = try await client.playQueue()
+      queueHandoff.observeRemoteQueue(savedQueue)
+      autoRestoreIfNeeded(savedQueue)
+    } catch {
+      // Queue handoff is opportunistic and will retry on later refreshes.
+    }
   }
 
   private var offeredContinueQueue: RemotePlayQueue? {
