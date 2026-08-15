@@ -8,6 +8,20 @@ sdk="$(xcrun --sdk macosx --show-sdk-path)"
 app="$root/.build/Coda.app"
 bundle_identifier="io.github.iamtoolino.coda.macos"
 signing_identity_name="${CODA_SIGNING_IDENTITY:-Coda Local Development}"
+entitlement_options=()
+
+case "$configuration" in
+  debug)
+    entitlement_options=(--entitlements "$root/Support/CodaDebug.entitlements")
+    ;;
+  release)
+    ;;
+  *)
+    print -u2 "Unsupported build configuration: $configuration"
+    print -u2 "Expected 'debug' or 'release'."
+    exit 2
+    ;;
+esac
 
 "$root/scripts/build-libmpv.sh"
 
@@ -75,7 +89,7 @@ codesign \
   --force \
   --sign "$signing_identity" \
   --identifier "$bundle_identifier" \
-  --entitlements "$root/Support/Coda.entitlements" \
+  "${entitlement_options[@]}" \
   "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
 
