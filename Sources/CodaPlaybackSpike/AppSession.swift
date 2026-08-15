@@ -192,6 +192,7 @@ final class AppSession: ObservableObject {
     )
     let client = NavidromeClient(configuration: configuration)
     let serverDetails = try await client.ping()
+    try Task.checkCancellation()
     self.client = client
     self.serverDetails = serverDetails
     activeSessionID = UUID()
