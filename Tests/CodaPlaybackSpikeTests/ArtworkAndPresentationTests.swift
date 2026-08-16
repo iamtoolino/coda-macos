@@ -222,6 +222,7 @@ struct ArtworkAndPresentationTests {
       )
       presentation.updateContext(
         window: nil,
+        isApplicationActive: true,
         hasEstablishedConnection: true,
         playbackKey: "album:playing",
         isPlaying: true
@@ -230,6 +231,7 @@ struct ArtworkAndPresentationTests {
       guard presentation.isPresented else { return false }
       presentation.updateContext(
         window: nil,
+        isApplicationActive: true,
         hasEstablishedConnection: true,
         playbackKey: "album:playing",
         isPlaying: false
@@ -287,6 +289,7 @@ struct ArtworkAndPresentationTests {
       )
       presentation.updateContext(
         window: nil,
+        isApplicationActive: true,
         hasEstablishedConnection: true,
         playbackKey: "album:manual",
         isPlaying: true
@@ -295,6 +298,27 @@ struct ArtworkAndPresentationTests {
       return presentation.isPresented
     }()
     #expect(passed)
+  }
+
+  @Test("inactive now playing delay caps remaining time")
+  func inactiveNowPlayingDelayCapsRemainingTime() {
+    #expect(NowPlayingAutomaticPresentationTiming.activeDelay == .seconds(60))
+    #expect(NowPlayingAutomaticPresentationTiming.inactiveDelayCap == .seconds(15))
+    #expect(
+      NowPlayingAutomaticPresentationTiming.delayAfterBecomingInactive(
+        remaining: .seconds(48)
+      ) == .seconds(15)
+    )
+    #expect(
+      NowPlayingAutomaticPresentationTiming.delayAfterBecomingInactive(
+        remaining: .seconds(7)
+      ) == .seconds(7)
+    )
+    #expect(
+      NowPlayingAutomaticPresentationTiming.delayAfterBecomingInactive(
+        remaining: nil
+      ) == .seconds(15)
+    )
   }
 
   @Test("album artwork overrides embedded track artwork")

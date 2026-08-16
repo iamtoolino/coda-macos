@@ -29,9 +29,18 @@ struct NowPlayingPreparedTheme: Identifiable {
   let accent: ArtworkColor
 }
 
+enum NowPlayingAutomaticPresentationTiming {
+  static let activeDelay = Duration.seconds(60)
+  static let inactiveDelayCap = Duration.seconds(15)
+
+  static func delayAfterBecomingInactive(remaining: Duration?) -> Duration {
+    guard let remaining else { return inactiveDelayCap }
+    return min(max(.zero, remaining), inactiveDelayCap)
+  }
+}
+
 @MainActor
 final class NowPlayingPresentationController: ObservableObject {
-  private static let automaticPresentationDelay = Duration.seconds(30)
   private static let automaticallyPresentsKey = "automatically-show-now-playing"
   private static let experimentalAutomaticallyPresentsKey =
     "automatically-shows-now-playing"
@@ -46,21 +55,24 @@ final class NowPlayingPresentationController: ObservableObject {
       if automaticallyPresents {
         scheduleAutomaticPresentation()
       } else {
-        inactivityTask?.cancel()
-        inactivityTask = nil
+        cancelAutomaticPresentation()
         presentationRetryTask?.cancel()
         presentationRetryTask = nil
+        presentationRetryIsAutomatic = false
       }
     }
   }
 
   private let defaults: UserDefaults
   private weak var observedWindow: NSWindow?
+  private var isApplicationActive: Bool?
   private var hasEstablishedConnection = false
   private var playbackKey: String?
   private var isPlaying = false
   private var inactivityTask: Task<Void, Never>?
+  private var automaticPresentationDeadline: ContinuousClock.Instant?
   private var presentationRetryTask: Task<Void, Never>?
+  private var presentationRetryIsAutomatic = false
   private var phaseTask: Task<Void, Never>?
   private var hoveredRegions: Set<NowPlayingPresentationHoverRegion> = []
 
@@ -96,17 +108,20 @@ final class NowPlayingPresentationController: ObservableObject {
 
   func updateContext(
     window: NSWindow?,
+    isApplicationActive: Bool,
     hasEstablishedConnection: Bool,
     playbackKey: String?,
     isPlaying: Bool
   ) {
-    let contextChanged =
+    let playbackContextChanged =
       observedWindow !== window
       || self.hasEstablishedConnection != hasEstablishedConnection
       || self.playbackKey != playbackKey
       || self.isPlaying != isPlaying
+    let applicationActivityChanged = self.isApplicationActive != isApplicationActive
 
     observedWindow = window
+    self.isApplicationActive = isApplicationActive
     self.hasEstablishedConnection = hasEstablishedConnection
     self.playbackKey = playbackKey
     self.isPlaying = isPlaying
@@ -121,12 +136,18 @@ final class NowPlayingPresentationController: ObservableObject {
     }
 
     guard isPlaying else {
-      inactivityTask?.cancel()
-      inactivityTask = nil
+      cancelAutomaticPresentation()
       return
     }
 
-    if contextChanged, !isPresented {
+    guard !isPresented else { return }
+    if applicationActivityChanged {
+      if isApplicationActive {
+        scheduleAutomaticPresentation(after: NowPlayingAutomaticPresentationTiming.activeDelay)
+      } else {
+        capAutomaticPresentationForInactiveApplication()
+      }
+    } else if playbackContextChanged {
       scheduleAutomaticPresentation()
     }
   }
@@ -171,10 +192,10 @@ final class NowPlayingPresentationController: ObservableObject {
       return
     }
 
-    inactivityTask?.cancel()
-    inactivityTask = nil
+    cancelAutomaticPresentation()
     presentationRetryTask?.cancel()
     presentationRetryTask = nil
+    presentationRetryIsAutomatic = false
     phaseTask?.cancel()
     observedWindow?.makeFirstResponder(nil)
     phase = .presenting
@@ -185,10 +206,10 @@ final class NowPlayingPresentationController: ObservableObject {
   }
 
   func dismiss(restartsTimer: Bool = true) {
-    inactivityTask?.cancel()
-    inactivityTask = nil
+    cancelAutomaticPresentation()
     presentationRetryTask?.cancel()
     presentationRetryTask = nil
+    presentationRetryIsAutomatic = false
     guard isPresented else {
       if restartsTimer { scheduleAutomaticPresentation() }
       return
@@ -220,10 +241,9 @@ final class NowPlayingPresentationController: ObservableObject {
   }
 
   private func scheduleAutomaticPresentation(
-    after delay: Duration = automaticPresentationDelay
+    after delay: Duration? = nil
   ) {
-    inactivityTask?.cancel()
-    inactivityTask = nil
+    cancelAutomaticPresentation()
     guard automaticallyPresents,
       !isPresented,
       hasEstablishedConnection,
@@ -231,13 +251,23 @@ final class NowPlayingPresentationController: ObservableObject {
       isPlaying
     else { return }
 
+    let delay = delay ?? (
+      isApplicationActive == false
+        ? NowPlayingAutomaticPresentationTiming.inactiveDelayCap
+        : NowPlayingAutomaticPresentationTiming.activeDelay
+    )
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: delay)
+    automaticPresentationDeadline = deadline
+
     inactivityTask = Task { @MainActor [weak self] in
       do {
-        try await Task.sleep(for: delay)
+        try await clock.sleep(until: deadline)
       } catch {
         return
       }
       guard let self,
+        self.automaticPresentationDeadline == deadline,
         self.automaticallyPresents,
         !self.isPresented,
         self.phase == .hidden,
@@ -245,19 +275,46 @@ final class NowPlayingPresentationController: ObservableObject {
         self.playbackKey != nil,
         self.isPlaying
       else { return }
+      self.inactivityTask = nil
+      self.automaticPresentationDeadline = nil
       self.present(automatically: true)
+    }
+  }
+
+  private func capAutomaticPresentationForInactiveApplication() {
+    let clock = ContinuousClock()
+    let remaining = automaticPresentationDeadline.map { clock.now.duration(to: $0) }
+    scheduleAutomaticPresentation(
+      after: NowPlayingAutomaticPresentationTiming.delayAfterBecomingInactive(
+        remaining: remaining
+      )
+    )
+  }
+
+  private func cancelAutomaticPresentation() {
+    inactivityTask?.cancel()
+    inactivityTask = nil
+    automaticPresentationDeadline = nil
+    if presentationRetryIsAutomatic {
+      presentationRetryTask?.cancel()
+      presentationRetryTask = nil
+      presentationRetryIsAutomatic = false
     }
   }
 
   private func schedulePresentationRetry(automatically: Bool) {
     presentationRetryTask?.cancel()
+    presentationRetryIsAutomatic = automatically
     presentationRetryTask = Task { @MainActor [weak self] in
       do {
         try await Task.sleep(for: .milliseconds(250))
       } catch {
         return
       }
-      self?.present(automatically: automatically)
+      guard let self else { return }
+      self.presentationRetryTask = nil
+      self.presentationRetryIsAutomatic = false
+      self.present(automatically: automatically)
     }
   }
 }
@@ -358,6 +415,7 @@ final class NowPlayingActivityView: NSView {
   func reportContext() {
     presentation?.updateContext(
       window: observedWindow,
+      isApplicationActive: NSApp.isActive,
       hasEstablishedConnection: hasEstablishedConnection,
       playbackKey: playbackKey,
       isPlaying: isPlaying
@@ -379,15 +437,23 @@ final class NowPlayingActivityView: NSView {
   private func startObserving() {
     guard let window = observedWindow else { return }
     let center = NotificationCenter.default
-    let names: [Notification.Name] = [
+    let windowNames: [Notification.Name] = [
       NSWindow.didBecomeKeyNotification,
       NSWindow.didResignKeyNotification,
       NSWindow.didChangeOcclusionStateNotification,
       NSWindow.didMiniaturizeNotification,
       NSWindow.didDeminiaturizeNotification,
     ]
-    notificationTokens = names.map { name in
+    notificationTokens = windowNames.map { name in
       center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+        MainActor.assumeIsolated { self?.reportContext() }
+      }
+    }
+    notificationTokens += [
+      NSApplication.didBecomeActiveNotification,
+      NSApplication.didResignActiveNotification,
+    ].map { name in
+      center.addObserver(forName: name, object: NSApp, queue: .main) { [weak self] _ in
         MainActor.assumeIsolated { self?.reportContext() }
       }
     }
@@ -399,7 +465,9 @@ final class NowPlayingActivityView: NSView {
         .scrollWheel, .keyDown, .swipe, .magnify, .rotate,
       ]
     ) { [weak self, weak window] event in
-      guard let self, event.window === window else { return event }
+      guard let self,
+        event.window === window || (event.window == nil && window?.isKeyWindow == true)
+      else { return event }
       self.presentation?.noteMeaningfulInteraction()
       return event
     }
