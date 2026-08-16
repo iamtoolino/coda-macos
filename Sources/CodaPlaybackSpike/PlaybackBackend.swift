@@ -25,18 +25,38 @@ func mpvExpectedNextCommands(_ next: URL?) -> [[String]] {
   return commands
 }
 
+enum MPVFileStartOutcome: Equatable {
+  case ignored
+  case startedCurrent
+  case automaticallyAdvanced
+}
+
 struct MPVFileStartAdvanceTracker {
-  private(set) var hasStartedCurrentItem = false
+  private var currentEntryID: Int64?
+  private var nextEntryID: Int64?
 
-  mutating func reset() {
-    hasStartedCurrentItem = false
+  mutating func reset(currentEntryID: Int64? = nil, nextEntryID: Int64? = nil) {
+    self.currentEntryID = currentEntryID
+    self.nextEntryID = nextEntryID
   }
 
-  mutating func observeStart(hasExpectedNext: Bool) -> Bool {
-    let didAdvance = hasStartedCurrentItem && hasExpectedNext
-    hasStartedCurrentItem = true
-    return didAdvance
+  mutating func updateNext(entryID: Int64?) {
+    nextEntryID = entryID
   }
+
+  mutating func observeStart(entryID: Int64) -> MPVFileStartOutcome {
+    if entryID == currentEntryID {
+      return .startedCurrent
+    }
+    guard entryID == nextEntryID else { return .ignored }
+    currentEntryID = entryID
+    nextEntryID = nil
+    return .automaticallyAdvanced
+  }
+}
+
+private func mpvPlaylistEntryID(_ identifier: Int64) -> Int64? {
+  identifier >= 0 ? identifier : nil
 }
 
 func mpvEndEventMatchesActiveFile(activeID: Int64?, endedID: Int64) -> Bool {
@@ -120,27 +140,33 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
     hasLoadedItem = true
     hasExpectedNext = next != nil
     isLoadingItem = true
-    fileStartAdvanceTracker.reset()
     activePlaylistEntryID = nil
     snapshot = PlaybackBackendSnapshot(position: max(0, position), isPlaying: autoplay)
     eventHandler?(.snapshot(snapshot))
 
-    current.absoluteString.withCString { currentURL in
+    let playlistState = current.absoluteString.withCString { currentURL in
       if let next {
-        next.absoluteString.withCString { nextURL in
+        return next.absoluteString.withCString { nextURL in
           coda_mpv_load(engine, currentURL, nextURL, max(0, position), autoplay)
         }
       } else {
-        coda_mpv_load(engine, currentURL, nil, max(0, position), autoplay)
+        return coda_mpv_load(engine, currentURL, nil, max(0, position), autoplay)
       }
     }
+    fileStartAdvanceTracker.reset(
+      currentEntryID: mpvPlaylistEntryID(playlistState.current_entry_id),
+      nextEntryID: mpvPlaylistEntryID(playlistState.next_entry_id)
+    )
   }
 
   func updateNext(_ next: URL?) {
-    withOptionalCString(next?.absoluteString) { nextURL in
+    let playlistState = withOptionalCString(next?.absoluteString) { nextURL in
       coda_mpv_update_next(engine, nextURL)
     }
     hasExpectedNext = next != nil
+    fileStartAdvanceTracker.updateNext(
+      entryID: mpvPlaylistEntryID(playlistState.next_entry_id)
+    )
   }
 
   func promoteAutomaticallyAdvancedItem(following: URL?) {
@@ -203,8 +229,13 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
     case CODA_MPV_EVENT_SNAPSHOT:
       updateSnapshot(from: event)
     case CODA_MPV_EVENT_START_FILE:
-      activePlaylistEntryID = event.playlist_entry_id
-      if fileStartAdvanceTracker.observeStart(hasExpectedNext: hasExpectedNext) {
+      switch fileStartAdvanceTracker.observeStart(entryID: event.playlist_entry_id) {
+      case .ignored:
+        return
+      case .startedCurrent:
+        activePlaylistEntryID = event.playlist_entry_id
+      case .automaticallyAdvanced:
+        activePlaylistEntryID = event.playlist_entry_id
         eventHandler?(.automaticallyAdvanced)
       }
     case CODA_MPV_EVENT_END_FILE_EOF:

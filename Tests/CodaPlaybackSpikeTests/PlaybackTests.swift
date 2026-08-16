@@ -22,16 +22,25 @@ struct PlaybackTests {
   }
 
   @Test("mpv advances Coda on the incoming file start")
-  func mpvAdvancesCodaOnTheIncomingFileStart() throws {
-    let passed = try { () throws -> Bool in
-      var tracker = MPVFileStartAdvanceTracker()
-      let initialDidAdvance = tracker.observeStart(hasExpectedNext: true)
-      let incomingDidAdvance = tracker.observeStart(hasExpectedNext: true)
-      tracker.reset()
-      let replacementDidAdvance = tracker.observeStart(hasExpectedNext: true)
-      return !initialDidAdvance && incomingDidAdvance && !replacementDidAdvance
-    }()
-    #expect(passed)
+  func mpvAdvancesCodaOnTheIncomingFileStart() {
+    var tracker = MPVFileStartAdvanceTracker()
+    tracker.reset(currentEntryID: 10, nextEntryID: 11)
+
+    #expect(tracker.observeStart(entryID: 10) == .startedCurrent)
+    #expect(tracker.observeStart(entryID: 11) == .automaticallyAdvanced)
+    tracker.updateNext(entryID: 12)
+    #expect(tracker.observeStart(entryID: 12) == .automaticallyAdvanced)
+  }
+
+  @Test("mpv ignores file starts from a replaced load")
+  func mpvIgnoresFileStartsFromAReplacedLoad() {
+    var tracker = MPVFileStartAdvanceTracker()
+    tracker.reset(currentEntryID: 10, nextEntryID: 11)
+    tracker.reset(currentEntryID: 20, nextEntryID: 21)
+
+    #expect(tracker.observeStart(entryID: 10) == .ignored)
+    #expect(tracker.observeStart(entryID: 20) == .startedCurrent)
+    #expect(tracker.observeStart(entryID: 21) == .automaticallyAdvanced)
   }
 
   @Test("late mpv end event cannot finish the incoming file")

@@ -27,6 +27,28 @@ static void command(CodaMPV *engine, const char *arguments[]) {
   mpv_command_async(engine->handle, 0, arguments);
 }
 
+static void playlist_command(CodaMPV *engine, const char *arguments[]) {
+  // Playlist IDs are assigned when the command completes; media loading remains asynchronous.
+  mpv_command(engine->handle, arguments);
+}
+
+static int64_t playlist_entry_id(CodaMPV *engine, int index) {
+  char property[80];
+  snprintf(property, sizeof(property), "playlist/%d/id", index);
+  int64_t identifier = -1;
+  if (mpv_get_property(engine->handle, property, MPV_FORMAT_INT64, &identifier) < 0)
+    return -1;
+  return identifier;
+}
+
+static CodaMPVPlaylistState playlist_state(CodaMPV *engine) {
+  CodaMPVPlaylistState state = {
+    .current_entry_id = playlist_entry_id(engine, 0),
+    .next_entry_id = playlist_entry_id(engine, 1),
+  };
+  return state;
+}
+
 static void set_flag(CodaMPV *engine, const char *name, bool value) {
   int flag = value ? 1 : 0;
   mpv_set_property_async(engine->handle, 0, name, MPV_FORMAT_FLAG, &flag);
@@ -169,7 +191,7 @@ bool coda_mpv_next_event(CodaMPV *engine, CodaMPVEvent *output) {
   }
 }
 
-void coda_mpv_load(
+CodaMPVPlaylistState coda_mpv_load(
   CodaMPV *engine,
   const char *current_url,
   const char *next_url,
@@ -177,7 +199,7 @@ void coda_mpv_load(
   bool autoplay
 ) {
   if (!engine || !current_url)
-    return;
+    return (CodaMPVPlaylistState){.current_entry_id = -1, .next_entry_id = -1};
 
   // Apply the initial pause state before loading so mpv cannot begin decoding
   // with the previous item's state. The per-file `start` option is mpv's
@@ -194,26 +216,28 @@ void coda_mpv_load(
       start,
       NULL
     };
-    command(engine, load);
+    playlist_command(engine, load);
   } else {
     const char *load[] = {"loadfile", current_url, "replace", NULL};
-    command(engine, load);
+    playlist_command(engine, load);
   }
   if (next_url) {
     const char *append[] = {"loadfile", next_url, "append", NULL};
-    command(engine, append);
+    playlist_command(engine, append);
   }
+  return playlist_state(engine);
 }
 
-void coda_mpv_update_next(CodaMPV *engine, const char *next_url) {
+CodaMPVPlaylistState coda_mpv_update_next(CodaMPV *engine, const char *next_url) {
   if (!engine)
-    return;
+    return (CodaMPVPlaylistState){.current_entry_id = -1, .next_entry_id = -1};
   const char *clear[] = {"playlist-clear", NULL};
-  command(engine, clear);
+  playlist_command(engine, clear);
   if (next_url) {
     const char *insert[] = {"loadfile", next_url, "insert-next", NULL};
-    command(engine, insert);
+    playlist_command(engine, insert);
   }
+  return playlist_state(engine);
 }
 
 void coda_mpv_set_paused(CodaMPV *engine, bool paused) {

@@ -28,6 +28,11 @@ typedef struct CodaMPVEvent {
   bool is_idle;
 } CodaMPVEvent;
 
+typedef struct CodaMPVPlaylistState {
+  int64_t current_entry_id;
+  int64_t next_entry_id;
+} CodaMPVPlaylistState;
+
 typedef void (*CodaMPVWakeupCallback)(void *context);
 
 CodaMPV *coda_mpv_create(void);
@@ -39,14 +44,14 @@ void coda_mpv_set_wakeup_callback(
 );
 bool coda_mpv_next_event(CodaMPV *engine, CodaMPVEvent *event);
 
-void coda_mpv_load(
+CodaMPVPlaylistState coda_mpv_load(
   CodaMPV *engine,
   const char *current_url,
   const char *next_url,
   double position,
   bool autoplay
 );
-void coda_mpv_update_next(CodaMPV *engine, const char *next_url);
+CodaMPVPlaylistState coda_mpv_update_next(CodaMPV *engine, const char *next_url);
 void coda_mpv_set_paused(CodaMPV *engine, bool paused);
 void coda_mpv_seek(CodaMPV *engine, double position);
 void coda_mpv_stop(CodaMPV *engine);
