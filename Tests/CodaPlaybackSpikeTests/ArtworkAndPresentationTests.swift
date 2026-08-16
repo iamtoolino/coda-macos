@@ -9,13 +9,25 @@ import Testing
 @Suite("Artwork and presentation")
 @MainActor
 struct ArtworkAndPresentationTests {
+  @Test("collection hero metrics preserve narrow and wide layouts")
+  func collectionHeroMetricsPreserveNarrowAndWideLayouts() {
+    let narrow = CollectionHeroMetrics(width: 430)
+    #expect(narrow.artworkSize == 188)
+    #expect(narrow.spacing == 18)
+    #expect(narrow.trailingPadding == 20)
+    #expect(narrow.height == 240)
+
+    let wide = CollectionHeroMetrics(width: 900)
+    #expect(wide.artworkSize == 236)
+    #expect(wide.spacing == 26)
+    #expect(wide.trailingPadding == 42)
+    #expect(wide.height == 288)
+  }
+
   @Test("artwork purposes use one browsing size and one Retina presentation size")
-  func artworkPurposesUseOneBrowsingSizeAndOneRetinaPresentationSize() throws {
-    let passed = try { () throws -> Bool in
-      ArtworkPurpose.standard.rawValue == 500
-        && ArtworkPurpose.nowPlaying.rawValue == 1_200
-    }()
-    #expect(passed)
+  func artworkPurposesUseOneBrowsingSizeAndOneRetinaPresentationSize() {
+    #expect(ArtworkPurpose.standard.rawValue == 500)
+    #expect(ArtworkPurpose.nowPlaying.rawValue == 1_200)
   }
 
   @Test("artwork invalidation advances the shared cache generation")
@@ -167,21 +179,18 @@ struct ArtworkAndPresentationTests {
   }
 
   @Test("queue entries keep browsing and now playing artwork separate")
-  func queueEntriesKeepBrowsingAndNowPlayingArtworkSeparate() throws {
-    let passed = try { () throws -> Bool in
-      let browsingURL = URL(string: "https://example.test/cover?size=500")!
-      let nowPlayingURL = URL(string: "https://example.test/cover?size=1200")!
-      let entry = QueueEntry(
-        sourceID: "song",
-        url: URL(string: "https://example.test/song")!,
-        artworkURL: browsingURL,
-        nowPlayingArtworkURL: nowPlayingURL,
-        title: "Song"
-      )
-      return entry.artworkURL == browsingURL
-        && entry.nowPlayingArtworkURL == nowPlayingURL
-    }()
-    #expect(passed)
+  func queueEntriesKeepBrowsingAndNowPlayingArtworkSeparate() {
+    let browsingURL = URL(string: "https://example.test/cover?size=500")!
+    let nowPlayingURL = URL(string: "https://example.test/cover?size=1200")!
+    let entry = QueueEntry(
+      sourceID: "song",
+      url: URL(string: "https://example.test/song")!,
+      artworkURL: browsingURL,
+      nowPlayingArtworkURL: nowPlayingURL,
+      title: "Song"
+    )
+    #expect(entry.artworkURL == browsingURL)
+    #expect(entry.nowPlayingArtworkURL == nowPlayingURL)
   }
 
   private func persistentArtworkTestURL(size: Int) throws -> URL {
@@ -203,256 +212,219 @@ struct ArtworkAndPresentationTests {
   }
 
   @Test("same album identity can repair stale artwork treatment")
-  func sameAlbumIdentityCanRepairStaleArtworkTreatment() throws {
-    let passed = try { () throws -> Bool in
-      let treatments = ArtworkTreatmentSettings()
-      let staleImage = NSImage(size: NSSize(width: 1, height: 1))
-      let currentImage = NSImage(size: NSSize(width: 2, height: 2))
-      let staleAccent = ArtworkColor(red: 0.7, green: 0.2, blue: 0.1)
-      let currentAccent = ArtworkColor(red: 0.1, green: 0.6, blue: 0.9)
+  func sameAlbumIdentityCanRepairStaleArtworkTreatment() {
+    let treatments = ArtworkTreatmentSettings()
+    let staleImage = NSImage(size: NSSize(width: 1, height: 1))
+    let currentImage = NSImage(size: NSSize(width: 2, height: 2))
+    let staleAccent = ArtworkColor(red: 0.7, green: 0.2, blue: 0.1)
+    let currentAccent = ArtworkColor(red: 0.1, green: 0.6, blue: 0.9)
 
-      treatments.rememberAlbumArtwork(staleImage, accent: staleAccent, identity: "album")
-      treatments.applyDisplayContext(.album("album"))
-      treatments.rememberAlbumArtwork(currentImage, accent: currentAccent, identity: "album")
-      treatments.applyDisplayContext(.album("album"))
+    treatments.rememberAlbumArtwork(staleImage, accent: staleAccent, identity: "album")
+    treatments.applyDisplayContext(.album("album"))
+    treatments.rememberAlbumArtwork(currentImage, accent: currentAccent, identity: "album")
+    treatments.applyDisplayContext(.album("album"))
 
-      return treatments.artwork === currentImage
-        && treatments.accent == currentAccent
-    }()
-    #expect(passed)
+    #expect(treatments.artwork === currentImage)
+    #expect(treatments.accent == currentAccent)
   }
 
   @Test("remembering hidden playback artwork preserves displayed album")
-  func rememberingHiddenPlaybackArtworkPreservesDisplayedAlbum() throws {
-    let passed = try { () throws -> Bool in
-      let treatments = ArtworkTreatmentSettings()
-      let displayedImage = NSImage(size: NSSize(width: 1, height: 1))
-      let playbackImage = NSImage(size: NSSize(width: 2, height: 2))
-      let displayedAccent = ArtworkColor(red: 0.1, green: 0.3, blue: 0.8)
-      let playbackAccent = ArtworkColor(red: 0.8, green: 0.2, blue: 0.1)
+  func rememberingHiddenPlaybackArtworkPreservesDisplayedAlbum() {
+    let treatments = ArtworkTreatmentSettings()
+    let displayedImage = NSImage(size: NSSize(width: 1, height: 1))
+    let playbackImage = NSImage(size: NSSize(width: 2, height: 2))
+    let displayedAccent = ArtworkColor(red: 0.1, green: 0.3, blue: 0.8)
+    let playbackAccent = ArtworkColor(red: 0.8, green: 0.2, blue: 0.1)
 
-      treatments.rememberAlbumArtwork(
-        displayedImage,
-        accent: displayedAccent,
-        identity: "displayed"
-      )
-      treatments.applyDisplayContext(.album("displayed"))
-      treatments.rememberPlaybackArtwork(
-        playbackImage,
-        accent: playbackAccent,
-        identity: "playing"
-      )
+    treatments.rememberAlbumArtwork(
+      displayedImage, accent: displayedAccent, identity: "displayed")
+    treatments.applyDisplayContext(.album("displayed"))
+    treatments.rememberPlaybackArtwork(
+      playbackImage, accent: playbackAccent, identity: "playing")
 
-      guard treatments.artwork === displayedImage, treatments.accent == displayedAccent else {
-        return false
-      }
+    #expect(treatments.artwork === displayedImage)
+    #expect(treatments.accent == displayedAccent)
 
-      treatments.applyDisplayContext(
-        .standard(activePlaybackIdentity: "playing")
-      )
-      return treatments.artwork === playbackImage
-        && treatments.accent == playbackAccent
-    }()
-    #expect(passed)
+    treatments.applyDisplayContext(.standard(activePlaybackIdentity: "playing"))
+    #expect(treatments.artwork === playbackImage)
+    #expect(treatments.accent == playbackAccent)
   }
 
   @Test("non-album navigation centrally restores matching playback theme")
-  func nonAlbumNavigationCentrallyRestoresMatchingPlaybackTheme() throws {
-    let passed = try { () throws -> Bool in
-      let treatments = ArtworkTreatmentSettings()
-      let playbackImage = NSImage(size: NSSize(width: 2, height: 2))
-      let albumImage = NSImage(size: NSSize(width: 3, height: 3))
-      let playbackAccent = ArtworkColor(red: 0.1, green: 0.3, blue: 0.9)
-      let albumAccent = ArtworkColor(red: 0.9, green: 0.2, blue: 0.1)
+  func nonAlbumNavigationCentrallyRestoresMatchingPlaybackTheme() {
+    let treatments = ArtworkTreatmentSettings()
+    let playbackImage = NSImage(size: NSSize(width: 2, height: 2))
+    let albumImage = NSImage(size: NSSize(width: 3, height: 3))
+    let playbackAccent = ArtworkColor(red: 0.1, green: 0.3, blue: 0.9)
+    let albumAccent = ArtworkColor(red: 0.9, green: 0.2, blue: 0.1)
 
-      treatments.rememberPlaybackArtwork(
-        playbackImage,
-        accent: playbackAccent,
-        identity: "blue-playing"
-      )
-      treatments.rememberAlbumArtwork(
-        albumImage,
-        accent: albumAccent,
-        identity: "red-album"
-      )
-      treatments.applyDisplayContext(.album("red-album"))
-      guard treatments.artwork === albumImage else { return false }
+    treatments.rememberPlaybackArtwork(
+      playbackImage, accent: playbackAccent, identity: "blue-playing")
+    treatments.rememberAlbumArtwork(
+      albumImage, accent: albumAccent, identity: "red-album")
+    treatments.applyDisplayContext(.album("red-album"))
+    #expect(treatments.artwork === albumImage)
 
-      treatments.applyDisplayContext(
-        .standard(activePlaybackIdentity: "blue-playing")
-      )
-      return treatments.artwork === playbackImage
-        && treatments.accent == playbackAccent
-        && treatments.displayedIdentity == "blue-playing"
-    }()
-    #expect(passed)
+    treatments.applyDisplayContext(.standard(activePlaybackIdentity: "blue-playing"))
+    #expect(treatments.artwork === playbackImage)
+    #expect(treatments.accent == playbackAccent)
+    #expect(treatments.displayedIdentity == "blue-playing")
   }
 
   @Test("pending themes hold the previous valid treatment")
-  func pendingThemesHoldThePreviousValidTreatment() throws {
-    let passed = try { () throws -> Bool in
-      let treatments = ArtworkTreatmentSettings()
-      let playbackImage = NSImage(size: NSSize(width: 2, height: 2))
-      let playbackAccent = ArtworkColor(red: 0.1, green: 0.3, blue: 0.9)
-      treatments.rememberPlaybackArtwork(
-        playbackImage,
-        accent: playbackAccent,
-        identity: "playing"
-      )
-      treatments.applyDisplayContext(
-        .standard(activePlaybackIdentity: "playing")
-      )
-      treatments.applyDisplayContext(
-        .standard(activePlaybackIdentity: "stale")
-      )
-      guard treatments.artwork === playbackImage,
-        treatments.accent == playbackAccent,
-        treatments.displayedIdentity == "playing"
-      else { return false }
+  func pendingThemesHoldThePreviousValidTreatment() {
+    let treatments = ArtworkTreatmentSettings()
+    let playbackImage = NSImage(size: NSSize(width: 2, height: 2))
+    let playbackAccent = ArtworkColor(red: 0.1, green: 0.3, blue: 0.9)
+    treatments.rememberPlaybackArtwork(
+      playbackImage, accent: playbackAccent, identity: "playing")
+    treatments.applyDisplayContext(.standard(activePlaybackIdentity: "playing"))
+    treatments.applyDisplayContext(.standard(activePlaybackIdentity: "stale"))
 
-      treatments.applyDisplayContext(
-        .resolve(
-          displayedAlbumID: nil,
-          playbackIdentity: "playing"
-        )
-      )
-      guard treatments.artwork === playbackImage, treatments.accent == playbackAccent else {
-        return false
-      }
+    #expect(treatments.artwork === playbackImage)
+    #expect(treatments.accent == playbackAccent)
+    #expect(treatments.displayedIdentity == "playing")
 
-      treatments.applyDisplayContext(.album("red-pending"))
-      guard treatments.artwork === playbackImage else { return false }
+    treatments.applyDisplayContext(
+      .resolve(
+        hasEstablishedConnection: true,
+        displayedAlbumID: nil,
+        playbackIdentity: "playing"
+      ))
+    #expect(treatments.artwork === playbackImage)
+    #expect(treatments.accent == playbackAccent)
 
-      let albumImage = NSImage(size: NSSize(width: 3, height: 3))
-      let albumAccent = ArtworkColor(red: 0.9, green: 0.2, blue: 0.1)
-      treatments.rememberAlbumArtwork(
-        albumImage,
-        accent: albumAccent,
-        identity: "red-pending"
+    treatments.applyDisplayContext(.album("red-pending"))
+    #expect(treatments.artwork === playbackImage)
+
+    let albumImage = NSImage(size: NSSize(width: 3, height: 3))
+    let albumAccent = ArtworkColor(red: 0.9, green: 0.2, blue: 0.1)
+    treatments.rememberAlbumArtwork(
+      albumImage, accent: albumAccent, identity: "red-pending")
+    treatments.applyDisplayContext(.album("red-pending"))
+    #expect(treatments.artwork === albumImage)
+    #expect(treatments.accent == albumAccent)
+  }
+
+  @Test("late playback artwork cannot replace the disconnected brand theme")
+  func latePlaybackArtworkCannotReplaceTheDisconnectedBrandTheme() {
+    let treatments = ArtworkTreatmentSettings()
+    let initialArtwork = NSImage(size: NSSize(width: 2, height: 2))
+    let lateArtwork = NSImage(size: NSSize(width: 3, height: 3))
+
+    treatments.rememberPlaybackArtwork(
+      initialArtwork,
+      accent: ArtworkColor(red: 0.2, green: 0.4, blue: 0.8),
+      identity: "playing"
+    )
+    treatments.applyDisplayContext(.standard(activePlaybackIdentity: "playing"))
+    treatments.applyDisplayContext(.brand)
+
+    treatments.rememberPlaybackArtwork(
+      lateArtwork,
+      accent: ArtworkColor(red: 0.7, green: 0.2, blue: 0.1),
+      identity: "playing"
+    )
+    treatments.applyDisplayContext(
+      .resolve(
+        hasEstablishedConnection: false,
+        displayedAlbumID: nil,
+        playbackIdentity: "playing"
       )
-      treatments.applyDisplayContext(.album("red-pending"))
-      return treatments.artwork === albumImage && treatments.accent == albumAccent
-    }()
-    #expect(passed)
+    )
+
+    #expect(treatments.artwork == nil)
+    #expect(treatments.accent == .fallback)
+    #expect(treatments.displayedIdentity == nil)
   }
 
   @Test("empty playback context uses the static Coda brand theme")
-  func emptyPlaybackContextUsesTheStaticCodaBrandTheme() throws {
-    let passed = try { () throws -> Bool in
-      let treatments = ArtworkTreatmentSettings()
-      let playbackImage = NSImage(size: NSSize(width: 2, height: 2))
-      treatments.rememberPlaybackArtwork(
-        playbackImage,
-        accent: ArtworkColor(red: 0.1, green: 0.3, blue: 0.9),
-        identity: "playing"
-      )
-      treatments.applyDisplayContext(.standard(activePlaybackIdentity: "playing"))
-      treatments.applyDisplayContext(.standard(activePlaybackIdentity: nil))
-      return treatments.artwork == nil
-        && treatments.accent == .fallback
-        && treatments.displayedIdentity == nil
-    }()
-    #expect(passed)
+  func emptyPlaybackContextUsesTheStaticCodaBrandTheme() {
+    let treatments = ArtworkTreatmentSettings()
+    let playbackImage = NSImage(size: NSSize(width: 2, height: 2))
+    treatments.rememberPlaybackArtwork(
+      playbackImage,
+      accent: ArtworkColor(red: 0.1, green: 0.3, blue: 0.9),
+      identity: "playing"
+    )
+    treatments.applyDisplayContext(.standard(activePlaybackIdentity: "playing"))
+    treatments.applyDisplayContext(.standard(activePlaybackIdentity: nil))
+    #expect(treatments.artwork == nil)
+    #expect(treatments.accent == .fallback)
+    #expect(treatments.displayedIdentity == nil)
   }
 
   @Test("generated Coda cover extracts a warm accent")
-  func generatedCodaCoverExtractsAWarmAccent() throws {
-    let passed = try { () throws -> Bool in
-      let accent = AlbumArtworkLoader.extractAccent(from: CodaPlaceholderArtwork.image)
-      return accent.red > accent.green
-        && accent.green > accent.blue
-        && accent.red - accent.blue > 0.12
-    }()
-    #expect(passed)
+  func generatedCodaCoverExtractsAWarmAccent() {
+    let accent = AlbumArtworkLoader.extractAccent(from: CodaPlaceholderArtwork.image)
+    #expect(accent.red > accent.green)
+    #expect(accent.green > accent.blue)
+    #expect(accent.red - accent.blue > 0.12)
   }
 
   @Test("pausing keeps an active now playing presentation visible")
-  func pausingKeepsAnActiveNowPlayingPresentationVisible() throws {
-    let passed = try { () throws -> Bool in
-      let presentation = NowPlayingPresentationController()
-      presentation.prepare(
-        playbackKey: "album:playing",
-        artwork: NSImage(size: NSSize(width: 2, height: 2)),
-        accent: ArtworkColor(red: 0.7, green: 0.3, blue: 0.2)
-      )
-      presentation.updateContext(
-        window: nil,
-        isApplicationActive: true,
-        hasEstablishedConnection: true,
-        playbackKey: "album:playing",
-        isPlaying: true
-      )
-      presentation.present()
-      guard presentation.isPresented else { return false }
-      presentation.updateContext(
-        window: nil,
-        isApplicationActive: true,
-        hasEstablishedConnection: true,
-        playbackKey: "album:playing",
-        isPlaying: false
-      )
-      return presentation.isPresented
-    }()
-    #expect(passed)
+  func pausingKeepsAnActiveNowPlayingPresentationVisible() {
+    let presentation = NowPlayingPresentationController()
+    presentation.prepare(
+      playbackKey: "album:playing",
+      artwork: NSImage(size: NSSize(width: 2, height: 2)),
+      accent: ArtworkColor(red: 0.7, green: 0.3, blue: 0.2)
+    )
+    presentation.updateContext(
+      window: nil, isApplicationActive: true, hasEstablishedConnection: true,
+      playbackKey: "album:playing", isPlaying: true)
+    presentation.present()
+    #expect(presentation.isPresented)
+
+    presentation.updateContext(
+      window: nil, isApplicationActive: true, hasEstablishedConnection: true,
+      playbackKey: "album:playing", isPlaying: false)
+    #expect(presentation.isPresented)
   }
 
   @Test("now playing automatic presentation preference persists")
   func nowPlayingAutomaticPresentationPreferencePersists() throws {
-    let passed = try { () throws -> Bool in
-      let suiteName = "CodaTests-NowPlaying-\(UUID().uuidString)"
-      guard let defaults = UserDefaults(suiteName: suiteName) else { return false }
-      defer { defaults.removePersistentDomain(forName: suiteName) }
+    let suiteName = "CodaTests-NowPlaying-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
 
-      let presentation = NowPlayingPresentationController(defaults: defaults)
-      guard presentation.automaticallyPresents else { return false }
-      presentation.automaticallyPresents = false
-
-      return !NowPlayingPresentationController(defaults: defaults).automaticallyPresents
-    }()
-    #expect(passed)
+    let presentation = NowPlayingPresentationController(defaults: defaults)
+    #expect(presentation.automaticallyPresents)
+    presentation.automaticallyPresents = false
+    #expect(!NowPlayingPresentationController(defaults: defaults).automaticallyPresents)
   }
 
   @Test("now playing preference migrates the experimental key")
   func nowPlayingPreferenceMigratesTheExperimentalKey() throws {
-    let passed = try { () throws -> Bool in
-      let suiteName = "CodaTests-NowPlayingMigration-\(UUID().uuidString)"
-      guard let defaults = UserDefaults(suiteName: suiteName) else { return false }
-      defer { defaults.removePersistentDomain(forName: suiteName) }
-      defaults.set(false, forKey: "automatically-shows-now-playing")
+    let suiteName = "CodaTests-NowPlayingMigration-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(false, forKey: "automatically-shows-now-playing")
 
-      let presentation = NowPlayingPresentationController(defaults: defaults)
-      return !presentation.automaticallyPresents
-        && defaults.object(forKey: "automatically-show-now-playing") as? Bool == false
-        && defaults.object(forKey: "automatically-shows-now-playing") == nil
-    }()
-    #expect(passed)
+    let presentation = NowPlayingPresentationController(defaults: defaults)
+    #expect(!presentation.automaticallyPresents)
+    #expect(defaults.object(forKey: "automatically-show-now-playing") as? Bool == false)
+    #expect(defaults.object(forKey: "automatically-shows-now-playing") == nil)
   }
 
   @Test("manual now playing remains available when automatic presentation is off")
   func manualNowPlayingRemainsAvailableWhenAutomaticPresentationIsOff() throws {
-    let passed = try { () throws -> Bool in
-      let suiteName = "CodaTests-ManualNowPlaying-\(UUID().uuidString)"
-      guard let defaults = UserDefaults(suiteName: suiteName) else { return false }
-      defer { defaults.removePersistentDomain(forName: suiteName) }
+    let suiteName = "CodaTests-ManualNowPlaying-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
 
-      let presentation = NowPlayingPresentationController(defaults: defaults)
-      presentation.automaticallyPresents = false
-      presentation.prepare(
-        playbackKey: "album:manual",
-        artwork: NSImage(size: NSSize(width: 2, height: 2)),
-        accent: ArtworkColor(red: 0.7, green: 0.3, blue: 0.2)
-      )
-      presentation.updateContext(
-        window: nil,
-        isApplicationActive: true,
-        hasEstablishedConnection: true,
-        playbackKey: "album:manual",
-        isPlaying: true
-      )
-      presentation.present()
-      return presentation.isPresented
-    }()
-    #expect(passed)
+    let presentation = NowPlayingPresentationController(defaults: defaults)
+    presentation.automaticallyPresents = false
+    presentation.prepare(
+      playbackKey: "album:manual",
+      artwork: NSImage(size: NSSize(width: 2, height: 2)),
+      accent: ArtworkColor(red: 0.7, green: 0.3, blue: 0.2)
+    )
+    presentation.updateContext(
+      window: nil, isApplicationActive: true, hasEstablishedConnection: true,
+      playbackKey: "album:manual", isPlaying: true)
+    presentation.present()
+    #expect(presentation.isPresented)
   }
 
   @Test("inactive now playing delay caps remaining time")
@@ -477,16 +449,10 @@ struct ArtworkAndPresentationTests {
   }
 
   @Test("album artwork overrides embedded track artwork")
-  func albumArtworkOverridesEmbeddedTrackArtwork() throws {
-    let passed = try { () throws -> Bool in
-      let song = RemoteSong(
-        id: "1",
-        title: "Track",
-        albumId: "album-artwork",
-        coverArt: "embedded-track-artwork"
-      )
-      return song.albumArtworkID == "album-artwork"
-    }()
-    #expect(passed)
+  func albumArtworkOverridesEmbeddedTrackArtwork() {
+    let song = RemoteSong(
+      id: "1", title: "Track",
+      albumId: "album-artwork", coverArt: "embedded-track-artwork")
+    #expect(song.albumArtworkID == "album-artwork")
   }
 }

@@ -8,10 +8,22 @@ sdk="$(xcrun --sdk macosx --show-sdk-path)"
 app="$root/.build/Coda.app"
 bundle_identifier="io.github.iamtoolino.coda.macos"
 signing_identity_name="${CODA_SIGNING_IDENTITY:-Coda Local Development}"
+entitlement_options=()
 
-if [[ ! -f "$root/.build/libmpv/prefix/lib/libmpv.2.dylib" ]]; then
-  "$root/scripts/build-libmpv.sh"
-fi
+case "$configuration" in
+  debug)
+    entitlement_options=(--entitlements "$root/Support/CodaDebug.entitlements")
+    ;;
+  release)
+    ;;
+  *)
+    print -u2 "Unsupported build configuration: $configuration"
+    print -u2 "Expected 'debug' or 'release'."
+    exit 2
+    ;;
+esac
+
+"$root/scripts/build-libmpv.sh"
 
 SDKROOT="$sdk" \
   CLANG_MODULE_CACHE_PATH="/private/tmp/coda-macos-clang-cache" \
@@ -22,6 +34,7 @@ binary="$root/.build/arm64-apple-macosx/$configuration/CodaPlaybackSpike"
 mkdir -p "$app/Contents/MacOS"
 mkdir -p "$app/Contents/Resources"
 mkdir -p "$app/Contents/Frameworks"
+rm -rf "$app/Contents/Resources/Licenses"
 mkdir -p "$app/Contents/Resources/Licenses"
 cp "$binary" "$app/Contents/MacOS/Coda"
 cp "$root/.build/libmpv/prefix/lib/libmpv.2.dylib" "$app/Contents/Frameworks/libmpv.2.dylib"
@@ -30,16 +43,10 @@ cp "$root/Support/Info.plist" "$app/Contents/Info.plist"
 cp "$root/Support/Coda.icns" "$app/Contents/Resources/Coda.icns"
 cp "$root/Support/CodaPlaceholderCover.png" \
   "$app/Contents/Resources/CodaPlaceholderCover.png"
-cp "$root/.build/libmpv/sources/mpv-0.41.0/LICENSE.LGPL" \
-  "$app/Contents/Resources/Licenses/mpv-LGPL-2.1-or-later.txt"
-cp "$root/.build/libmpv/sources/ffmpeg-8.1.2/COPYING.LGPLv2.1" \
-  "$app/Contents/Resources/Licenses/FFmpeg-LGPL-2.1.txt"
-cp "$root/.build/libmpv/sources/libass-0.17.5/COPYING" \
-  "$app/Contents/Resources/Licenses/libass-ISC.txt"
-cp "$root/.build/libmpv/sources/libplacebo-v7.360.1/LICENSE" \
-  "$app/Contents/Resources/Licenses/libplacebo-LGPL-2.1.txt"
-cp "$(brew --prefix graphite2)/LICENSE" \
-  "$app/Contents/Resources/Licenses/Graphite2-LGPL-2.1-or-MPL-1.1.txt"
+cp "$root/.build/libmpv/prefix/share/coda/BundledLibraries.txt" \
+  "$app/Contents/Resources/Licenses/BundledLibraries.txt"
+cp "$root/.build/libmpv/prefix/share/coda/Licenses/"* \
+  "$app/Contents/Resources/Licenses/"
 
 git_commit="$(git -C "$root" rev-parse --short=12 HEAD 2>/dev/null || true)"
 git_describe="$(git -C "$root" describe --tags --always --dirty 2>/dev/null || true)"
@@ -82,7 +89,7 @@ codesign \
   --force \
   --sign "$signing_identity" \
   --identifier "$bundle_identifier" \
-  --entitlements "$root/Support/Coda.entitlements" \
+  "${entitlement_options[@]}" \
   "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
 

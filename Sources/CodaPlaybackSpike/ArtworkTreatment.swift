@@ -27,13 +27,16 @@ struct ArtworkColor: Equatable {
 }
 
 enum ArtworkDisplayContext: Equatable {
+  case brand
   case album(String)
   case standard(activePlaybackIdentity: String?)
 
   static func resolve(
+    hasEstablishedConnection: Bool,
     displayedAlbumID: String?,
     playbackIdentity: String?
   ) -> ArtworkDisplayContext {
+    guard hasEstablishedConnection else { return .brand }
     if let displayedAlbumID {
       return .album(displayedAlbumID)
     }
@@ -132,6 +135,9 @@ final class ArtworkTreatmentSettings: ObservableObject {
 
   func applyDisplayContext(_ context: ArtworkDisplayContext) {
     switch context {
+    case .brand:
+      applyBrandTheme()
+
     case .album(let identity):
       // A route change can arrive before its artwork task. Keep the previous
       // valid theme until the requested album is ready, then crossfade once.
@@ -167,9 +173,39 @@ final class ArtworkTreatmentSettings: ObservableObject {
   }
 }
 
-enum AlbumHeroStyle {
-  static let coverSize: CGFloat = 236
-  static let titleSize: CGFloat = 40
+struct CollectionHeroMetrics: Equatable {
+  let artworkSize: CGFloat
+  let spacing: CGFloat
+  let trailingPadding: CGFloat
+  let height: CGFloat
+
+  init(width: CGFloat) {
+    artworkSize = Self.interpolatedValue(
+      for: width, minimum: 188, maximum: 236, from: 430, to: 760)
+    spacing = Self.interpolatedValue(
+      for: width, minimum: 18, maximum: 26, from: 430, to: 820)
+    trailingPadding = Self.interpolatedValue(
+      for: width, minimum: 20, maximum: 42, from: 430, to: 900)
+    height = max(224, artworkSize + 52)
+  }
+
+  private static func interpolatedValue(
+    for width: CGFloat,
+    minimum: CGFloat,
+    maximum: CGFloat,
+    from lowerWidth: CGFloat,
+    to upperWidth: CGFloat
+  ) -> CGFloat {
+    guard upperWidth > lowerWidth else { return maximum }
+    let progress = min(max((width - lowerWidth) / (upperWidth - lowerWidth), 0), 1)
+    return minimum + ((maximum - minimum) * progress)
+  }
+}
+
+enum CollectionHeroArtworkStyle {
+  static let shadowOpacity = 0.58
+  static let shadowRadius: CGFloat = 16
+  static let shadowY: CGFloat = 9
 }
 
 enum AlbumRatingBadgeStyle {
@@ -642,46 +678,23 @@ struct AlbumMockupHero: View {
 
   var body: some View {
     fluidHero
-      .frame(height: heroHeight)
+      .frame(height: metrics.height)
     .frame(maxWidth: .infinity)
   }
 
   private var fluidHero: some View {
-    HStack(alignment: .center, spacing: heroSpacing) {
-      heroArtwork(size: coverSize)
+    HStack(alignment: .center, spacing: metrics.spacing) {
+      heroArtwork(size: metrics.artworkSize)
       albumInfo
         .frame(maxWidth: .infinity, alignment: .leading)
     }
     .padding(.leading, 22)
-    .padding(.trailing, horizontalPadding)
+    .padding(.trailing, metrics.trailingPadding)
     .padding(.bottom, 10)
   }
 
-  private var coverSize: CGFloat {
-    interpolatedValue(minimum: 188, maximum: AlbumHeroStyle.coverSize, from: 430, to: 760)
-  }
-
-  private var heroSpacing: CGFloat {
-    interpolatedValue(minimum: 18, maximum: 26, from: 430, to: 820)
-  }
-
-  private var horizontalPadding: CGFloat {
-    interpolatedValue(minimum: 20, maximum: 42, from: 430, to: 900)
-  }
-
-  private var heroHeight: CGFloat {
-    max(224, coverSize + 52)
-  }
-
-  private func interpolatedValue(
-    minimum: CGFloat,
-    maximum: CGFloat,
-    from lowerWidth: CGFloat,
-    to upperWidth: CGFloat
-  ) -> CGFloat {
-    guard upperWidth > lowerWidth else { return maximum }
-    let progress = min(max((availableWidth - lowerWidth) / (upperWidth - lowerWidth), 0), 1)
-    return minimum + ((maximum - minimum) * progress)
+  private var metrics: CollectionHeroMetrics {
+    CollectionHeroMetrics(width: availableWidth)
   }
 
   private var albumIdentity: some View {
@@ -785,11 +798,19 @@ struct AlbumMockupHero: View {
           .frame(width: size, height: size)
           .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
           .scaleEffect(0.98)
-          .shadow(color: .black.opacity(0.58), radius: 16, y: 9)
+          .shadow(
+            color: .black.opacity(CollectionHeroArtworkStyle.shadowOpacity),
+            radius: CollectionHeroArtworkStyle.shadowRadius,
+            y: CollectionHeroArtworkStyle.shadowY
+          )
       } else {
         ArtworkImage(url: fallbackURL, cornerRadius: 13)
           .frame(width: size, height: size)
-          .shadow(color: .black.opacity(0.58), radius: 16, y: 9)
+          .shadow(
+            color: .black.opacity(CollectionHeroArtworkStyle.shadowOpacity),
+            radius: CollectionHeroArtworkStyle.shadowRadius,
+            y: CollectionHeroArtworkStyle.shadowY
+          )
       }
     }
     .frame(width: size + 30, height: size + 36)

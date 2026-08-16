@@ -17,10 +17,61 @@ enum PlaybackDiagnostics {
       print("FAILED: mpv was not selected; active engine is \(player.playbackEngineName).")
       return false
     }
+
+    let rapidSelectionEntries = [urls[1], urls[0], urls[1]].enumerated().map { index, url in
+      QueueEntry(
+        sourceID: "rapid-local-\(index)",
+        url: url,
+        title: url.deletingPathExtension().lastPathComponent
+      )
+    }
+    player.setVolume(0)
+    for attempt in 1...10 {
+      player.replaceQueue(rapidSelectionEntries, startsPlaying: false)
+      player.play(index: 1)
+      player.pause()
+
+      for _ in 0..<20 {
+        try? await Task.sleep(for: .milliseconds(5))
+        guard player.currentIndex == 1 else {
+          let observedIndex = player.currentIndex
+          player.clear()
+          print(
+            "FAILED: rapid manual selection advanced to index \(observedIndex.map(String.init) ?? "nil") on attempt \(attempt)."
+          )
+          return false
+        }
+      }
+      player.clear()
+      try? await Task.sleep(for: .milliseconds(5))
+    }
+    try? await Task.sleep(for: .milliseconds(250))
+
     let entries = urls.enumerated().map { index, url in
       QueueEntry(
         sourceID: "local-\(index)", url: url, title: url.deletingPathExtension().lastPathComponent)
     }
+    player.replaceQueue(entries, startsPlaying: true)
+    for _ in 0..<500 {
+      if let message = player.errorMessage {
+        player.clear()
+        print("FAILED: \(message)")
+        return false
+      }
+      if player.currentIndex == 1 {
+        player.pause()
+        break
+      }
+      try? await Task.sleep(for: .milliseconds(10))
+    }
+    guard player.currentIndex == 1 else {
+      player.clear()
+      print("FAILED: mpv did not automatically advance to the preloaded local item.")
+      return false
+    }
+    player.clear()
+    try? await Task.sleep(for: .milliseconds(250))
+
     player.setVolume(0)
     player.replaceQueue(
       entries,

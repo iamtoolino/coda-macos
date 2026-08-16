@@ -94,6 +94,7 @@
 
 - Check that logs, errors, diagnostics, and generated reports do not expose credentials, private server details, or library contents.
 - Review changes to signing, entitlements, Keychain access, bundled libraries, and license attribution as release-sensitive even in this hobby project.
+- When adding, updating, or changing linkage of bundled dependencies, inspect the final transitive dependency closure, not only direct dependencies. Verify license compatibility, static- and dynamic-linking obligations, required notices, source or relinking requirements, and that the built app contains the promised materials. Treat this as release engineering while avoiding unsupported legal conclusions.
 - Preserve native keyboard, focus, inactive-window, accessibility, and first-click behavior. Treat regressions in these areas as product defects rather than cosmetic differences.
 
 ## Verification

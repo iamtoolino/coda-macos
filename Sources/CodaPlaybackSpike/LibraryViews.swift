@@ -9,7 +9,6 @@ private struct HomeData {
   let recentArtists: [RemoteArtist]
   let recentlyPlayed: [RemoteAlbum]
   let playlists: [RemotePlaylist]
-  let playQueue: RemotePlayQueue?
 }
 
 struct HomeView: View {
@@ -94,10 +93,14 @@ struct HomeView: View {
       \.codaRefreshAction,
       CodaRefreshAction {
         Task { await load() }
+        Task { await loadPlayQueue() }
       }
     )
     .task(id: resetToken) {
       await load()
+    }
+    .task(id: resetToken) {
+      await loadPlayQueue()
     }
   }
 
@@ -112,11 +115,7 @@ struct HomeView: View {
       async let artistsTask = client.artists()
       async let recentTask = client.albums(.recentlyPlayed, size: 20)
       async let playlistsTask = client.playlists()
-      async let queueTask = client.playQueue()
 
-      let savedQueue = try await queueTask
-      queueHandoff.observeRemoteQueue(savedQueue)
-      autoRestoreIfNeeded(savedQueue)
       let newest = try await newestTask
       let artists = try await artistsTask
       let loadedData = HomeData(
@@ -124,14 +123,25 @@ struct HomeView: View {
         recentReleases: try await releasesTask,
         recentArtists: recentArtists(newestAlbums: newest, artists: artists),
         recentlyPlayed: try await recentTask,
-        playlists: try await playlistsTask,
-        playQueue: savedQueue
+        playlists: try await playlistsTask
       )
       data = loadedData
     } catch {
       errorMessage = error.localizedDescription
     }
     isLoading = false
+  }
+
+  @MainActor
+  private func loadPlayQueue() async {
+    guard let client = session.client else { return }
+    do {
+      let savedQueue = try await client.playQueue()
+      queueHandoff.observeRemoteQueue(savedQueue)
+      autoRestoreIfNeeded(savedQueue)
+    } catch {
+      // Queue handoff is opportunistic and will retry on later refreshes.
+    }
   }
 
   private var offeredContinueQueue: RemotePlayQueue? {
@@ -772,8 +782,8 @@ private struct ArtistCodaHero: View {
   let queueAction: () -> Void
 
   var body: some View {
-    HStack(alignment: .center, spacing: heroSpacing) {
-      heroArtwork(size: imageSize)
+    HStack(alignment: .center, spacing: metrics.spacing) {
+      heroArtwork(size: metrics.artworkSize)
 
       VStack(alignment: .leading, spacing: 8) {
         Text(page.artist.name)
@@ -800,41 +810,18 @@ private struct ArtistCodaHero: View {
       .frame(maxWidth: .infinity, alignment: .leading)
     }
     .padding(.leading, 22)
-    .padding(.trailing, horizontalPadding)
+    .padding(.trailing, metrics.trailingPadding)
     .padding(.bottom, 10)
-    .frame(height: heroHeight)
+    .frame(height: metrics.height)
     .padding(.bottom, -discographyLift)
   }
 
-  private var imageSize: CGFloat {
-    interpolatedValue(minimum: 188, maximum: AlbumHeroStyle.coverSize, from: 430, to: 760)
-  }
-
-  private var heroSpacing: CGFloat {
-    interpolatedValue(minimum: 18, maximum: 26, from: 430, to: 820)
-  }
-
-  private var horizontalPadding: CGFloat {
-    interpolatedValue(minimum: 20, maximum: 42, from: 430, to: 900)
-  }
-
-  private var heroHeight: CGFloat {
-    max(224, imageSize + 52)
+  private var metrics: CollectionHeroMetrics {
+    CollectionHeroMetrics(width: availableWidth)
   }
 
   private var discographyLift: CGFloat {
-    heroHeight - max(224, imageSize + 24)
-  }
-
-  private func interpolatedValue(
-    minimum: CGFloat,
-    maximum: CGFloat,
-    from lowerWidth: CGFloat,
-    to upperWidth: CGFloat
-  ) -> CGFloat {
-    guard upperWidth > lowerWidth else { return maximum }
-    let progress = min(max((availableWidth - lowerWidth) / (upperWidth - lowerWidth), 0), 1)
-    return minimum + ((maximum - minimum) * progress)
+    metrics.height - max(224, metrics.artworkSize + 24)
   }
 
   private func heroArtwork(size: CGFloat) -> some View {
@@ -848,7 +835,11 @@ private struct ArtistCodaHero: View {
       ArtistContainedImage(url: artworkURL, cornerRadius: 13)
         .frame(width: size, height: size)
         .scaleEffect(0.98)
-        .shadow(color: .black.opacity(0.58), radius: 16, y: 9)
+        .shadow(
+          color: .black.opacity(CollectionHeroArtworkStyle.shadowOpacity),
+          radius: CollectionHeroArtworkStyle.shadowRadius,
+          y: CollectionHeroArtworkStyle.shadowY
+        )
     }
     .frame(width: size + 30, height: size + 36)
     .artistDragSource(page.artist.id)
@@ -918,7 +909,6 @@ struct AlbumDetailView: View {
   @StateObject private var artworkLoader = AlbumArtworkLoader()
   @State private var page: AlbumPage?
   @State private var errorMessage: String?
-  @State private var isUpdatingRating = false
   @State private var ratingErrorMessage: String?
   @State private var ratingHighlightTrigger = 0
   @State private var selectedSongIDs: [String] = []
@@ -1099,7 +1089,7 @@ struct AlbumDetailView: View {
       artist: page.album.artistName,
       metadata: albumMetadata(page),
       rating: session.rating(for: page.album),
-      ratingIsUpdating: isUpdatingRating,
+      ratingIsUpdating: session.isUpdatingAlbumRating,
       ratingHighlightTrigger: ratingHighlightTrigger,
       ratingAction: { rating in
         ratingHighlightTrigger &+= 1
@@ -1125,16 +1115,17 @@ struct AlbumDetailView: View {
 
   @MainActor
   private func updateRating(_ rating: Int, albumID: String) async {
-    guard !isUpdatingRating, let client = session.client, let currentPage = page,
+    guard let client = session.client, let currentPage = page,
       currentPage.album.id == albumID
     else { return }
+    guard session.beginAlbumRatingUpdate() else { return }
+    defer { session.finishAlbumRatingUpdate() }
 
     let previousRating = session.rating(for: currentPage.album)
     var updatedAlbum = currentPage.album
     updatedAlbum.userRating = rating
     page = AlbumPage(album: updatedAlbum, songs: currentPage.songs)
     session.rememberRating(rating, forAlbumID: albumID)
-    isUpdatingRating = true
 
     do {
       try await client.setRating(id: albumID, rating: rating)
@@ -1148,10 +1139,6 @@ struct AlbumDetailView: View {
         session.rememberRating(previousRating, forAlbumID: albumID)
       }
       ratingErrorMessage = error.localizedDescription
-    }
-
-    if page?.album.id == albumID {
-      isUpdatingRating = false
     }
   }
 
