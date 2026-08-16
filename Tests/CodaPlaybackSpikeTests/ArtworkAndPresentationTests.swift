@@ -9,6 +9,21 @@ import Testing
 @Suite("Artwork and presentation")
 @MainActor
 struct ArtworkAndPresentationTests {
+  @Test("collection hero metrics preserve narrow and wide layouts")
+  func collectionHeroMetricsPreserveNarrowAndWideLayouts() {
+    let narrow = CollectionHeroMetrics(width: 430)
+    #expect(narrow.artworkSize == 188)
+    #expect(narrow.spacing == 18)
+    #expect(narrow.trailingPadding == 20)
+    #expect(narrow.height == 240)
+
+    let wide = CollectionHeroMetrics(width: 900)
+    #expect(wide.artworkSize == 236)
+    #expect(wide.spacing == 26)
+    #expect(wide.trailingPadding == 42)
+    #expect(wide.height == 288)
+  }
+
   @Test("artwork purposes use one browsing size and one Retina presentation size")
   func artworkPurposesUseOneBrowsingSizeAndOneRetinaPresentationSize() {
     #expect(ArtworkPurpose.standard.rawValue == 500)
