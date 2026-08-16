@@ -53,6 +53,7 @@ struct ArtworkAndPresentationTests {
     let fileURL = try #require(await cache.fileURL(for: key))
 
     #expect(key.kind == .artist)
+    #expect(key.variant == .browsing500)
     #expect(key.account.count == 32)
     #expect(key.entity == NavidromeConfiguration.md5("artist123"))
     #expect(fileURL.lastPathComponent == "500.image")
@@ -60,6 +61,26 @@ struct ArtworkAndPresentationTests {
     #expect(!fileURL.path.contains("secret-token"))
     #expect(!fileURL.path.contains("secret-salt"))
     #expect(!fileURL.path.contains("artist123"))
+  }
+
+  @Test("original artwork requests omit only the server resize parameter")
+  func originalArtworkRequestsOmitOnlyTheServerResizeParameter() throws {
+    let sizedURL = try persistentArtworkTestURL(size: 500)
+    let originalURL = try #require(ArtworkDiskCacheKey.originalRequestURL(from: sizedURL))
+    let components = try #require(
+      URLComponents(url: originalURL, resolvingAgainstBaseURL: false)
+    )
+    let parameters = Dictionary(
+      try #require(components.queryItems)
+        .map { ($0.name, $0.value ?? "") },
+      uniquingKeysWith: { first, _ in first }
+    )
+
+    #expect(parameters["size"] == nil)
+    #expect(parameters["id"] == "al-album123_abcd")
+    #expect(parameters["u"] == "user")
+    #expect(parameters["t"] == "token")
+    #expect(parameters["s"] == "salt")
   }
 
   @Test("album artwork versions share one persistent entity slot")
@@ -129,6 +150,34 @@ struct ArtworkAndPresentationTests {
     #expect(await reader.data(for: key) == data)
   }
 
+  @Test("original artwork creates a persistent local 500 pixel derivative")
+  func originalArtworkCreatesAPersistentLocal500PixelDerivative() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let browsingKey = try #require(
+      ArtworkDiskCacheKey(url: persistentArtworkTestURL(size: 500)))
+    let originalKey = browsingKey.withVariant(.original)
+    let originalData = try #require(testArtworkData(size: NSSize(width: 900, height: 600)))
+    let cache = ArtworkDiskCache(directoryURL: directory)
+
+    let browsingData = try #require(
+      await cache.storeOriginalAndBrowsingImage(originalData, for: browsingKey)
+    )
+    let source = try #require(CGImageSourceCreateWithData(browsingData as CFData, nil))
+    let properties = try #require(
+      CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+    )
+    let width = try #require(properties[kCGImagePropertyPixelWidth] as? Int)
+    let height = try #require(properties[kCGImagePropertyPixelHeight] as? Int)
+
+    #expect(max(width, height) == 500)
+    #expect(await cache.data(for: originalKey) == originalData)
+    #expect(await cache.data(for: browsingKey) == browsingData)
+    #expect(await cache.fileURL(for: originalKey)?.lastPathComponent == "original.image")
+    #expect(await cache.fileURL(for: browsingKey)?.lastPathComponent == "500.image")
+  }
+
   @Test("corrupt persistent artwork is discarded")
   func corruptPersistentArtworkIsDiscarded() async throws {
     let directory = FileManager.default.temporaryDirectory
@@ -147,8 +196,8 @@ struct ArtworkAndPresentationTests {
     #expect(!FileManager.default.fileExists(atPath: fileURL.path))
   }
 
-  @Test("targeted removal clears every requested artwork size")
-  func targetedRemovalClearsEveryRequestedArtworkSize() async throws {
+  @Test("targeted removal clears original and browsing artwork")
+  func targetedRemovalClearsOriginalAndBrowsingArtwork() async throws {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -158,12 +207,11 @@ struct ArtworkAndPresentationTests {
     let nowPlayingKey = try #require(
       ArtworkDiskCacheKey(url: persistentArtworkTestURL(size: 1_200)))
     let data = try #require(testArtworkData())
-    await cache.store(data, for: standardKey)
-    await cache.store(data, for: nowPlayingKey)
+    _ = await cache.storeOriginalAndBrowsingImage(data, for: standardKey)
     let standardURL = try #require(await cache.fileURL(for: standardKey))
     let nowPlayingURL = try #require(await cache.fileURL(for: nowPlayingKey))
 
-    await cache.remove([standardKey, nowPlayingKey])
+    await cache.remove([standardKey])
 
     #expect(!FileManager.default.fileExists(atPath: standardURL.path))
     #expect(!FileManager.default.fileExists(atPath: nowPlayingURL.path))
@@ -202,11 +250,11 @@ struct ArtworkAndPresentationTests {
     )
   }
 
-  private func testArtworkData() -> Data? {
-    let image = NSImage(size: NSSize(width: 2, height: 2))
+  private func testArtworkData(size: NSSize = NSSize(width: 2, height: 2)) -> Data? {
+    let image = NSImage(size: size)
     image.lockFocus()
     NSColor.systemBlue.setFill()
-    NSBezierPath(rect: NSRect(x: 0, y: 0, width: 2, height: 2)).fill()
+    NSBezierPath(rect: NSRect(origin: .zero, size: size)).fill()
     image.unlockFocus()
     return image.tiffRepresentation
   }
