@@ -227,12 +227,9 @@ struct ContentView: View {
   }
 
   private func applyArtworkDisplayContext() {
-    guard session.hasEstablishedConnection else {
-      artworkTreatments.applyBrandTheme()
-      return
-    }
     artworkTreatments.applyDisplayContext(
       .resolve(
+        hasEstablishedConnection: session.hasEstablishedConnection,
         displayedAlbumID: session.path.last?.displayedAlbumID,
         playbackIdentity: player.currentEntry?.artworkThemeIdentity
       )
@@ -549,6 +546,7 @@ private struct CompactPlaybackDock: View {
   private func applyArtworkDisplayContext() {
     artworkTreatments.applyDisplayContext(
       .resolve(
+        hasEstablishedConnection: session.hasEstablishedConnection,
         displayedAlbumID: session.path.last?.displayedAlbumID,
         playbackIdentity: player.currentEntry?.artworkThemeIdentity
       )

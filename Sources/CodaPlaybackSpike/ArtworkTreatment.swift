@@ -26,13 +26,16 @@ struct ArtworkColor: Equatable {
 }
 
 enum ArtworkDisplayContext: Equatable {
+  case brand
   case album(String)
   case standard(activePlaybackIdentity: String?)
 
   static func resolve(
+    hasEstablishedConnection: Bool,
     displayedAlbumID: String?,
     playbackIdentity: String?
   ) -> ArtworkDisplayContext {
+    guard hasEstablishedConnection else { return .brand }
     if let displayedAlbumID {
       return .album(displayedAlbumID)
     }
@@ -131,6 +134,9 @@ final class ArtworkTreatmentSettings: ObservableObject {
 
   func applyDisplayContext(_ context: ArtworkDisplayContext) {
     switch context {
+    case .brand:
+      applyBrandTheme()
+
     case .album(let identity):
       // A route change can arrive before its artwork task. Keep the previous
       // valid theme until the requested album is ready, then crossfade once.

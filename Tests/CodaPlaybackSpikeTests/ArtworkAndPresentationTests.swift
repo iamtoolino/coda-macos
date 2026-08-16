@@ -157,6 +157,7 @@ struct ArtworkAndPresentationTests {
 
       treatments.applyDisplayContext(
         .resolve(
+          hasEstablishedConnection: true,
           displayedAlbumID: nil,
           playbackIdentity: "playing"
         )
@@ -179,6 +180,38 @@ struct ArtworkAndPresentationTests {
       return treatments.artwork === albumImage && treatments.accent == albumAccent
     }()
     #expect(passed)
+  }
+
+  @Test("late playback artwork cannot replace the disconnected brand theme")
+  func latePlaybackArtworkCannotReplaceTheDisconnectedBrandTheme() {
+    let treatments = ArtworkTreatmentSettings()
+    let initialArtwork = NSImage(size: NSSize(width: 2, height: 2))
+    let lateArtwork = NSImage(size: NSSize(width: 3, height: 3))
+
+    treatments.rememberPlaybackArtwork(
+      initialArtwork,
+      accent: ArtworkColor(red: 0.2, green: 0.4, blue: 0.8),
+      identity: "playing"
+    )
+    treatments.applyDisplayContext(.standard(activePlaybackIdentity: "playing"))
+    treatments.applyDisplayContext(.brand)
+
+    treatments.rememberPlaybackArtwork(
+      lateArtwork,
+      accent: ArtworkColor(red: 0.7, green: 0.2, blue: 0.1),
+      identity: "playing"
+    )
+    treatments.applyDisplayContext(
+      .resolve(
+        hasEstablishedConnection: false,
+        displayedAlbumID: nil,
+        playbackIdentity: "playing"
+      )
+    )
+
+    #expect(treatments.artwork == nil)
+    #expect(treatments.accent == .fallback)
+    #expect(treatments.displayedIdentity == nil)
   }
 
   @Test("empty playback context uses the static Coda brand theme")
