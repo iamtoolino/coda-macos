@@ -205,6 +205,7 @@ final class AppSession: ObservableObject {
     configuration: NavidromeConfiguration,
     preservingExistingClient: Bool = false
   ) {
+    ArtworkImageCache.shared.resetMemory()
     activeSessionID = nil
     handledPlayQueueIdentity = nil
     albumRatingOverrides.removeAll()
@@ -229,6 +230,7 @@ final class AppSession: ObservableObject {
   }
 
   private func resetConnectionState(to state: ConnectionState) {
+    ArtworkImageCache.shared.resetMemory()
     client = nil
     configuration = nil
     activeSessionID = nil
@@ -286,8 +288,12 @@ final class AppSession: ObservableObject {
     handledPlayQueueIdentity = queue.handoffIdentity
   }
 
-  func refreshArtwork() {
-    ArtworkImageCache.shared.invalidateAll()
+  func refreshArtwork(
+    id: String?,
+    purposes: [ArtworkPurpose] = [.standard]
+  ) async {
+    let urls = purposes.compactMap { artworkURL(id: id, purpose: $0) }
+    await ArtworkImageCache.shared.invalidate(urls: urls)
   }
 
   func artworkURL(id: String?, purpose: ArtworkPurpose = .standard) -> URL? {

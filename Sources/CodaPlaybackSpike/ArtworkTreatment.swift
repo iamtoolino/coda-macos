@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import ImageIO
 import SwiftUI
 
 struct ArtworkColor: Equatable {
@@ -226,6 +227,164 @@ enum CodaPlaceholderArtwork {
   }()
 }
 
+struct ArtworkDiskCacheKey: Hashable, Sendable {
+  enum Kind: String, Sendable {
+    case artist
+    case album
+  }
+
+  let account: String
+  let kind: Kind
+  let entity: String
+  let size: Int
+
+  init?(url: URL) {
+    guard
+      let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+      let scheme = components.scheme,
+      let host = components.host,
+      let queryItems = components.queryItems
+    else { return nil }
+
+    let parameters = Dictionary(
+      queryItems.map { ($0.name, $0.value ?? "") },
+      uniquingKeysWith: { first, _ in first }
+    )
+    guard
+      let username = parameters["u"], !username.isEmpty,
+      let artworkID = parameters["id"],
+      let size = Int(parameters["size"] ?? ""), size > 0,
+      let identity = Self.entityIdentity(from: artworkID)
+    else { return nil }
+
+    var serverIdentity = "\(scheme.lowercased())://\(host.lowercased())"
+    if let port = components.port {
+      serverIdentity += ":\(port)"
+    }
+    if let range = components.path.range(of: "/rest/getCoverArt", options: .backwards) {
+      serverIdentity += String(components.path[..<range.lowerBound])
+    } else {
+      return nil
+    }
+
+    account = NavidromeConfiguration.md5("\(serverIdentity)\0\(username)")
+    kind = identity.kind
+    entity = NavidromeConfiguration.md5(identity.id)
+    self.size = size
+  }
+
+  private static func entityIdentity(from artworkID: String) -> (kind: Kind, id: String)? {
+    guard artworkID.count > 3 else { return nil }
+    let kind: Kind
+    switch artworkID.prefix(3) {
+    case "ar-": kind = .artist
+    case "al-", "dc-", "mf-": kind = .album
+    default: return nil
+    }
+
+    let versionedID = artworkID.dropFirst(3)
+    let stableID: Substring
+    if let separator = versionedID.lastIndex(of: "_") {
+      let version = versionedID[versionedID.index(after: separator)...]
+      if !version.isEmpty, version.allSatisfy(\.isHexDigit) {
+        stableID = versionedID[..<separator]
+      } else {
+        stableID = versionedID
+      }
+    } else {
+      stableID = versionedID
+    }
+    guard !stableID.isEmpty else { return nil }
+    return (kind, String(stableID))
+  }
+}
+
+actor ArtworkDiskCache {
+  static let shared = ArtworkDiskCache()
+
+  private let directoryURL: URL?
+
+  init(
+    directoryURL: URL? = FileManager.default.urls(
+      for: .cachesDirectory,
+      in: .userDomainMask
+    ).first?
+      .appendingPathComponent("io.github.iamtoolino.coda.macos", isDirectory: true)
+      .appendingPathComponent("Artwork", isDirectory: true)
+      .appendingPathComponent("v1", isDirectory: true)
+  ) {
+    self.directoryURL = directoryURL
+  }
+
+  func data(for key: ArtworkDiskCacheKey) -> Data? {
+    guard let fileURL = fileURL(for: key), FileManager.default.fileExists(atPath: fileURL.path)
+    else { return nil }
+    do {
+      let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
+      guard Self.isArtworkData(data) else {
+        try? FileManager.default.removeItem(at: fileURL)
+        return nil
+      }
+      return data
+    } catch {
+      return nil
+    }
+  }
+
+  func store(_ data: Data, for key: ArtworkDiskCacheKey) {
+    guard Self.isArtworkData(data), let fileURL = fileURL(for: key) else { return }
+    do {
+      try FileManager.default.createDirectory(
+        at: fileURL.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      try data.write(to: fileURL, options: .atomic)
+    } catch {
+      // Artwork remains available from the RAM cache for this session.
+    }
+  }
+
+  func remove(_ keys: Set<ArtworkDiskCacheKey>) {
+    for key in keys {
+      guard let fileURL = fileURL(for: key) else { continue }
+      try? FileManager.default.removeItem(at: fileURL)
+      removeEmptyParents(startingAt: fileURL.deletingLastPathComponent())
+    }
+  }
+
+  func fileURL(for key: ArtworkDiskCacheKey) -> URL? {
+    directoryURL?
+      .appendingPathComponent(key.account, isDirectory: true)
+      .appendingPathComponent(key.kind.rawValue, isDirectory: true)
+      .appendingPathComponent(key.entity, isDirectory: true)
+      .appendingPathComponent("\(key.size).image", isDirectory: false)
+  }
+
+  private func removeEmptyParents(startingAt directory: URL) {
+    guard let root = directoryURL else { return }
+    var candidate = directory
+    while candidate.path.hasPrefix(root.path), candidate != root {
+      guard
+        let contents = try? FileManager.default.contentsOfDirectory(
+          at: candidate,
+          includingPropertiesForKeys: nil
+        ),
+        contents.isEmpty
+      else { return }
+      try? FileManager.default.removeItem(at: candidate)
+      candidate.deleteLastPathComponent()
+    }
+  }
+
+  private static func isArtworkData(_ data: Data) -> Bool {
+    guard
+      let source = CGImageSourceCreateWithData(data as CFData, nil),
+      CGImageSourceGetCount(source) > 0
+    else { return false }
+    return CGImageSourceCreateImageAtIndex(source, 0, nil) != nil
+  }
+}
+
 @MainActor
 final class ArtworkImageCache: ObservableObject {
   static let shared = ArtworkImageCache()
@@ -233,27 +392,44 @@ final class ArtworkImageCache: ObservableObject {
   @Published private(set) var generation = 0
 
   private struct LoadingRequest: Hashable {
-    let url: URL
+    let key: String
     let generation: Int
   }
 
-  private let images = NSCache<NSURL, NSImage>()
+  private let images = NSCache<NSString, NSImage>()
   private var loadingTasks: [LoadingRequest: Task<Data?, Never>] = [:]
-  private var requestedURLs: Set<URL> = []
+  private var requestedDiskKeys: Set<ArtworkDiskCacheKey> = []
+  private let diskCache: ArtworkDiskCache
+  private let session: URLSession
 
-  private init() {
+  init(
+    diskCache: ArtworkDiskCache = .shared,
+    session: URLSession = CodaURLSessions.artwork
+  ) {
+    self.diskCache = diskCache
+    self.session = session
     images.countLimit = 300
     images.totalCostLimit = 256 * 1_024 * 1_024
+    URLCache.shared.removeAllCachedResponses()
   }
 
   func image(for url: URL?) async -> NSImage {
     guard let url else { return CodaPlaceholderArtwork.image }
-    if let image = images.object(forKey: url as NSURL) {
+    let diskKey = ArtworkDiskCacheKey(url: url)
+    let memoryKey = Self.memoryKey(for: url, diskKey: diskKey)
+    if let image = images.object(forKey: memoryKey) {
       return image
     }
 
-    requestedURLs.insert(url)
-    let loadingRequest = LoadingRequest(url: url, generation: generation)
+    if let diskKey {
+      requestedDiskKeys.insert(diskKey)
+      if let data = await diskCache.data(for: diskKey), let image = NSImage(data: data) {
+        store(image, dataCount: data.count, for: memoryKey)
+        return image
+      }
+    }
+
+    let loadingRequest = LoadingRequest(key: memoryKey as String, generation: generation)
     let task: Task<Data?, Never>
     if let existingTask = loadingTasks[loadingRequest] {
       task = existingTask
@@ -262,10 +438,10 @@ final class ArtworkImageCache: ObservableObject {
         do {
           let request = URLRequest(
             url: url,
-            cachePolicy: .reloadRevalidatingCacheData,
+            cachePolicy: .reloadIgnoringLocalCacheData,
             timeoutInterval: 30
           )
-          let (data, response) = try await URLSession.shared.data(for: request)
+          let (data, response) = try await session.data(for: request)
           if let response = response as? HTTPURLResponse {
             guard (200..<300).contains(response.statusCode) else { return nil }
           }
@@ -285,23 +461,57 @@ final class ArtworkImageCache: ObservableObject {
     guard let data, let image = NSImage(data: data) else {
       return CodaPlaceholderArtwork.image
     }
-    images.setObject(
-      image,
-      forKey: url as NSURL,
-      cost: Self.decodedMemoryCost(of: image, fallback: data.count)
-    )
+    if let diskKey {
+      await diskCache.store(data, for: diskKey)
+    }
+    store(image, dataCount: data.count, for: memoryKey)
     return image
   }
 
-  func invalidateAll() {
+  func invalidate(urls: [URL]) async {
+    let diskKeys = Set(urls.compactMap(ArtworkDiskCacheKey.init(url:)))
+    let memoryKeys = Set(urls.map { Self.memoryKey(for: $0, diskKey: ArtworkDiskCacheKey(url: $0)) })
+    generation &+= 1
+    for key in memoryKeys {
+      images.removeObject(forKey: key)
+    }
+    let loadingKeys = Set(memoryKeys.map(String.init))
+    for (request, task) in loadingTasks where loadingKeys.contains(request.key) {
+      task.cancel()
+      loadingTasks[request] = nil
+    }
+    requestedDiskKeys.subtract(diskKeys)
+    await diskCache.remove(diskKeys)
+  }
+
+  func invalidateAll() async {
+    let diskKeys = requestedDiskKeys
+    resetMemory()
+    requestedDiskKeys.removeAll()
+    await diskCache.remove(diskKeys)
+  }
+
+  func resetMemory() {
     generation &+= 1
     images.removeAllObjects()
     loadingTasks.values.forEach { $0.cancel() }
     loadingTasks.removeAll()
-    for url in requestedURLs {
-      URLCache.shared.removeCachedResponse(for: URLRequest(url: url))
+  }
+
+  private func store(_ image: NSImage, dataCount: Int, for key: NSString) {
+    images.setObject(
+      image,
+      forKey: key,
+      cost: Self.decodedMemoryCost(of: image, fallback: dataCount)
+    )
+  }
+
+  private static func memoryKey(for url: URL, diskKey: ArtworkDiskCacheKey?) -> NSString {
+    if let diskKey {
+      return "disk:\(diskKey.account):\(diskKey.kind.rawValue):\(diskKey.entity):\(diskKey.size)"
+        as NSString
     }
-    requestedURLs.removeAll()
+    return "url:\(url.absoluteString)" as NSString
   }
 
   private static func decodedMemoryCost(of image: NSImage, fallback: Int) -> Int {

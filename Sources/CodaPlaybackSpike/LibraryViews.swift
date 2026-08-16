@@ -93,7 +93,6 @@ struct HomeView: View {
     .focusedSceneValue(
       \.codaRefreshAction,
       CodaRefreshAction {
-        session.refreshArtwork()
         Task { await load() }
       }
     )
@@ -230,7 +229,6 @@ struct SearchView: View {
     .focusedSceneValue(
       \.codaRefreshAction,
       CodaRefreshAction {
-        session.refreshArtwork()
         Task { await performSearch(for: query) }
       }
     )
@@ -415,7 +413,6 @@ struct ArtistsView: View {
     .focusedSceneValue(
       \.codaRefreshAction,
       CodaRefreshAction {
-        session.refreshArtwork()
         Task { await load(selectedKind) }
       }
     )
@@ -546,7 +543,6 @@ struct AlbumsView: View {
     .focusedSceneValue(
       \.codaRefreshAction,
       CodaRefreshAction {
-        session.refreshArtwork()
         Task { await load(selectedKind) }
       }
     )
@@ -635,8 +631,11 @@ struct ArtistDetailView: View {
     .focusedSceneValue(
       \.codaRefreshAction,
       CodaRefreshAction {
-        session.refreshArtwork()
-        Task { await load() }
+        let artworkID = page?.artist.coverArt
+        Task {
+          await session.refreshArtwork(id: artworkID)
+          await load()
+        }
       }
     )
     .task(id: artistID) {
@@ -1026,8 +1025,14 @@ struct AlbumDetailView: View {
     .focusedSceneValue(
       \.codaRefreshAction,
       CodaRefreshAction {
-        session.refreshArtwork()
-        Task { await load() }
+        let artworkID = page?.album.coverArt ?? page?.album.id ?? albumID
+        Task {
+          await session.refreshArtwork(
+            id: artworkID,
+            purposes: [.standard, .nowPlaying]
+          )
+          await load()
+        }
       }
     )
     .task(id: albumID) {
@@ -1305,7 +1310,6 @@ struct PlaylistDetailView: View {
     .focusedSceneValue(
       \.codaRefreshAction,
       CodaRefreshAction {
-        session.refreshArtwork()
         Task { await load() }
       }
     )

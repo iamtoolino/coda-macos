@@ -2,6 +2,18 @@ import CryptoKit
 import Foundation
 import SystemConfiguration
 
+enum CodaURLSessions {
+  static let api = makeEphemeralSession()
+  static let artwork = makeEphemeralSession()
+
+  private static func makeEphemeralSession() -> URLSession {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.urlCache = nil
+    configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+    return URLSession(configuration: configuration)
+  }
+}
+
 struct NavidromeConfiguration: Sendable {
   static let clientName = makeClientName(deviceName: currentComputerName())
 
@@ -232,7 +244,7 @@ struct NavidromeClient: Sendable {
   let configuration: NavidromeConfiguration
   private let session: URLSession
 
-  init(configuration: NavidromeConfiguration, session: URLSession = .shared) {
+  init(configuration: NavidromeConfiguration, session: URLSession = CodaURLSessions.api) {
     self.configuration = configuration
     self.session = session
   }

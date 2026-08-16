@@ -19,14 +19,151 @@ struct ArtworkAndPresentationTests {
   }
 
   @Test("artwork invalidation advances the shared cache generation")
-  func artworkInvalidationAdvancesTheSharedCacheGeneration() throws {
-    let passed = try { () throws -> Bool in
-      let cache = ArtworkImageCache.shared
-      let previousGeneration = cache.generation
-      cache.invalidateAll()
-      return cache.generation == previousGeneration + 1
-    }()
-    #expect(passed)
+  func artworkInvalidationAdvancesTheSharedCacheGeneration() async {
+    let cache = ArtworkImageCache.shared
+    let previousGeneration = cache.generation
+    await cache.invalidateAll()
+    #expect(cache.generation == previousGeneration + 1)
+  }
+
+  @Test("artwork disk keys exclude authenticated request details")
+  func artworkDiskKeysExcludeAuthenticatedRequestDetails() async throws {
+    let url = try #require(
+      URL(
+        string:
+          "https://music.example.test/base/rest/getCoverArt?u=private-user&t=secret-token&s=secret-salt&id=ar-artist123_0&size=500"
+      )
+    )
+    let key = try #require(ArtworkDiskCacheKey(url: url))
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let cache = ArtworkDiskCache(directoryURL: directory)
+    let fileURL = try #require(await cache.fileURL(for: key))
+
+    #expect(key.kind == .artist)
+    #expect(key.account.count == 32)
+    #expect(key.entity == NavidromeConfiguration.md5("artist123"))
+    #expect(fileURL.lastPathComponent == "500.image")
+    #expect(!fileURL.path.contains("private-user"))
+    #expect(!fileURL.path.contains("secret-token"))
+    #expect(!fileURL.path.contains("secret-salt"))
+    #expect(!fileURL.path.contains("artist123"))
+  }
+
+  @Test("album artwork versions share one persistent entity slot")
+  func albumArtworkVersionsShareOnePersistentEntitySlot() throws {
+    let olderURL = try #require(
+      URL(
+        string:
+          "https://music.example.test/rest/getCoverArt?u=user&t=old&s=one&id=al-album123_abcd&size=500"
+      )
+    )
+    let newerURL = try #require(
+      URL(
+        string:
+          "https://music.example.test/rest/getCoverArt?u=user&t=new&s=two&id=al-album123_bcde&size=500"
+      )
+    )
+
+    #expect(ArtworkDiskCacheKey(url: olderURL) == ArtworkDiskCacheKey(url: newerURL))
+  }
+
+  @Test("artist and album IDs occupy separate cache namespaces")
+  func artistAndAlbumIDsOccupySeparateCacheNamespaces() throws {
+    let artistURL = try #require(
+      URL(
+        string:
+          "https://music.example.test/rest/getCoverArt?u=user&t=a&s=b&id=ar-shared_0&size=500"
+      )
+    )
+    let albumURL = try #require(
+      URL(
+        string:
+          "https://music.example.test/rest/getCoverArt?u=user&t=c&s=d&id=al-shared_0&size=500"
+      )
+    )
+    let artistKey = try #require(ArtworkDiskCacheKey(url: artistURL))
+    let albumKey = try #require(ArtworkDiskCacheKey(url: albumURL))
+
+    #expect(artistKey.kind == .artist)
+    #expect(albumKey.kind == .album)
+    #expect(artistKey.entity == albumKey.entity)
+    #expect(artistKey != albumKey)
+  }
+
+  @Test("playlist artwork is not eligible for persistent caching")
+  func playlistArtworkIsNotEligibleForPersistentCaching() throws {
+    let url = try #require(
+      URL(
+        string:
+          "https://music.example.test/rest/getCoverArt?u=user&t=a&s=b&id=pl-playlist_0&size=500"
+      )
+    )
+    #expect(ArtworkDiskCacheKey(url: url) == nil)
+  }
+
+  @Test("artwork bytes survive across disk cache instances")
+  func artworkBytesSurviveAcrossDiskCacheInstances() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let key = try #require(ArtworkDiskCacheKey(url: persistentArtworkTestURL(size: 500)))
+    let data = try #require(testArtworkData())
+
+    let writer = ArtworkDiskCache(directoryURL: directory)
+    await writer.store(data, for: key)
+    let reader = ArtworkDiskCache(directoryURL: directory)
+
+    #expect(await reader.data(for: key) == data)
+  }
+
+  @Test("corrupt persistent artwork is discarded")
+  func corruptPersistentArtworkIsDiscarded() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let cache = ArtworkDiskCache(directoryURL: directory)
+    let key = try #require(ArtworkDiskCacheKey(url: persistentArtworkTestURL(size: 500)))
+    let fileURL = try #require(await cache.fileURL(for: key))
+    try FileManager.default.createDirectory(
+      at: fileURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try Data("not an image".utf8).write(to: fileURL)
+
+    #expect(await cache.data(for: key) == nil)
+    #expect(!FileManager.default.fileExists(atPath: fileURL.path))
+  }
+
+  @Test("targeted removal clears every requested artwork size")
+  func targetedRemovalClearsEveryRequestedArtworkSize() async throws {
+    let directory = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let cache = ArtworkDiskCache(directoryURL: directory)
+    let standardKey = try #require(
+      ArtworkDiskCacheKey(url: persistentArtworkTestURL(size: 500)))
+    let nowPlayingKey = try #require(
+      ArtworkDiskCacheKey(url: persistentArtworkTestURL(size: 1_200)))
+    let data = try #require(testArtworkData())
+    await cache.store(data, for: standardKey)
+    await cache.store(data, for: nowPlayingKey)
+    let standardURL = try #require(await cache.fileURL(for: standardKey))
+    let nowPlayingURL = try #require(await cache.fileURL(for: nowPlayingKey))
+
+    await cache.remove([standardKey, nowPlayingKey])
+
+    #expect(!FileManager.default.fileExists(atPath: standardURL.path))
+    #expect(!FileManager.default.fileExists(atPath: nowPlayingURL.path))
+  }
+
+  @Test("Coda network sessions cannot write URL responses to disk")
+  func codaNetworkSessionsCannotWriteURLResponsesToDisk() {
+    #expect(CodaURLSessions.api.configuration.urlCache == nil)
+    #expect(CodaURLSessions.artwork.configuration.urlCache == nil)
+    #expect(CodaURLSessions.api.configuration.requestCachePolicy == .reloadIgnoringLocalCacheData)
+    #expect(
+      CodaURLSessions.artwork.configuration.requestCachePolicy == .reloadIgnoringLocalCacheData)
   }
 
   @Test("queue entries keep browsing and now playing artwork separate")
@@ -45,6 +182,24 @@ struct ArtworkAndPresentationTests {
         && entry.nowPlayingArtworkURL == nowPlayingURL
     }()
     #expect(passed)
+  }
+
+  private func persistentArtworkTestURL(size: Int) throws -> URL {
+    try #require(
+      URL(
+        string:
+          "https://music.example.test/rest/getCoverArt?u=user&t=token&s=salt&id=al-album123_abcd&size=\(size)"
+      )
+    )
+  }
+
+  private func testArtworkData() -> Data? {
+    let image = NSImage(size: NSSize(width: 2, height: 2))
+    image.lockFocus()
+    NSColor.systemBlue.setFill()
+    NSBezierPath(rect: NSRect(x: 0, y: 0, width: 2, height: 2)).fill()
+    image.unlockFocus()
+    return image.tiffRepresentation
   }
 
   @Test("same album identity can repair stale artwork treatment")
