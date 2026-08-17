@@ -31,10 +31,10 @@ SDKROOT="$sdk" \
   swift build --disable-sandbox --configuration "$configuration"
 
 binary="$root/.build/arm64-apple-macosx/$configuration/CodaPlaybackSpike"
+rm -rf "$app"
 mkdir -p "$app/Contents/MacOS"
 mkdir -p "$app/Contents/Resources"
 mkdir -p "$app/Contents/Frameworks"
-rm -rf "$app/Contents/Resources/Licenses"
 mkdir -p "$app/Contents/Resources/Licenses"
 cp "$binary" "$app/Contents/MacOS/Coda"
 cp "$root/.build/libmpv/prefix/lib/libmpv.2.dylib" "$app/Contents/Frameworks/libmpv.2.dylib"
