@@ -10,13 +10,25 @@ import Testing
 @MainActor
 struct LibraryInteractionTests {
   @Test("album rating updates are globally serialized")
-  func albumRatingUpdatesAreGloballySerialized() {
+  func albumRatingUpdatesAreGloballySerialized() throws {
     let session = AppSession(loadCredentials: false)
+    let staleRequest = SessionRequestContext(
+      client: NavidromeClient(
+        configuration: try NavidromeConfiguration(
+          server: "https://music.example.test",
+          username: "listener",
+          password: "secret"
+        )),
+      sessionID: UUID()
+    )
 
     #expect(!session.isUpdatingAlbumRating)
     #expect(session.beginAlbumRatingUpdate())
     #expect(session.isUpdatingAlbumRating)
     #expect(!session.beginAlbumRatingUpdate())
+
+    session.finishAlbumRatingUpdate(for: staleRequest)
+    #expect(session.isUpdatingAlbumRating)
 
     session.finishAlbumRatingUpdate()
 

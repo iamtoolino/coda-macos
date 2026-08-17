@@ -220,6 +220,9 @@ struct ContentView: View {
     .onChange(of: session.hasEstablishedConnection) {
       applyArtworkDisplayContext()
     }
+    .onChange(of: session.activeSessionID) { _, activeSessionID in
+      playlistSaver.sessionDidChange(to: activeSessionID)
+    }
     .onChange(of: player.currentEntry?.id) {
       applyArtworkDisplayContext()
       volumePresentation.dismiss()

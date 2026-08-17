@@ -106,15 +106,15 @@ struct HomeView: View {
 
   @MainActor
   private func load() async {
-    guard let client = session.client else { return }
+    guard let request = session.sessionRequestContext() else { return }
     isLoading = true
     errorMessage = nil
     do {
-      async let newestTask = client.albums(.recentlyAdded, size: 24)
-      async let releasesTask = client.albums(.recentReleases, size: 24)
-      async let artistsTask = client.artists()
-      async let recentTask = client.albums(.recentlyPlayed, size: 20)
-      async let playlistsTask = client.playlists()
+      async let newestTask = request.client.albums(.recentlyAdded, size: 24)
+      async let releasesTask = request.client.albums(.recentReleases, size: 24)
+      async let artistsTask = request.client.artists()
+      async let recentTask = request.client.albums(.recentlyPlayed, size: 20)
+      async let playlistsTask = request.client.playlists()
 
       let newest = try await newestTask
       let artists = try await artistsTask
@@ -125,18 +125,23 @@ struct HomeView: View {
         recentlyPlayed: try await recentTask,
         playlists: try await playlistsTask
       )
+      guard session.isCurrent(request) else { return }
       data = loadedData
     } catch {
+      guard session.isCurrent(request) else { return }
       errorMessage = error.localizedDescription
     }
-    isLoading = false
+    if session.isCurrent(request) {
+      isLoading = false
+    }
   }
 
   @MainActor
   private func loadPlayQueue() async {
-    guard let client = session.client else { return }
+    guard let request = session.sessionRequestContext() else { return }
     do {
-      let savedQueue = try await client.playQueue()
+      let savedQueue = try await request.client.playQueue()
+      guard session.isCurrent(request) else { return }
       queueHandoff.observeRemoteQueue(savedQueue)
       autoRestoreIfNeeded(savedQueue)
     } catch {
@@ -1167,11 +1172,11 @@ struct AlbumDetailView: View {
 
   @MainActor
   private func updateRating(_ rating: Int, albumID: String) async {
-    guard let client = session.client, let currentPage = page,
+    guard let request = session.sessionRequestContext(), let currentPage = page,
       currentPage.album.id == albumID
     else { return }
     guard session.beginAlbumRatingUpdate() else { return }
-    defer { session.finishAlbumRatingUpdate() }
+    defer { session.finishAlbumRatingUpdate(for: request) }
 
     let previousRating = session.rating(for: currentPage.album)
     var updatedAlbum = currentPage.album
@@ -1180,8 +1185,10 @@ struct AlbumDetailView: View {
     session.rememberRating(rating, forAlbumID: albumID)
 
     do {
-      try await client.setRating(id: albumID, rating: rating)
+      try await request.client.setRating(id: albumID, rating: rating)
+      guard session.isCurrent(request) else { return }
     } catch {
+      guard session.isCurrent(request) else { return }
       if let latestPage = page, latestPage.album.id == albumID,
         latestPage.album.userRating == rating
       {

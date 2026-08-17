@@ -16,9 +16,14 @@ final class QueuePlaylistSaveCoordinator: ObservableObject {
   @Published private(set) var phase: Phase = .ready
   @Published private(set) var playlists: [RemotePlaylist] = []
 
-  private var client: NavidromeClient?
+  private let session: AppSession
+  private var request: SessionRequestContext?
   private var songIDs: [String] = []
   private var task: Task<Void, Never>?
+
+  init(session: AppSession) {
+    self.session = session
+  }
 
   var trackCount: Int { songIDs.count }
 
@@ -38,13 +43,10 @@ final class QueuePlaylistSaveCoordinator: ObservableObject {
       && phase != .saved
   }
 
-  func present(
-    client: NavidromeClient,
-    queue: [QueueEntry]
-  ) {
-    guard !queue.isEmpty else { return }
+  func present(queue: [QueueEntry]) {
+    guard !queue.isEmpty, let request = session.sessionRequestContext() else { return }
     task?.cancel()
-    self.client = client
+    self.request = request
     songIDs = queue.map(\.sourceID)
     name = Self.defaultPlaylistName()
     playlists = []
@@ -54,66 +56,78 @@ final class QueuePlaylistSaveCoordinator: ObservableObject {
   }
 
   func loadPlaylists() {
-    guard let client else { return }
+    guard let request else { return }
     task?.cancel()
     phase = .checking
     task = Task { @MainActor [weak self] in
       do {
-        let playlists = try await client.playlists()
-        guard let self, !Task.isCancelled else { return }
+        let playlists = try await request.client.playlists()
+        guard let self, !Task.isCancelled, self.isCurrent(request) else { return }
         self.playlists = playlists
         self.phase = .ready
       } catch {
-        guard let self, !Task.isCancelled else { return }
+        guard let self, !Task.isCancelled, self.isCurrent(request) else { return }
         self.phase = .failed(error.localizedDescription)
       }
     }
   }
 
   func save() {
-    guard let client, canSave else { return }
+    guard let request, canSave, isCurrent(request) else { return }
     let requestedName = trimmedName
     let requestedSongIDs = songIDs
     task?.cancel()
     phase = .saving
     task = Task { @MainActor [weak self] in
       do {
-        let currentPlaylists = try await client.playlists()
-        guard !Task.isCancelled else { return }
+        let currentPlaylists = try await request.client.playlists()
+        guard let self, !Task.isCancelled, self.isCurrent(request) else { return }
         let existing = currentPlaylists.first {
-          self?.isReplaceableMatch($0, name: requestedName) == true
+          self.isReplaceableMatch($0, name: requestedName)
         }
 
         if let existing {
-          let playlist = try await client.playlist(id: existing.id)
-          try await client.replacePlaylist(
+          let playlist = try await request.client.playlist(id: existing.id)
+          guard !Task.isCancelled, self.isCurrent(request) else { return }
+          try await request.client.replacePlaylist(
             id: existing.id,
             existingSongCount: playlist.songs.count,
             songIDs: requestedSongIDs
           )
         } else {
-          try await client.createPlaylist(
+          guard !Task.isCancelled, self.isCurrent(request) else { return }
+          try await request.client.createPlaylist(
             name: requestedName,
             songIDs: requestedSongIDs
           )
         }
 
-        guard let self, !Task.isCancelled else { return }
+        guard !Task.isCancelled, self.isCurrent(request) else { return }
         self.phase = .saved
         try? await Task.sleep(for: .milliseconds(850))
         guard !Task.isCancelled, self.phase == .saved else { return }
         self.dismiss()
       } catch {
-        guard let self, !Task.isCancelled else { return }
+        guard let self, !Task.isCancelled, self.isCurrent(request) else { return }
         self.phase = .failed(error.localizedDescription)
       }
     }
   }
 
+  func sessionDidChange(to activeSessionID: UUID?) {
+    guard let request, request.sessionID != activeSessionID else { return }
+    dismiss()
+  }
+
   func dismiss() {
     task?.cancel()
     task = nil
+    request = nil
     isPresented = false
+  }
+
+  private func isCurrent(_ request: SessionRequestContext) -> Bool {
+    self.request?.sessionID == request.sessionID && session.isCurrent(request)
   }
 
   private func isReplaceableMatch(_ playlist: RemotePlaylist, name: String) -> Bool {
@@ -122,8 +136,8 @@ final class QueuePlaylistSaveCoordinator: ObservableObject {
     else {
       return false
     }
-    guard let owner = playlist.owner, let client else { return true }
-    return owner.caseInsensitiveCompare(client.configuration.username) == .orderedSame
+    guard let owner = playlist.owner, let request else { return true }
+    return owner.caseInsensitiveCompare(request.client.configuration.username) == .orderedSame
   }
 
   private static func defaultPlaylistName() -> String {

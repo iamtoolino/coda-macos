@@ -763,18 +763,20 @@ private struct NowPlayingAlbumRating: View {
 
   @MainActor
   private func updateRating(_ newRating: Int) async {
-    guard let client = session.client else { return }
+    guard let request = session.sessionRequestContext() else { return }
     guard session.beginAlbumRatingUpdate() else { return }
-    defer { session.finishAlbumRatingUpdate() }
+    defer { session.finishAlbumRatingUpdate(for: request) }
 
     let requestedAlbumID = albumID
     let previousRating = rating
     errorMessage = nil
     session.rememberRating(newRating, forAlbumID: requestedAlbumID)
     do {
-      try await client.setRating(id: requestedAlbumID, rating: newRating)
+      try await request.client.setRating(id: requestedAlbumID, rating: newRating)
+      guard session.isCurrent(request) else { return }
       if albumID == requestedAlbumID { confirmedRating = newRating }
     } catch {
+      guard session.isCurrent(request) else { return }
       session.rememberRating(previousRating, forAlbumID: requestedAlbumID)
       if albumID == requestedAlbumID { errorMessage = "Could not update rating" }
     }

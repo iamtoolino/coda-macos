@@ -60,6 +60,11 @@ struct PreparedQueueSongs: Sendable {
   let canonicalArtworkIDsBySongID: [String: String]
 }
 
+struct SessionRequestContext: Sendable {
+  let client: NavidromeClient
+  let sessionID: UUID
+}
+
 @MainActor
 final class AppSession: ObservableObject {
   @Published private(set) var client: NavidromeClient?
@@ -78,6 +83,7 @@ final class AppSession: ObservableObject {
   private var artworkURLs: [String: URL] = [:]
   private var automaticConnectionTask: Task<Void, Never>?
   private var connectionAttemptID: UUID?
+  private var ratingUpdateSessionID: UUID?
 
   var hasEstablishedConnection: Bool {
     client != nil && activeSessionID != nil
@@ -261,6 +267,8 @@ final class AppSession: ObservableObject {
     connectionAttemptID = attemptID
     handledPlayQueueIdentity = nil
     albumRatingOverrides.removeAll()
+    isUpdatingAlbumRating = false
+    ratingUpdateSessionID = nil
     if !preservingExistingClient {
       client = nil
     }
@@ -278,6 +286,8 @@ final class AppSession: ObservableObject {
     connectionAttemptID = nil
     serverDetails = nil
     self.configuration = configuration
+    isUpdatingAlbumRating = false
+    ratingUpdateSessionID = nil
     connectionState = .failed(error.localizedDescription)
     path.removeAll()
   }
@@ -291,6 +301,8 @@ final class AppSession: ObservableObject {
     serverDetails = nil
     handledPlayQueueIdentity = nil
     albumRatingOverrides.removeAll()
+    isUpdatingAlbumRating = false
+    ratingUpdateSessionID = nil
     artworkURLs.removeAll()
     connectionState = state
     selectedRoot = .home
@@ -304,6 +316,15 @@ final class AppSession: ObservableObject {
 
   func isCurrentSession(_ sessionID: UUID) -> Bool {
     Self.requestMatchesCurrentGeneration(sessionID, current: activeSessionID)
+  }
+
+  func sessionRequestContext() -> SessionRequestContext? {
+    guard let client, let activeSessionID else { return nil }
+    return SessionRequestContext(client: client, sessionID: activeSessionID)
+  }
+
+  func isCurrent(_ request: SessionRequestContext) -> Bool {
+    isCurrentSession(request.sessionID)
   }
 
   func selectRoot(_ destination: SidebarDestination) {
@@ -345,11 +366,18 @@ final class AppSession: ObservableObject {
   func beginAlbumRatingUpdate() -> Bool {
     guard !isUpdatingAlbumRating else { return false }
     isUpdatingAlbumRating = true
+    ratingUpdateSessionID = activeSessionID
     return true
   }
 
   func finishAlbumRatingUpdate() {
     isUpdatingAlbumRating = false
+    ratingUpdateSessionID = nil
+  }
+
+  func finishAlbumRatingUpdate(for request: SessionRequestContext) {
+    guard ratingUpdateSessionID == request.sessionID else { return }
+    finishAlbumRatingUpdate()
   }
 
   func hasHandledPlayQueue(_ queue: RemotePlayQueue) -> Bool {

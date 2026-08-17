@@ -10,7 +10,7 @@ struct CodaPlaybackSpikeApp: App {
   @StateObject private var artworkTreatments: ArtworkTreatmentSettings
   @StateObject private var queueHandoff: QueueHandoffCoordinator
   @StateObject private var scrobbler: ScrobbleCoordinator
-  @StateObject private var playlistSaver = QueuePlaylistSaveCoordinator()
+  @StateObject private var playlistSaver: QueuePlaylistSaveCoordinator
   @StateObject private var nowPlayingPresentation: NowPlayingPresentationController
 
   init() {
@@ -23,6 +23,9 @@ struct CodaPlaybackSpikeApp: App {
     _artworkTreatments = StateObject(wrappedValue: ArtworkTreatmentSettings())
     _nowPlayingPresentation = StateObject(
       wrappedValue: NowPlayingPresentationController()
+    )
+    _playlistSaver = StateObject(
+      wrappedValue: QueuePlaylistSaveCoordinator(session: session)
     )
     let queueHandoff = QueueHandoffCoordinator(session: session, player: player)
     _queueHandoff = StateObject(wrappedValue: queueHandoff)
@@ -135,12 +138,7 @@ private struct CodaPlaylistCommands: Commands {
   var body: some Commands {
     CommandGroup(replacing: .newItem) {
       Button("Save Queue as Playlist…") {
-        if let client = session.client {
-          playlistSaver.present(
-            client: client,
-            queue: player.queue
-          )
-        }
+        playlistSaver.present(queue: player.queue)
       }
       .keyboardShortcut("s", modifiers: [.command])
       .disabled(
