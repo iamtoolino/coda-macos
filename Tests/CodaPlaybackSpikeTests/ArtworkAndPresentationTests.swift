@@ -122,7 +122,7 @@ struct ArtworkAndPresentationTests {
 
     #expect(rawBrowsingKey.kind == .album)
     #expect(rawBrowsingKey == typedBrowsingKey)
-    #expect(rawNowPlayingKey == typedBrowsingKey.withVariant(.original))
+    #expect(rawNowPlayingKey == typedBrowsingKey.withVariant(.presentation1200))
   }
 
   @Test("artist and album IDs occupy separate cache namespaces")
@@ -174,32 +174,74 @@ struct ArtworkAndPresentationTests {
     #expect(await reader.data(for: key) == data)
   }
 
-  @Test("original artwork creates a persistent local 500 pixel derivative")
-  func originalArtworkCreatesAPersistentLocal500PixelDerivative() async throws {
+  @Test("original artwork creates only persistent 500 and 1200 pixel derivatives")
+  func originalArtworkCreatesOnlyPersistentDerivatives() async throws {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
     let browsingKey = try #require(
       ArtworkDiskCacheKey(url: persistentArtworkTestURL(size: 500)))
-    let originalKey = browsingKey.withVariant(.original)
-    let originalData = try #require(testArtworkData(size: NSSize(width: 900, height: 600)))
+    let presentationKey = browsingKey.withVariant(.presentation1200)
+    let originalData = try #require(testArtworkData(size: NSSize(width: 1_800, height: 1_200)))
     let cache = ArtworkDiskCache(directoryURL: directory)
 
-    let browsingData = try #require(
-      await cache.storeOriginalAndBrowsingImage(originalData, for: browsingKey)
+    let derivatives = try #require(
+      ArtworkDerivativeProcessor.makeDerivatives(from: originalData)
     )
-    let source = try #require(CGImageSourceCreateWithData(browsingData as CFData, nil))
-    let properties = try #require(
-      CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+    await cache.storeDerivatives(derivatives, for: browsingKey)
+    let browsingSize = try artworkPixelSize(derivatives.browsing500)
+    let presentationSize = try artworkPixelSize(derivatives.presentation1200)
+    let entityDirectory = try #require(await cache.fileURL(for: browsingKey))
+      .deletingLastPathComponent()
+    let filenames = try Set(
+      FileManager.default.contentsOfDirectory(atPath: entityDirectory.path)
     )
-    let width = try #require(properties[kCGImagePropertyPixelWidth] as? Int)
-    let height = try #require(properties[kCGImagePropertyPixelHeight] as? Int)
 
-    #expect(max(width, height) == 500)
-    #expect(await cache.data(for: originalKey) == originalData)
-    #expect(await cache.data(for: browsingKey) == browsingData)
-    #expect(await cache.fileURL(for: originalKey)?.lastPathComponent == "original.image")
+    #expect(max(browsingSize.width, browsingSize.height) == 500)
+    #expect(max(presentationSize.width, presentationSize.height) == 1_200)
+    #expect(await cache.data(for: presentationKey) == derivatives.presentation1200)
+    #expect(await cache.data(for: browsingKey) == derivatives.browsing500)
+    #expect(await cache.fileURL(for: presentationKey)?.lastPathComponent == "1200.image")
     #expect(await cache.fileURL(for: browsingKey)?.lastPathComponent == "500.image")
+    #expect(filenames == ["500.image", "1200.image"])
+  }
+
+  @Test("artwork processing worker preference is persisted and bounded")
+  func artworkProcessingWorkerPreferenceIsPersistedAndBounded() throws {
+    let suiteName = "ArtworkProcessingSettingsTests-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    #expect(ArtworkProcessingPreference.workerCount(defaults: defaults) >= 1)
+    defaults.set(2, forKey: ArtworkProcessingPreference.workerCountKey)
+    #expect(ArtworkProcessingPreference.workerCount(defaults: defaults) == 2)
+    defaults.set(Int.max, forKey: ArtworkProcessingPreference.workerCountKey)
+    #expect(
+      ArtworkProcessingPreference.availableWorkerCounts.contains(
+        ArtworkProcessingPreference.workerCount(defaults: defaults)
+      )
+    )
+  }
+
+  @Test("artwork processing pool respects its worker limit")
+  func artworkProcessingPoolRespectsItsWorkerLimit() async {
+    let pool = ArtworkProcessingPool(workerLimit: 2)
+    let probe = ArtworkConcurrencyProbe()
+
+    await withTaskGroup(of: Void.self) { group in
+      for _ in 0..<8 {
+        group.addTask {
+          await pool.run {
+            await probe.enter()
+            try? await Task.sleep(for: .milliseconds(20))
+            await probe.leave()
+          }
+        }
+      }
+    }
+
+    let maximumActiveCount = await probe.maximumActiveCount
+    #expect(maximumActiveCount == 2)
   }
 
   @Test("corrupt persistent artwork is discarded")
@@ -220,8 +262,8 @@ struct ArtworkAndPresentationTests {
     #expect(!FileManager.default.fileExists(atPath: fileURL.path))
   }
 
-  @Test("targeted removal clears original and browsing artwork")
-  func targetedRemovalClearsOriginalAndBrowsingArtwork() async throws {
+  @Test("targeted removal clears both artwork derivatives")
+  func targetedRemovalClearsBothArtworkDerivatives() async throws {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -231,7 +273,8 @@ struct ArtworkAndPresentationTests {
     let nowPlayingKey = try #require(
       ArtworkDiskCacheKey(url: persistentArtworkTestURL(size: 1_200)))
     let data = try #require(testArtworkData())
-    _ = await cache.storeOriginalAndBrowsingImage(data, for: standardKey)
+    let derivatives = try #require(ArtworkDerivativeProcessor.makeDerivatives(from: data))
+    await cache.storeDerivatives(derivatives, for: standardKey)
     let standardURL = try #require(await cache.fileURL(for: standardKey))
     let nowPlayingURL = try #require(await cache.fileURL(for: nowPlayingKey))
 
@@ -281,6 +324,17 @@ struct ArtworkAndPresentationTests {
     NSBezierPath(rect: NSRect(origin: .zero, size: size)).fill()
     image.unlockFocus()
     return image.tiffRepresentation
+  }
+
+  private func artworkPixelSize(_ data: Data) throws -> (width: Int, height: Int) {
+    let source = try #require(CGImageSourceCreateWithData(data as CFData, nil))
+    let properties = try #require(
+      CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+    )
+    return (
+      try #require(properties[kCGImagePropertyPixelWidth] as? Int),
+      try #require(properties[kCGImagePropertyPixelHeight] as? Int)
+    )
   }
 
   @Test("same album identity can repair stale artwork treatment")
@@ -594,6 +648,20 @@ struct ArtworkAndPresentationTests {
     let nowPlayingKey = try #require(ArtworkDiskCacheKey(url: nowPlayingURL))
 
     #expect(browsingKey == nowPlayingKey.withVariant(.browsing500))
-    #expect(nowPlayingKey == browsingKey.withVariant(.original))
+    #expect(nowPlayingKey == browsingKey.withVariant(.presentation1200))
+  }
+}
+
+private actor ArtworkConcurrencyProbe {
+  private var activeCount = 0
+  private(set) var maximumActiveCount = 0
+
+  func enter() {
+    activeCount += 1
+    maximumActiveCount = max(maximumActiveCount, activeCount)
+  }
+
+  func leave() {
+    activeCount -= 1
   }
 }

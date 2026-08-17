@@ -10,12 +10,12 @@ struct ArtworkDiskCacheKey: Hashable, Sendable {
   }
 
   enum Variant: String, Sendable {
-    case original
+    case presentation1200
     case browsing500
 
     var filename: String {
       switch self {
-      case .original: "original.image"
+      case .presentation1200: "1200.image"
       case .browsing500: "500.image"
       }
     }
@@ -58,7 +58,8 @@ struct ArtworkDiskCacheKey: Hashable, Sendable {
     account = NavidromeConfiguration.md5("\(serverIdentity)\0\(username)")
     kind = identity.kind
     entity = NavidromeConfiguration.md5(identity.id)
-    variant = requestedSize <= ArtworkPurpose.standard.rawValue ? .browsing500 : .original
+    variant = requestedSize <= ArtworkPurpose.standard.rawValue
+      ? .browsing500 : .presentation1200
   }
 
   func withVariant(_ variant: Variant) -> ArtworkDiskCacheKey {
@@ -114,6 +115,199 @@ struct ArtworkDiskCacheKey: Hashable, Sendable {
   }
 }
 
+enum ArtworkProcessingPreference {
+  static let workerCountKey = "artwork-processing-worker-count"
+  static let availableWorkerCounts = Array(1...maxWorkerCount)
+  static let defaultWorkerCount = min(3, maxWorkerCount)
+
+  static func workerCount(defaults: UserDefaults = .standard) -> Int {
+    let stored = defaults.integer(forKey: workerCountKey)
+    return clamped(stored == 0 ? defaultWorkerCount : stored)
+  }
+
+  static func clamped(_ value: Int) -> Int {
+    min(max(1, value), maxWorkerCount)
+  }
+
+  private static var maxWorkerCount: Int {
+    min(4, max(1, ProcessInfo.processInfo.activeProcessorCount))
+  }
+}
+
+@MainActor
+final class ArtworkProcessingSettings: ObservableObject {
+  @Published var workerCount: Int {
+    didSet {
+      let normalized = ArtworkProcessingPreference.clamped(workerCount)
+      if workerCount != normalized {
+        workerCount = normalized
+        return
+      }
+      defaults.set(workerCount, forKey: ArtworkProcessingPreference.workerCountKey)
+      Task { await ArtworkProcessingPool.shared.setWorkerLimit(workerCount) }
+    }
+  }
+
+  private let defaults: UserDefaults
+
+  init(defaults: UserDefaults = .standard) {
+    self.defaults = defaults
+    workerCount = ArtworkProcessingPreference.workerCount(defaults: defaults)
+    Task { await ArtworkProcessingPool.shared.setWorkerLimit(workerCount) }
+  }
+}
+
+struct ArtworkDerivatives: Sendable {
+  let browsing500: Data
+  let presentation1200: Data
+}
+
+actor ArtworkProcessingPool {
+  static let shared = ArtworkProcessingPool(
+    workerLimit: ArtworkProcessingPreference.workerCount()
+  )
+
+  private var workerLimit: Int
+  private var activeWorkers = 0
+  private var waiters: [CheckedContinuation<Void, Never>] = []
+
+  init(workerLimit: Int) {
+    self.workerLimit = ArtworkProcessingPreference.clamped(workerLimit)
+  }
+
+  func setWorkerLimit(_ value: Int) {
+    workerLimit = ArtworkProcessingPreference.clamped(value)
+    resumeAvailableWaiters()
+  }
+
+  func makeDerivatives(from sourceData: Data) async -> ArtworkDerivatives? {
+    await run {
+      ArtworkDerivativeProcessor.makeDerivatives(from: sourceData)
+    }
+  }
+
+  func run<Result: Sendable>(
+    _ operation: @escaping @Sendable () async -> Result
+  ) async -> Result {
+    await acquireWorker()
+    defer { releaseWorker() }
+    return await Task.detached(priority: .userInitiated) {
+      await operation()
+    }.value
+  }
+
+  private func acquireWorker() async {
+    if activeWorkers < workerLimit {
+      activeWorkers += 1
+      return
+    }
+    await withCheckedContinuation { continuation in
+      waiters.append(continuation)
+    }
+  }
+
+  private func releaseWorker() {
+    activeWorkers -= 1
+    resumeAvailableWaiters()
+  }
+
+  private func resumeAvailableWaiters() {
+    while activeWorkers < workerLimit, !waiters.isEmpty {
+      activeWorkers += 1
+      waiters.removeFirst().resume()
+    }
+  }
+}
+
+enum ArtworkDerivativeProcessor {
+  static func makeDerivatives(from sourceData: Data) -> ArtworkDerivatives? {
+    guard
+      let source = CGImageSourceCreateWithData(sourceData as CFData, nil),
+      let presentationImage = makeThumbnail(
+        from: source,
+        maxPixelSize: ArtworkPurpose.nowPlaying.rawValue
+      ),
+      let browsingImage = resizedImage(
+        presentationImage,
+        maxPixelSize: ArtworkPurpose.standard.rawValue
+      ),
+      let browsingData = encodedData(for: browsingImage),
+      let presentationData = encodedData(for: presentationImage)
+    else { return nil }
+
+    return ArtworkDerivatives(
+      browsing500: browsingData,
+      presentation1200: presentationData
+    )
+  }
+
+  private static func makeThumbnail(
+    from source: CGImageSource,
+    maxPixelSize: Int
+  ) -> CGImage? {
+    let options: [CFString: Any] = [
+      kCGImageSourceCreateThumbnailFromImageAlways: true,
+      kCGImageSourceCreateThumbnailWithTransform: true,
+      kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+      kCGImageSourceShouldCacheImmediately: true,
+    ]
+    return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+  }
+
+  private static func resizedImage(_ image: CGImage, maxPixelSize: Int) -> CGImage? {
+    let longestEdge = max(image.width, image.height)
+    guard longestEdge > maxPixelSize else { return image }
+    let scale = CGFloat(maxPixelSize) / CGFloat(longestEdge)
+    let width = max(1, Int((CGFloat(image.width) * scale).rounded()))
+    let height = max(1, Int((CGFloat(image.height) * scale).rounded()))
+    let hasAlpha = imageHasAlpha(image)
+    let bitmapInfo = hasAlpha
+      ? CGImageAlphaInfo.premultipliedLast.rawValue
+      : CGImageAlphaInfo.noneSkipLast.rawValue
+    guard let context = CGContext(
+      data: nil,
+      width: width,
+      height: height,
+      bitsPerComponent: 8,
+      bytesPerRow: 0,
+      space: CGColorSpaceCreateDeviceRGB(),
+      bitmapInfo: bitmapInfo
+    ) else { return nil }
+    context.interpolationQuality = .high
+    context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+    return context.makeImage()
+  }
+
+  private static func encodedData(for image: CGImage) -> Data? {
+    let hasAlpha = imageHasAlpha(image)
+    let output = NSMutableData()
+    let type = hasAlpha ? UTType.png.identifier : UTType.jpeg.identifier
+    guard let destination = CGImageDestinationCreateWithData(
+      output,
+      type as CFString,
+      1,
+      nil
+    ) else { return nil }
+    let properties: [CFString: Any] = hasAlpha
+      ? [:]
+      : [kCGImageDestinationLossyCompressionQuality: 0.9]
+    CGImageDestinationAddImage(destination, image, properties as CFDictionary)
+    guard CGImageDestinationFinalize(destination) else { return nil }
+    return output as Data
+  }
+
+  private static func imageHasAlpha(_ image: CGImage) -> Bool {
+    switch image.alphaInfo {
+    case .first, .last, .premultipliedFirst, .premultipliedLast, .alphaOnly:
+      true
+    case .none, .noneSkipFirst, .noneSkipLast:
+      false
+    @unknown default:
+      true
+    }
+  }
+}
+
 actor ArtworkDiskCache {
   static let shared = ArtworkDiskCache()
 
@@ -126,7 +320,7 @@ actor ArtworkDiskCache {
     ).first?
       .appendingPathComponent("io.github.iamtoolino.coda.macos", isDirectory: true)
       .appendingPathComponent("Artwork", isDirectory: true)
-      .appendingPathComponent("v2", isDirectory: true)
+      .appendingPathComponent("v3", isDirectory: true)
   ) {
     self.directoryURL = directoryURL
   }
@@ -159,24 +353,12 @@ actor ArtworkDiskCache {
     }
   }
 
-  func storeOriginalAndBrowsingImage(
-    _ originalData: Data,
+  func storeDerivatives(
+    _ derivatives: ArtworkDerivatives,
     for key: ArtworkDiskCacheKey
-  ) -> Data? {
-    let originalKey = key.withVariant(.original)
-    store(originalData, for: originalKey)
-    guard let browsingData = Self.makeBrowsingData(from: originalData) else { return nil }
-    store(browsingData, for: key.withVariant(.browsing500))
-    return browsingData
-  }
-
-  func makeAndStoreBrowsingImage(
-    from originalData: Data,
-    for key: ArtworkDiskCacheKey
-  ) -> Data? {
-    guard let browsingData = Self.makeBrowsingData(from: originalData) else { return nil }
-    store(browsingData, for: key.withVariant(.browsing500))
-    return browsingData
+  ) {
+    store(derivatives.browsing500, for: key.withVariant(.browsing500))
+    store(derivatives.presentation1200, for: key.withVariant(.presentation1200))
   }
 
   func remove(_ keys: Set<ArtworkDiskCacheKey>) {
@@ -227,42 +409,6 @@ actor ArtworkDiskCache {
     return true
   }
 
-  private static func makeBrowsingData(from originalData: Data) -> Data? {
-    guard let source = CGImageSourceCreateWithData(originalData as CFData, nil) else { return nil }
-    let options: [CFString: Any] = [
-      kCGImageSourceCreateThumbnailFromImageAlways: true,
-      kCGImageSourceCreateThumbnailWithTransform: true,
-      kCGImageSourceThumbnailMaxPixelSize: ArtworkPurpose.standard.rawValue,
-      kCGImageSourceShouldCacheImmediately: true,
-    ]
-    guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
-    else { return nil }
-
-    let hasAlpha: Bool
-    switch image.alphaInfo {
-    case .first, .last, .premultipliedFirst, .premultipliedLast, .alphaOnly:
-      hasAlpha = true
-    case .none, .noneSkipFirst, .noneSkipLast:
-      hasAlpha = false
-    @unknown default:
-      hasAlpha = true
-    }
-
-    let output = NSMutableData()
-    let type = hasAlpha ? UTType.png.identifier : UTType.jpeg.identifier
-    guard let destination = CGImageDestinationCreateWithData(
-      output,
-      type as CFString,
-      1,
-      nil
-    ) else { return nil }
-    let properties: [CFString: Any] = hasAlpha
-      ? [:]
-      : [kCGImageDestinationLossyCompressionQuality: 0.9]
-    CGImageDestinationAddImage(destination, image, properties as CFDictionary)
-    guard CGImageDestinationFinalize(destination) else { return nil }
-    return output as Data
-  }
 }
 
 @MainActor
@@ -278,6 +424,7 @@ final class ArtworkImageCache: ObservableObject {
 
   private let images = NSCache<NSString, NSImage>()
   private var loadingTasks: [LoadingRequest: Task<Data?, Never>] = [:]
+  private var derivativeTasks: [LoadingRequest: Task<ArtworkDerivatives?, Never>] = [:]
   private var requestedDiskKeys: Set<ArtworkDiskCacheKey> = []
   private let diskCache: ArtworkDiskCache
   private let session: URLSession
@@ -307,24 +454,13 @@ final class ArtworkImageCache: ObservableObject {
         store(image, dataCount: data.count, for: memoryKey)
         return image
       }
-      if diskKey.variant == .browsing500,
-        let originalData = await diskCache.data(for: diskKey.withVariant(.original)),
-        let browsingData = await diskCache.makeAndStoreBrowsingImage(
-          from: originalData,
-          for: diskKey
-        ),
-        let image = NSImage(data: browsingData)
-      {
-        store(image, dataCount: browsingData.count, for: memoryKey)
-        return image
-      }
     }
 
     let originalURL = diskKey.flatMap { _ in ArtworkDiskCacheKey.originalRequestURL(from: url) }
       ?? url
     let loadingKey: String
     if let diskKey {
-      loadingKey = "original:\(diskKey.account):\(diskKey.kind.rawValue):\(diskKey.entity)"
+      loadingKey = "source:\(diskKey.account):\(diskKey.kind.rawValue):\(diskKey.entity)"
     } else {
       loadingKey = memoryKey as String
     }
@@ -365,12 +501,30 @@ final class ArtworkImageCache: ObservableObject {
       if let storedData = await diskCache.data(for: diskKey) {
         displayData = storedData
       } else {
-        let browsingData = await diskCache.storeOriginalAndBrowsingImage(data, for: diskKey)
-        if diskKey.variant == .browsing500 {
-          guard let browsingData else { return CodaPlaceholderArtwork.image }
-          displayData = browsingData
+        let derivativeRequest = LoadingRequest(key: loadingKey, generation: generation)
+        let derivativeTask: Task<ArtworkDerivatives?, Never>
+        if let existingTask = derivativeTasks[derivativeRequest] {
+          derivativeTask = existingTask
         } else {
-          displayData = data
+          derivativeTask = Task {
+            guard let derivatives = await ArtworkProcessingPool.shared.makeDerivatives(from: data)
+            else { return nil }
+            guard !Task.isCancelled else { return nil }
+            await diskCache.storeDerivatives(derivatives, for: diskKey)
+            return derivatives
+          }
+          derivativeTasks[derivativeRequest] = derivativeTask
+        }
+        let derivatives = await derivativeTask.value
+        derivativeTasks[derivativeRequest] = nil
+        guard derivativeRequest.generation == generation, let derivatives else {
+          return CodaPlaceholderArtwork.image
+        }
+        switch diskKey.variant {
+        case .browsing500:
+          displayData = derivatives.browsing500
+        case .presentation1200:
+          displayData = derivatives.presentation1200
         }
       }
     } else {
@@ -385,7 +539,7 @@ final class ArtworkImageCache: ObservableObject {
     let diskKeys = Set(urls.compactMap(ArtworkDiskCacheKey.init(url:)))
     let diskMemoryKeys = diskKeys.flatMap { key in
       [
-        Self.memoryKey(for: nil, diskKey: key.withVariant(.original)),
+        Self.memoryKey(for: nil, diskKey: key.withVariant(.presentation1200)),
         Self.memoryKey(for: nil, diskKey: key.withVariant(.browsing500)),
       ]
     }
@@ -400,11 +554,15 @@ final class ArtworkImageCache: ObservableObject {
     }
     let loadingKeys = Set(memoryKeys.map(String.init))
       .union(diskKeys.map {
-        "original:\($0.account):\($0.kind.rawValue):\($0.entity)"
+        "source:\($0.account):\($0.kind.rawValue):\($0.entity)"
       })
     for (request, task) in loadingTasks where loadingKeys.contains(request.key) {
       task.cancel()
       loadingTasks[request] = nil
+    }
+    for (request, task) in derivativeTasks where loadingKeys.contains(request.key) {
+      task.cancel()
+      derivativeTasks[request] = nil
     }
     requestedDiskKeys.subtract(diskKeys)
     await diskCache.remove(diskKeys)
@@ -422,6 +580,8 @@ final class ArtworkImageCache: ObservableObject {
     images.removeAllObjects()
     loadingTasks.values.forEach { $0.cancel() }
     loadingTasks.removeAll()
+    derivativeTasks.values.forEach { $0.cancel() }
+    derivativeTasks.removeAll()
   }
 
   private func store(_ image: NSImage, dataCount: Int, for key: NSString) {

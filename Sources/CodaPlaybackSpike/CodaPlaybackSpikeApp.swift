@@ -8,6 +8,7 @@ struct CodaPlaybackSpikeApp: App {
   @StateObject private var session: AppSession
   @StateObject private var player: PlayerController
   @StateObject private var artworkTreatments: ArtworkTreatmentSettings
+  @StateObject private var artworkProcessing: ArtworkProcessingSettings
   @StateObject private var queueHandoff: QueueHandoffCoordinator
   @StateObject private var scrobbler: ScrobbleCoordinator
   @StateObject private var playlistSaver: QueuePlaylistSaveCoordinator
@@ -21,6 +22,7 @@ struct CodaPlaybackSpikeApp: App {
     _session = StateObject(wrappedValue: session)
     _player = StateObject(wrappedValue: player)
     _artworkTreatments = StateObject(wrappedValue: ArtworkTreatmentSettings())
+    _artworkProcessing = StateObject(wrappedValue: ArtworkProcessingSettings())
     _nowPlayingPresentation = StateObject(
       wrappedValue: NowPlayingPresentationController()
     )
@@ -99,6 +101,15 @@ struct CodaPlaybackSpikeApp: App {
           session.selectRoot(.search)
         }
         .keyboardShortcut("f", modifiers: [.command])
+      }
+
+      CommandMenu("Artwork") {
+        Picker("Processing Workers", selection: $artworkProcessing.workerCount) {
+          ForEach(ArtworkProcessingPreference.availableWorkerCounts, id: \.self) { count in
+            Text("\(count) \(count == 1 ? "Worker" : "Workers")")
+              .tag(count)
+          }
+        }
       }
 
       CommandMenu("Playback") {
