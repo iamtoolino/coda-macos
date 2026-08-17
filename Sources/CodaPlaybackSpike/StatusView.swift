@@ -29,7 +29,7 @@ struct CodaStatusView: View {
         Button("Reconnect", systemImage: "arrow.clockwise") {
           Task { await session.connect() }
         }
-        .disabled(session.connectionState == .connecting)
+        .disabled(session.connectionState == .connecting || session.isSigningOut)
       }
       .buttonStyle(.bordered)
     }

@@ -312,23 +312,35 @@ struct SearchView: View {
       return
     }
 
+    var requestedSessionID: UUID?
     do {
       try await Task.sleep(for: .milliseconds(250))
       try Task.checkCancellation()
-      guard requestedQuery == normalizedQuery, let client = session.client else { return }
+      guard
+        requestedQuery == normalizedQuery,
+        let client = session.client,
+        let sessionID = session.activeSessionID
+      else { return }
+      requestedSessionID = sessionID
       isSearching = true
       let loadedResults = try await client.search(requestedQuery)
       try Task.checkCancellation()
-      guard requestedQuery == normalizedQuery else { return }
+      guard requestedQuery == normalizedQuery, session.isCurrentSession(sessionID) else { return }
       results = loadedResults
       completedQuery = requestedQuery
       isSearching = false
     } catch is CancellationError {
-      if requestedQuery == normalizedQuery {
+      if requestedQuery == normalizedQuery,
+        requestedSessionID.map(session.isCurrentSession) ?? true
+      {
         isSearching = false
       }
     } catch {
-      guard requestedQuery == normalizedQuery else { return }
+      guard
+        requestedQuery == normalizedQuery,
+        let requestedSessionID,
+        session.isCurrentSession(requestedSessionID)
+      else { return }
       isSearching = false
       completedQuery = requestedQuery
       errorMessage = error.localizedDescription
@@ -337,13 +349,18 @@ struct SearchView: View {
 
   @MainActor
   private func play(_ song: RemoteSong) async {
-    guard loadingSongID == nil, let client = session.client else { return }
+    guard
+      loadingSongID == nil,
+      let client = session.client,
+      let sessionID = session.activeSessionID
+    else { return }
     loadingSongID = song.id
     defer { loadingSongID = nil }
 
     do {
       if let albumID = song.albumId, !albumID.isEmpty {
         let page = try await client.album(id: albumID)
+        guard session.isCurrentSession(sessionID) else { return }
         let index = page.songs.firstIndex(where: { $0.id == song.id }) ?? 0
         session.play(
           songs: page.songs,
@@ -352,9 +369,11 @@ struct SearchView: View {
           with: player
         )
       } else {
+        guard session.isCurrentSession(sessionID) else { return }
         session.play(songs: [song], with: player)
       }
     } catch {
+      guard session.isCurrentSession(sessionID) else { return }
       errorMessage = "Could not play \(song.title): \(error.localizedDescription)"
     }
   }
@@ -761,12 +780,13 @@ struct ArtistDetailView: View {
     isPreparingPlayback = true
     Task { @MainActor in
       defer { isPreparingPlayback = false }
-      guard let client = session.client else { return }
+      guard let client = session.client, let sessionID = session.activeSessionID else { return }
       do {
         var songs: [RemoteSong] = []
         var artworkIDsBySongID: [String: String] = [:]
         for album in page.albums {
           let albumPage = try await client.album(id: album.id)
+          guard session.isCurrentSession(sessionID) else { return }
           let albumSongs = albumPage.songs
           songs.append(contentsOf: albumSongs)
           let artworkID = albumPage.album.coverArt ?? albumPage.album.id
@@ -774,8 +794,10 @@ struct ArtistDetailView: View {
             artworkIDsBySongID[song.id] = artworkID
           }
         }
+        guard session.isCurrentSession(sessionID) else { return }
         action(songs, artworkIDsBySongID)
       } catch {
+        guard session.isCurrentSession(sessionID) else { return }
         player.report(error: error)
       }
     }

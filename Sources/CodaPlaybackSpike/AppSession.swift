@@ -68,9 +68,11 @@ final class AppSession: ObservableObject {
   @Published private(set) var rootToken = UUID()
   @Published private var albumRatingOverrides: [String: Int] = [:]
   @Published private(set) var isUpdatingAlbumRating = false
+  @Published private(set) var isSigningOut = false
 
   private var artworkURLs: [String: URL] = [:]
   private var automaticConnectionTask: Task<Void, Never>?
+  private var connectionAttemptID: UUID?
 
   var hasEstablishedConnection: Bool {
     client != nil && activeSessionID != nil
@@ -97,7 +99,7 @@ final class AppSession: ObservableObject {
   }
 
   func startAutomaticConnection() {
-    guard activeSessionID == nil, automaticConnectionTask == nil else { return }
+    guard activeSessionID == nil, automaticConnectionTask == nil, !isSigningOut else { return }
     guard let configuration else {
       connectionState = .disconnected
       return
@@ -129,20 +131,33 @@ final class AppSession: ObservableObject {
   }
 
   func connect() async {
-    guard connectionState != .connecting else { return }
+    guard connectionState != .connecting, !isSigningOut else { return }
+    let attemptID = UUID()
+    connectionAttemptID = attemptID
+    connectionState = .connecting
     do {
       guard let login = try await Self.loadStoredLogin() else {
+        guard Self.requestMatchesCurrentGeneration(attemptID, current: connectionAttemptID)
+        else { return }
         resetConnectionState(to: .disconnected)
         return
       }
-      try await establishConnection(configuration: login.configuration)
+      guard Self.requestMatchesCurrentGeneration(attemptID, current: connectionAttemptID)
+      else { return }
+      try await establishConnection(configuration: login.configuration, attemptID: attemptID)
+    } catch is CancellationError {
+      return
     } catch {
+      guard Self.requestMatchesCurrentGeneration(attemptID, current: connectionAttemptID)
+      else { return }
       handleConnectionFailure(error, configuration: configuration)
     }
   }
 
   func logIn(server: String, username: String, password: String) async {
-    guard connectionState != .connecting else { return }
+    guard connectionState != .connecting, !isSigningOut else { return }
+    let attemptID = UUID()
+    connectionAttemptID = attemptID
     do {
       let configuration = try NavidromeConfiguration(
         server: server,
@@ -150,8 +165,16 @@ final class AppSession: ObservableObject {
         password: password
       )
       let login = StoredLogin(configuration: configuration)
-      try await establishConnection(configuration: configuration, loginToStore: login)
+      try await establishConnection(
+        configuration: configuration,
+        loginToStore: login,
+        attemptID: attemptID
+      )
+    } catch is CancellationError {
+      return
     } catch {
+      guard Self.requestMatchesCurrentGeneration(attemptID, current: connectionAttemptID)
+      else { return }
       handleConnectionFailure(error, configuration: configuration)
     }
   }
@@ -161,15 +184,18 @@ final class AppSession: ObservableObject {
   }
 
   func signOut() async {
+    guard !isSigningOut else { return }
+    isSigningOut = true
     automaticConnectionTask?.cancel()
     automaticConnectionTask = nil
+    resetConnectionState(to: .disconnected)
+    defer { isSigningOut = false }
     do {
       try await Task.detached(priority: .userInitiated) {
         try CredentialStore.delete()
       }.value
-      resetConnectionState(to: .disconnected)
     } catch {
-      resetConnectionState(to: .failed(error.localizedDescription))
+      connectionState = .failed(error.localizedDescription)
     }
   }
 
@@ -182,25 +208,37 @@ final class AppSession: ObservableObject {
   private func establishConnection(
     configuration: NavidromeConfiguration,
     preservingExistingClient: Bool = false,
-    loginToStore: StoredLogin? = nil
+    loginToStore: StoredLogin? = nil,
+    attemptID requestedAttemptID: UUID? = nil
   ) async throws {
+    let attemptID = requestedAttemptID ?? UUID()
+    if requestedAttemptID != nil {
+      guard Self.requestMatchesCurrentGeneration(attemptID, current: connectionAttemptID)
+      else { throw CancellationError() }
+    }
     prepareForConnection(
       configuration: configuration,
-      preservingExistingClient: preservingExistingClient
+      preservingExistingClient: preservingExistingClient,
+      attemptID: attemptID
     )
     let client = NavidromeClient(configuration: configuration)
     let serverDetails = try await client.ping()
     try Task.checkCancellation()
+    guard Self.requestMatchesCurrentGeneration(attemptID, current: connectionAttemptID)
+    else { throw CancellationError() }
     if let loginToStore {
       // Do not publish a connected session while Sign Out could race an older save.
       try await Task.detached(priority: .userInitiated) {
         try CredentialStore.save(loginToStore)
       }.value
       try Task.checkCancellation()
+      guard Self.requestMatchesCurrentGeneration(attemptID, current: connectionAttemptID)
+      else { throw CancellationError() }
     }
     self.client = client
     self.serverDetails = serverDetails
     activeSessionID = UUID()
+    connectionAttemptID = nil
     artworkURLs.removeAll()
     connectionState = .connected(
       configuration.serverURL.host ?? configuration.serverURL.absoluteString)
@@ -210,10 +248,12 @@ final class AppSession: ObservableObject {
 
   private func prepareForConnection(
     configuration: NavidromeConfiguration,
-    preservingExistingClient: Bool = false
+    preservingExistingClient: Bool = false,
+    attemptID: UUID
   ) {
     ArtworkImageCache.shared.resetMemory()
     activeSessionID = nil
+    connectionAttemptID = attemptID
     handledPlayQueueIdentity = nil
     albumRatingOverrides.removeAll()
     if !preservingExistingClient {
@@ -230,6 +270,7 @@ final class AppSession: ObservableObject {
   ) {
     client = nil
     activeSessionID = nil
+    connectionAttemptID = nil
     serverDetails = nil
     self.configuration = configuration
     connectionState = .failed(error.localizedDescription)
@@ -241,6 +282,7 @@ final class AppSession: ObservableObject {
     client = nil
     configuration = nil
     activeSessionID = nil
+    connectionAttemptID = nil
     serverDetails = nil
     handledPlayQueueIdentity = nil
     albumRatingOverrides.removeAll()
@@ -249,6 +291,14 @@ final class AppSession: ObservableObject {
     selectedRoot = .home
     path.removeAll()
     rootToken = UUID()
+  }
+
+  static func requestMatchesCurrentGeneration(_ requested: UUID, current: UUID?) -> Bool {
+    requested == current
+  }
+
+  func isCurrentSession(_ sessionID: UUID) -> Bool {
+    Self.requestMatchesCurrentGeneration(sessionID, current: activeSessionID)
   }
 
   func selectRoot(_ destination: SidebarDestination) {
@@ -440,7 +490,7 @@ final class AppSession: ObservableObject {
     before entryID: UUID?,
     into player: PlayerController
   ) async {
-    guard let client, !libraryItems.isEmpty else { return }
+    guard let client, let sessionID = activeSessionID, !libraryItems.isEmpty else { return }
     do {
       var songs: [RemoteSong] = []
       var canonicalArtworkIDsBySongID: [String: String] = [:]
@@ -491,7 +541,9 @@ final class AppSession: ObservableObject {
             in: &canonicalArtworkIDsBySongID
           )
         }
+        guard isCurrentSession(sessionID) else { return }
       }
+      guard isCurrentSession(sessionID) else { return }
       player.insert(
         try queueEntries(
           for: songs,
@@ -500,6 +552,7 @@ final class AppSession: ObservableObject {
         before: entryID
       )
     } catch {
+      guard isCurrentSession(sessionID) else { return }
       player.report(error: error)
     }
   }

@@ -9,6 +9,14 @@ import Testing
 @Suite("Navidrome and models")
 @MainActor
 struct NavidromeTests {
+  @Test("stale session generations are rejected")
+  func staleSessionGenerationsAreRejected() {
+    let requested = UUID()
+    #expect(AppSession.requestMatchesCurrentGeneration(requested, current: requested))
+    #expect(!AppSession.requestMatchesCurrentGeneration(requested, current: UUID()))
+    #expect(!AppSession.requestMatchesCurrentGeneration(requested, current: nil))
+  }
+
   @Test("server URL normalization")
   func serverUrlNormalization() throws {
     let config = try NavidromeConfiguration(
