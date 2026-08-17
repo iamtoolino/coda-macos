@@ -115,70 +115,17 @@ struct ArtworkDiskCacheKey: Hashable, Sendable {
   }
 }
 
-enum ArtworkProcessingPreference {
-  static let workerCountKey = "artwork-processing-worker-count"
-  static let availableWorkerCounts = Array(1...maxWorkerCount)
-  static let defaultWorkerCount = min(3, maxWorkerCount)
-
-  static func workerCount(defaults: UserDefaults = .standard) -> Int {
-    let stored = defaults.integer(forKey: workerCountKey)
-    return clamped(stored == 0 ? defaultWorkerCount : stored)
-  }
-
-  static func clamped(_ value: Int) -> Int {
-    min(max(1, value), maxWorkerCount)
-  }
-
-  private static var maxWorkerCount: Int {
-    min(4, max(1, ProcessInfo.processInfo.activeProcessorCount))
-  }
-}
-
-@MainActor
-final class ArtworkProcessingSettings: ObservableObject {
-  @Published var workerCount: Int {
-    didSet {
-      let normalized = ArtworkProcessingPreference.clamped(workerCount)
-      if workerCount != normalized {
-        workerCount = normalized
-        return
-      }
-      defaults.set(workerCount, forKey: ArtworkProcessingPreference.workerCountKey)
-      Task { await ArtworkProcessingPool.shared.setWorkerLimit(workerCount) }
-    }
-  }
-
-  private let defaults: UserDefaults
-
-  init(defaults: UserDefaults = .standard) {
-    self.defaults = defaults
-    workerCount = ArtworkProcessingPreference.workerCount(defaults: defaults)
-    Task { await ArtworkProcessingPool.shared.setWorkerLimit(workerCount) }
-  }
-}
-
 struct ArtworkDerivatives: Sendable {
   let browsing500: Data
   let presentation1200: Data
 }
 
 actor ArtworkProcessingPool {
-  static let shared = ArtworkProcessingPool(
-    workerLimit: ArtworkProcessingPreference.workerCount()
-  )
+  nonisolated static let workerLimit = 4
+  static let shared = ArtworkProcessingPool()
 
-  private var workerLimit: Int
   private var activeWorkers = 0
   private var waiters: [CheckedContinuation<Void, Never>] = []
-
-  init(workerLimit: Int) {
-    self.workerLimit = ArtworkProcessingPreference.clamped(workerLimit)
-  }
-
-  func setWorkerLimit(_ value: Int) {
-    workerLimit = ArtworkProcessingPreference.clamped(value)
-    resumeAvailableWaiters()
-  }
 
   func makeDerivatives(from sourceData: Data) async -> ArtworkDerivatives? {
     await run {
@@ -197,7 +144,7 @@ actor ArtworkProcessingPool {
   }
 
   private func acquireWorker() async {
-    if activeWorkers < workerLimit {
+    if activeWorkers < Self.workerLimit {
       activeWorkers += 1
       return
     }
@@ -212,7 +159,7 @@ actor ArtworkProcessingPool {
   }
 
   private func resumeAvailableWaiters() {
-    while activeWorkers < workerLimit, !waiters.isEmpty {
+    while activeWorkers < Self.workerLimit, !waiters.isEmpty {
       activeWorkers += 1
       waiters.removeFirst().resume()
     }
@@ -320,7 +267,7 @@ actor ArtworkDiskCache {
     ).first?
       .appendingPathComponent("io.github.iamtoolino.coda.macos", isDirectory: true)
       .appendingPathComponent("Artwork", isDirectory: true)
-      .appendingPathComponent("v3", isDirectory: true)
+      .appendingPathComponent("v2", isDirectory: true)
   ) {
     self.directoryURL = directoryURL
   }

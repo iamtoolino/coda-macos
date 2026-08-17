@@ -206,30 +206,13 @@ struct ArtworkAndPresentationTests {
     #expect(filenames == ["500.image", "1200.image"])
   }
 
-  @Test("artwork processing worker preference is persisted and bounded")
-  func artworkProcessingWorkerPreferenceIsPersistedAndBounded() throws {
-    let suiteName = "ArtworkProcessingSettingsTests-\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-
-    #expect(ArtworkProcessingPreference.workerCount(defaults: defaults) >= 1)
-    defaults.set(2, forKey: ArtworkProcessingPreference.workerCountKey)
-    #expect(ArtworkProcessingPreference.workerCount(defaults: defaults) == 2)
-    defaults.set(Int.max, forKey: ArtworkProcessingPreference.workerCountKey)
-    #expect(
-      ArtworkProcessingPreference.availableWorkerCounts.contains(
-        ArtworkProcessingPreference.workerCount(defaults: defaults)
-      )
-    )
-  }
-
-  @Test("artwork processing pool respects its worker limit")
-  func artworkProcessingPoolRespectsItsWorkerLimit() async {
-    let pool = ArtworkProcessingPool(workerLimit: 2)
+  @Test("artwork processing pool uses four workers")
+  func artworkProcessingPoolUsesFourWorkers() async {
+    let pool = ArtworkProcessingPool()
     let probe = ArtworkConcurrencyProbe()
 
     await withTaskGroup(of: Void.self) { group in
-      for _ in 0..<8 {
+      for _ in 0..<12 {
         group.addTask {
           await pool.run {
             await probe.enter()
@@ -241,7 +224,7 @@ struct ArtworkAndPresentationTests {
     }
 
     let maximumActiveCount = await probe.maximumActiveCount
-    #expect(maximumActiveCount == 2)
+    #expect(maximumActiveCount == ArtworkProcessingPool.workerLimit)
   }
 
   @Test("corrupt persistent artwork is discarded")
