@@ -1034,6 +1034,22 @@ private struct NavidromeLoginView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
         #endif
+
+        Divider()
+
+        VStack(alignment: .leading, spacing: 3) {
+          Text("A larger Navidrome artwork cache can make browsing in Coda smoother.")
+            .foregroundStyle(.secondary)
+          Link(
+            "View setup instructions",
+            destination: URL(
+              string:
+                "https://github.com/iamtoolino/coda-macos/blob/main/docs/artwork-performance.md"
+            )!
+          )
+        }
+        .font(.caption)
+        .frame(maxWidth: .infinity, alignment: .leading)
       }
       .padding(20)
       .frame(width: 430)
