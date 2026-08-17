@@ -42,15 +42,8 @@ struct LibraryInteractionTests {
   func libraryQueueDragPayloadRoundTrip() throws {
     let items = [
       LibraryQueueDragItem.artist("artist/1"),
-      LibraryQueueDragItem.album(
-        "album/1",
-        canonicalAlbumArtworkID: "al-album-1_version"
-      ),
-      LibraryQueueDragItem.albumDisc(
-        "album/1",
-        discNumber: 3,
-        canonicalAlbumArtworkID: "al-album-1_version"
-      ),
+      LibraryQueueDragItem.album("album/1"),
+      LibraryQueueDragItem.albumDisc("album/1", discNumber: 3),
       LibraryQueueDragItem.playlist("playlist/1"),
       LibraryQueueDragItem.song(
         "song/1",

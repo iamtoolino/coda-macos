@@ -26,19 +26,12 @@ struct LibraryQueueDragItem: Codable, Hashable, Sendable {
   var songIDs: [String]? = nil
   var canonicalAlbumArtworkID: String? = nil
 
-  static func album(_ id: String, canonicalAlbumArtworkID: String? = nil) -> Self {
-    Self(kind: .album, id: id, canonicalAlbumArtworkID: canonicalAlbumArtworkID)
-  }
-  static func albumDisc(
-    _ id: String,
-    discNumber: Int,
-    canonicalAlbumArtworkID: String? = nil
-  ) -> Self {
+  static func album(_ id: String) -> Self { Self(kind: .album, id: id) }
+  static func albumDisc(_ id: String, discNumber: Int) -> Self {
     Self(
       kind: .albumDisc,
       id: id,
-      discNumber: max(1, discNumber),
-      canonicalAlbumArtworkID: canonicalAlbumArtworkID
+      discNumber: max(1, discNumber)
     )
   }
   static func artist(_ id: String) -> Self { Self(kind: .artist, id: id) }
@@ -245,6 +238,7 @@ struct RemoteAlbum: Decodable, Identifiable, Hashable, Sendable {
   var discTitles: [RemoteDiscTitle]? = nil
 
   var artistName: String { artist ?? "" }
+  var artworkID: String { coverArt ?? id }
 
   var releaseYear: Int? {
     originalReleaseDate?.year ?? releaseDate?.year ?? year

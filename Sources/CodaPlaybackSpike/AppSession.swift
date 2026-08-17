@@ -55,6 +55,11 @@ enum ArtworkPurpose: Int, Sendable {
   case nowPlaying = 1_200
 }
 
+struct PreparedQueueSongs: Sendable {
+  let songs: [RemoteSong]
+  let canonicalArtworkIDsBySongID: [String: String]
+}
+
 @MainActor
 final class AppSession: ObservableObject {
   @Published private(set) var client: NavidromeClient?
@@ -501,7 +506,7 @@ final class AppSession: ObservableObject {
           let albumSongs = page.songs
           songs.append(contentsOf: albumSongs)
           rememberCanonicalArtwork(
-            page.album.coverArt ?? item.canonicalAlbumArtworkID ?? page.album.id,
+            page.album.artworkID,
             for: albumSongs,
             in: &canonicalArtworkIDsBySongID
           )
@@ -511,12 +516,13 @@ final class AppSession: ObservableObject {
           let discSongs = page.songs.filter { max(1, $0.discNumber ?? 1) == discNumber }
           songs.append(contentsOf: discSongs)
           rememberCanonicalArtwork(
-            page.album.coverArt ?? item.canonicalAlbumArtworkID ?? page.album.id,
+            page.album.artworkID,
             for: discSongs,
             in: &canonicalArtworkIDsBySongID
           )
         case .artist:
-          let prepared = try await songsForArtist(id: item.id, client: client)
+          let artist = try await client.artist(id: item.id)
+          let prepared = try await prepareQueueSongs(for: artist.albums, client: client)
           songs.append(contentsOf: prepared.songs)
           canonicalArtworkIDsBySongID.merge(
             prepared.canonicalArtworkIDsBySongID,
@@ -557,36 +563,44 @@ final class AppSession: ObservableObject {
     }
   }
 
-  private func songsForArtist(
-    id: String,
+  func prepareQueueSongs(for albums: [RemoteAlbum]) async throws -> PreparedQueueSongs {
+    guard let client, let sessionID = activeSessionID else {
+      throw CredentialStoreError.notConnected
+    }
+    let prepared = try await prepareQueueSongs(for: albums, client: client)
+    guard isCurrentSession(sessionID) else { throw CancellationError() }
+    return prepared
+  }
+
+  private func prepareQueueSongs(
+    for albums: [RemoteAlbum],
     client: NavidromeClient
-  ) async throws -> (
-    songs: [RemoteSong],
-    canonicalArtworkIDsBySongID: [String: String]
-  ) {
-    let artist = try await client.artist(id: id)
-    return try await withThrowingTaskGroup(of: (Int, AlbumPage).self) { group in
-      for (index, album) in artist.albums.enumerated() {
+  ) async throws -> PreparedQueueSongs {
+    try await withThrowingTaskGroup(of: (Int, AlbumPage).self) { group in
+      for (index, album) in albums.enumerated() {
         group.addTask {
           (index, try await client.album(id: album.id))
         }
       }
 
-      var albums: [(Int, AlbumPage)] = []
+      var loadedAlbums: [(Int, AlbumPage)] = []
       for try await album in group {
-        albums.append(album)
+        loadedAlbums.append(album)
       }
       var songs: [RemoteSong] = []
       var canonicalArtworkIDsBySongID: [String: String] = [:]
-      for (_, page) in albums.sorted(by: { $0.0 < $1.0 }) {
+      for (_, page) in loadedAlbums.sorted(by: { $0.0 < $1.0 }) {
         songs.append(contentsOf: page.songs)
         rememberCanonicalArtwork(
-          page.album.coverArt ?? page.album.id,
+          page.album.artworkID,
           for: page.songs,
           in: &canonicalArtworkIDsBySongID
         )
       }
-      return (songs, canonicalArtworkIDsBySongID)
+      return PreparedQueueSongs(
+        songs: songs,
+        canonicalArtworkIDsBySongID: canonicalArtworkIDsBySongID
+      )
     }
   }
 

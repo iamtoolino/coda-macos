@@ -365,7 +365,7 @@ struct SearchView: View {
         session.play(
           songs: page.songs,
           startAt: index,
-          canonicalAlbumArtworkID: page.album.coverArt ?? page.album.id,
+          canonicalAlbumArtworkID: page.album.artworkID,
           with: player
         )
       } else {
@@ -753,20 +753,20 @@ struct ArtistDetailView: View {
   }
 
   private func play(_ page: ArtistPage, shuffled: Bool) {
-    prepareSongs(page) { songs, artworkIDsBySongID in
+    prepareSongs(page) { prepared in
       session.play(
-        songs: shuffled ? songs.shuffled() : songs,
-        canonicalAlbumArtworkIDsBySongID: artworkIDsBySongID,
+        songs: shuffled ? prepared.songs.shuffled() : prepared.songs,
+        canonicalAlbumArtworkIDsBySongID: prepared.canonicalArtworkIDsBySongID,
         with: player
       )
     }
   }
 
   private func queue(_ page: ArtistPage) {
-    prepareSongs(page) { songs, artworkIDsBySongID in
+    prepareSongs(page) { prepared in
       session.append(
-        songs: songs,
-        canonicalAlbumArtworkIDsBySongID: artworkIDsBySongID,
+        songs: prepared.songs,
+        canonicalAlbumArtworkIDsBySongID: prepared.canonicalArtworkIDsBySongID,
         to: player
       )
     }
@@ -774,28 +774,17 @@ struct ArtistDetailView: View {
 
   private func prepareSongs(
     _ page: ArtistPage,
-    action: @escaping @MainActor ([RemoteSong], [String: String]) -> Void
+    action: @escaping @MainActor (PreparedQueueSongs) -> Void
   ) {
     guard !isPreparingPlayback else { return }
     isPreparingPlayback = true
     Task { @MainActor in
       defer { isPreparingPlayback = false }
-      guard let client = session.client, let sessionID = session.activeSessionID else { return }
+      guard let sessionID = session.activeSessionID else { return }
       do {
-        var songs: [RemoteSong] = []
-        var artworkIDsBySongID: [String: String] = [:]
-        for album in page.albums {
-          let albumPage = try await client.album(id: album.id)
-          guard session.isCurrentSession(sessionID) else { return }
-          let albumSongs = albumPage.songs
-          songs.append(contentsOf: albumSongs)
-          let artworkID = albumPage.album.coverArt ?? albumPage.album.id
-          for song in albumSongs {
-            artworkIDsBySongID[song.id] = artworkID
-          }
-        }
+        let prepared = try await session.prepareQueueSongs(for: page.albums)
         guard session.isCurrentSession(sessionID) else { return }
-        action(songs, artworkIDsBySongID)
+        action(prepared)
       } catch {
         guard session.isCurrentSession(sessionID) else { return }
         player.report(error: error)
@@ -989,8 +978,7 @@ struct AlbumDetailView: View {
                       QueueDropItem.library(
                         .albumDisc(
                           page.album.id,
-                          discNumber: section.number,
-                          canonicalAlbumArtworkID: page.album.coverArt ?? page.album.id
+                          discNumber: section.number
                         )
                       )
                     ) {
@@ -1004,7 +992,7 @@ struct AlbumDetailView: View {
                       Button("Add Disc to Queue", systemImage: "text.badge.plus") {
                         session.append(
                           songs: section.songs,
-                          canonicalAlbumArtworkID: page.album.coverArt ?? page.album.id,
+                          canonicalAlbumArtworkID: page.album.artworkID,
                           to: player
                         )
                       }
@@ -1020,7 +1008,7 @@ struct AlbumDetailView: View {
                       isSelected: selectedSongIDs.contains(song.id),
                       dragSongIDs: selectedSongIDs.contains(song.id)
                         ? selectedSongIDs : [song.id],
-                      canonicalAlbumArtworkID: page.album.coverArt ?? page.album.id,
+                      canonicalAlbumArtworkID: page.album.artworkID,
                       selectionAction: { modifiers in
                         selectTrack(song.id, in: page, modifiers: modifiers)
                         trackListHasFocus = true
@@ -1063,7 +1051,7 @@ struct AlbumDetailView: View {
     .focusedSceneValue(
       \.codaRefreshAction,
       CodaRefreshAction {
-        let artworkID = page?.album.coverArt ?? page?.album.id ?? albumID
+        let artworkID = page?.album.artworkID ?? albumID
         Task {
           await session.refreshArtwork(
             id: artworkID,
@@ -1128,7 +1116,7 @@ struct AlbumDetailView: View {
   }
 
   private func albumDetailHeader(page: AlbumPage, availableWidth: CGFloat) -> some View {
-    let albumArtworkID = page.album.coverArt ?? page.album.id
+    let albumArtworkID = page.album.artworkID
     let artworkURL = session.artworkURL(id: albumArtworkID)
     return AlbumMockupHero(
       availableWidth: availableWidth,
@@ -1162,10 +1150,7 @@ struct AlbumDetailView: View {
           to: player
         )
       },
-      queueDragItem: .album(
-        page.album.id,
-        canonicalAlbumArtworkID: albumArtworkID
-      )
+      queueDragItem: .album(page.album.id)
     )
   }
 
@@ -1175,7 +1160,7 @@ struct AlbumDetailView: View {
     session.play(
       songs: page.songs,
       startAt: index,
-      canonicalAlbumArtworkID: page.album.coverArt ?? page.album.id,
+      canonicalAlbumArtworkID: page.album.artworkID,
       with: player
     )
   }
@@ -1217,7 +1202,7 @@ struct AlbumDetailView: View {
       let loadedPage = try await client.album(id: albumID)
       page = loadedPage
       await artworkLoader.load(
-        url: session.artworkURL(id: loadedPage.album.coverArt ?? loadedPage.album.id),
+        url: session.artworkURL(id: loadedPage.album.artworkID),
         placeholderIdentity: loadedPage.album.id
       )
       if !Task.isCancelled {
@@ -1573,7 +1558,7 @@ private struct AlbumCard: View {
       VStack(alignment: .leading, spacing: 6) {
         ZStack(alignment: .topTrailing) {
           ArtworkImage(
-            url: session.artworkURL(id: album.coverArt ?? album.id), cornerRadius: 9
+            url: session.artworkURL(id: album.artworkID), cornerRadius: 9
           )
           .aspectRatio(1, contentMode: .fit)
 
@@ -1583,10 +1568,7 @@ private struct AlbumCard: View {
         }
         .draggable(
           QueueDropItem.library(
-            .album(
-              album.id,
-              canonicalAlbumArtworkID: album.coverArt ?? album.id
-            )
+            .album(album.id)
           )
         )
         .dragConfiguration(.codaInternal())
