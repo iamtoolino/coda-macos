@@ -38,15 +38,16 @@ struct ArtworkAndPresentationTests {
     #expect(cache.generation == previousGeneration + 1)
   }
 
-  @Test("artwork uses a dedicated modest Foundation response cache")
-  func artworkUsesDedicatedModestFoundationResponseCache() {
+  @Test("artwork uses bounded memory-only response and decoded caches")
+  func artworkUsesBoundedMemoryOnlyResponseAndDecodedCaches() {
     let cache = CodaURLSessions.artworkCache
 
     #expect(cache !== URLCache.shared)
     #expect(cache.memoryCapacity == ArtworkURLCachePolicy.memoryCapacity)
     #expect(cache.diskCapacity == ArtworkURLCachePolicy.diskCapacity)
-    #expect(cache.memoryCapacity == 64 * 1_024 * 1_024)
-    #expect(cache.diskCapacity == 500 * 1_024 * 1_024)
+    #expect(cache.memoryCapacity == 256 * 1_024 * 1_024)
+    #expect(cache.diskCapacity == 0)
+    #expect(ArtworkImageCache.decodedImageCapacity == 128 * 1_024 * 1_024)
     #expect(CodaURLSessions.artwork.configuration.urlCache === cache)
   }
 

@@ -31,9 +31,10 @@ Coda is an independent community project and is not affiliated with or endorsed 
 
 ## Artwork performance
 
-Coda requests 500 px artwork while browsing and 1200 px artwork for Now Playing. A 500 MB
-macOS-managed response cache keeps recently viewed covers quick when scrolling away and back, but
-the server's transformed-image cache remains important for large libraries.
+Coda requests 500 px artwork while browsing and 1200 px artwork for Now Playing. It keeps up to
+256 MB of compressed responses in memory so recently viewed covers remain quick when scrolling
+away and back. This cache is discarded when Coda exits, so the server's transformed-image cache
+remains important for large libraries.
 
 Navidrome defaults `ND_IMAGECACHESIZE` to only `100MB`. Once that cache fills, repeatedly resizing
 artwork can cause high server CPU use and slow browsing even over a fast local network. `1GB` is a
@@ -87,10 +88,8 @@ swift test
 Coda contains no analytics, advertising, or tracking SDK. It communicates only with the server
 configured by the user.
 
-Artwork responses are stored in a macOS-managed disk cache. OpenSubsonic authentication values
-are part of artwork request URLs, so the cache's private on-disk metadata may include those URLs.
-Anyone able to read the cache already has local filesystem, backup, or malware-level access;
-nevertheless, use a strong server password and protect access to the Mac and its backups.
+Artwork responses are cached only in memory and are discarded when Coda exits. The artwork cache
+does not intentionally write OpenSubsonic authentication values or request URLs to disk.
 
 ## License
 

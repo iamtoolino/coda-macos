@@ -3,8 +3,8 @@ import Combine
 import Foundation
 
 enum ArtworkURLCachePolicy {
-  static let memoryCapacity = 64 * 1_024 * 1_024
-  static let diskCapacity = 500 * 1_024 * 1_024
+  static let memoryCapacity = 256 * 1_024 * 1_024
+  static let diskCapacity = 0
   static let requestCachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy
 
   static func makeCache() -> URLCache {
@@ -26,6 +26,7 @@ enum ArtworkURLCachePolicy {
 @MainActor
 final class ArtworkImageCache: ObservableObject {
   static let shared = ArtworkImageCache()
+  static let decodedImageCapacity = 128 * 1_024 * 1_024
 
   @Published private(set) var generation = 0
 
@@ -46,7 +47,7 @@ final class ArtworkImageCache: ObservableObject {
     self.responseCache = responseCache
     self.session = session
     images.countLimit = 300
-    images.totalCostLimit = 256 * 1_024 * 1_024
+    images.totalCostLimit = Self.decodedImageCapacity
   }
 
   func image(for url: URL?) async -> NSImage {
