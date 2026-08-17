@@ -503,4 +503,24 @@ struct ArtworkAndPresentationTests {
       albumId: "album-artwork", coverArt: "embedded-track-artwork")
     #expect(song.albumArtworkID == "album-artwork")
   }
+
+  @Test("canonical album artwork is preserved when songs enter the queue")
+  func canonicalAlbumArtworkIsPreservedForQueueEntries() {
+    let song = RemoteSong(
+      id: "1", title: "Track",
+      albumId: "album-id", coverArt: "embedded-track-artwork")
+
+    #expect(
+      AppSession.resolvedAlbumArtworkID(
+        for: song,
+        canonicalAlbumArtworkID: "canonical-album-artwork"
+      ) == "canonical-album-artwork"
+    )
+    #expect(
+      AppSession.resolvedAlbumArtworkID(
+        for: song,
+        canonicalAlbumArtworkID: nil
+      ) == "album-id"
+    )
+  }
 }

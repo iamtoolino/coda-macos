@@ -324,7 +324,20 @@ final class AppSession: ObservableObject {
     return url
   }
 
-  func queueEntries(for songs: [RemoteSong]) throws -> [QueueEntry] {
+  static func resolvedAlbumArtworkID(
+    for song: RemoteSong,
+    canonicalAlbumArtworkID: String?
+  ) -> String? {
+    if let canonicalAlbumArtworkID, !canonicalAlbumArtworkID.isEmpty {
+      return canonicalAlbumArtworkID
+    }
+    return song.albumArtworkID
+  }
+
+  func queueEntries(
+    for songs: [RemoteSong],
+    canonicalAlbumArtworkID: String? = nil
+  ) throws -> [QueueEntry] {
     guard let configuration else { throw CredentialStoreError.notConnected }
     var currentAlbumKey: String?
     var currentGroupID = UUID()
@@ -335,11 +348,15 @@ final class AppSession: ObservableObject {
         currentGroupID = UUID()
       }
       let streamURL = try configuration.originalStreamURL(songID: song.id)
+      let artworkID = Self.resolvedAlbumArtworkID(
+        for: song,
+        canonicalAlbumArtworkID: canonicalAlbumArtworkID
+      )
       return QueueEntry.remoteSong(
         song,
         streamURL: streamURL,
-        artworkURL: artworkURL(id: song.albumArtworkID),
-        nowPlayingArtworkURL: artworkURL(id: song.albumArtworkID, purpose: .nowPlaying),
+        artworkURL: artworkURL(id: artworkID),
+        nowPlayingArtworkURL: artworkURL(id: artworkID, purpose: .nowPlaying),
         queueGroupID: currentGroupID
       )
     }
@@ -349,10 +366,14 @@ final class AppSession: ObservableObject {
     songs: [RemoteSong],
     startAt index: Int = 0,
     positionMilliseconds: Int = 0,
+    canonicalAlbumArtworkID: String? = nil,
     with player: PlayerController
   ) {
     do {
-      let entries = try queueEntries(for: songs)
+      let entries = try queueEntries(
+        for: songs,
+        canonicalAlbumArtworkID: canonicalAlbumArtworkID
+      )
       player.replaceQueue(
         entries,
         startAt: index,
@@ -383,9 +404,18 @@ final class AppSession: ObservableObject {
     }
   }
 
-  func append(songs: [RemoteSong], to player: PlayerController) {
+  func append(
+    songs: [RemoteSong],
+    canonicalAlbumArtworkID: String? = nil,
+    to player: PlayerController
+  ) {
     do {
-      player.enqueue(try queueEntries(for: songs))
+      player.enqueue(
+        try queueEntries(
+          for: songs,
+          canonicalAlbumArtworkID: canonicalAlbumArtworkID
+        )
+      )
     } catch {
       player.report(error: error)
     }

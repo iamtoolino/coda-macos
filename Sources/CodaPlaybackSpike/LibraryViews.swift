@@ -345,7 +345,12 @@ struct SearchView: View {
       if let albumID = song.albumId, !albumID.isEmpty {
         let page = try await client.album(id: albumID)
         let index = page.songs.firstIndex(where: { $0.id == song.id }) ?? 0
-        session.play(songs: page.songs, startAt: index, with: player)
+        session.play(
+          songs: page.songs,
+          startAt: index,
+          canonicalAlbumArtworkID: page.album.coverArt ?? page.album.id,
+          with: player
+        )
       } else {
         session.play(songs: [song], with: player)
       }
@@ -1080,7 +1085,8 @@ struct AlbumDetailView: View {
   }
 
   private func albumDetailHeader(page: AlbumPage, availableWidth: CGFloat) -> some View {
-    let artworkURL = session.artworkURL(id: page.album.coverArt ?? page.album.id)
+    let albumArtworkID = page.album.coverArt ?? page.album.id
+    let artworkURL = session.artworkURL(id: albumArtworkID)
     return AlbumMockupHero(
       availableWidth: availableWidth,
       image: artworkLoader.image,
@@ -1100,9 +1106,19 @@ struct AlbumDetailView: View {
       },
       playAction: {
         artworkTreatments.promoteDisplayedArtworkToPlayback(ifIdentity: page.album.id)
-        session.play(songs: page.songs, with: player)
+        session.play(
+          songs: page.songs,
+          canonicalAlbumArtworkID: albumArtworkID,
+          with: player
+        )
       },
-      queueAction: { session.append(songs: page.songs, to: player) },
+      queueAction: {
+        session.append(
+          songs: page.songs,
+          canonicalAlbumArtworkID: albumArtworkID,
+          to: player
+        )
+      },
       queueDragItem: .album(page.album.id)
     )
   }
@@ -1110,7 +1126,12 @@ struct AlbumDetailView: View {
   private func play(_ song: RemoteSong, from page: AlbumPage) {
     artworkTreatments.promoteDisplayedArtworkToPlayback(ifIdentity: page.album.id)
     let index = page.songs.firstIndex(where: { $0.id == song.id }) ?? 0
-    session.play(songs: page.songs, startAt: index, with: player)
+    session.play(
+      songs: page.songs,
+      startAt: index,
+      canonicalAlbumArtworkID: page.album.coverArt ?? page.album.id,
+      with: player
+    )
   }
 
   @MainActor
