@@ -43,6 +43,8 @@ cp "$root/Support/Info.plist" "$app/Contents/Info.plist"
 cp "$root/Support/Coda.icns" "$app/Contents/Resources/Coda.icns"
 cp "$root/Support/CodaPlaceholderCover.png" \
   "$app/Contents/Resources/CodaPlaceholderCover.png"
+cp "$root/LICENSE" \
+  "$app/Contents/Resources/Licenses/Coda-Apache-2.0.txt"
 cp "$root/.build/libmpv/prefix/share/coda/BundledLibraries.txt" \
   "$app/Contents/Resources/Licenses/BundledLibraries.txt"
 cp "$root/.build/libmpv/prefix/share/coda/Licenses/"* \
