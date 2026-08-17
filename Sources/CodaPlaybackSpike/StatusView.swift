@@ -17,8 +17,8 @@ struct CodaStatusView: View {
         if session.hasEstablishedConnection {
           Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
             Task {
-              await session.signOut()
               player.clear()
+              await session.signOut()
             }
           }
         }
