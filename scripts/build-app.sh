@@ -10,6 +10,15 @@ bundle_identifier="io.github.iamtoolino.coda.macos"
 signing_identity_name="${CODA_SIGNING_IDENTITY:-Coda Local Development}"
 entitlement_options=()
 
+verify_bundled_copy() {
+  local source="$1"
+  local destination="$2"
+  if [[ ! -f "$destination" ]] || ! cmp -s "$source" "$destination"; then
+    print -u2 "Bundle verification failed for ${destination#$app/}."
+    exit 1
+  fi
+}
+
 case "$configuration" in
   debug)
     entitlement_options=(--entitlements "$root/Support/CodaDebug.entitlements")
@@ -94,6 +103,29 @@ codesign \
   "${entitlement_options[@]}" \
   "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
+
+license_directory="$app/Contents/Resources/Licenses"
+generated_license_directory="$root/.build/libmpv/prefix/share/coda/Licenses"
+generated_license_materials=("$generated_license_directory"/*(.N))
+if (( ${#generated_license_materials} == 0 )); then
+  print -u2 "Bundle verification found no generated dependency license materials."
+  exit 1
+fi
+verify_bundled_copy "$root/LICENSE" "$license_directory/Coda-Apache-2.0.txt"
+verify_bundled_copy \
+  "$root/.build/libmpv/prefix/share/coda/BundledLibraries.txt" \
+  "$license_directory/BundledLibraries.txt"
+for material in "${generated_license_materials[@]}"; do
+  verify_bundled_copy "$material" "$license_directory/${material:t}"
+done
+
+if [[ "$configuration" == release ]]; then
+  release_entitlements="$(codesign -d --entitlements - "$app" 2>/dev/null)"
+  if [[ "$release_entitlements" == *"com.apple.security.get-task-allow"* ]]; then
+    print -u2 "Release bundle unexpectedly contains the debugger entitlement."
+    exit 1
+  fi
+fi
 
 touch "$app"
 
