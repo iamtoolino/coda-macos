@@ -326,8 +326,12 @@ final class AppSession: ObservableObject {
 
   static func resolvedAlbumArtworkID(
     for song: RemoteSong,
-    canonicalAlbumArtworkID: String?
+    canonicalAlbumArtworkID: String?,
+    canonicalAlbumArtworkIDsBySongID: [String: String] = [:]
   ) -> String? {
+    if let artworkID = canonicalAlbumArtworkIDsBySongID[song.id], !artworkID.isEmpty {
+      return artworkID
+    }
     if let canonicalAlbumArtworkID, !canonicalAlbumArtworkID.isEmpty {
       return canonicalAlbumArtworkID
     }
@@ -336,7 +340,8 @@ final class AppSession: ObservableObject {
 
   func queueEntries(
     for songs: [RemoteSong],
-    canonicalAlbumArtworkID: String? = nil
+    canonicalAlbumArtworkID: String? = nil,
+    canonicalAlbumArtworkIDsBySongID: [String: String] = [:]
   ) throws -> [QueueEntry] {
     guard let configuration else { throw CredentialStoreError.notConnected }
     var currentAlbumKey: String?
@@ -350,7 +355,8 @@ final class AppSession: ObservableObject {
       let streamURL = try configuration.originalStreamURL(songID: song.id)
       let artworkID = Self.resolvedAlbumArtworkID(
         for: song,
-        canonicalAlbumArtworkID: canonicalAlbumArtworkID
+        canonicalAlbumArtworkID: canonicalAlbumArtworkID,
+        canonicalAlbumArtworkIDsBySongID: canonicalAlbumArtworkIDsBySongID
       )
       return QueueEntry.remoteSong(
         song,
@@ -367,12 +373,14 @@ final class AppSession: ObservableObject {
     startAt index: Int = 0,
     positionMilliseconds: Int = 0,
     canonicalAlbumArtworkID: String? = nil,
+    canonicalAlbumArtworkIDsBySongID: [String: String] = [:],
     with player: PlayerController
   ) {
     do {
       let entries = try queueEntries(
         for: songs,
-        canonicalAlbumArtworkID: canonicalAlbumArtworkID
+        canonicalAlbumArtworkID: canonicalAlbumArtworkID,
+        canonicalAlbumArtworkIDsBySongID: canonicalAlbumArtworkIDsBySongID
       )
       player.replaceQueue(
         entries,
@@ -407,13 +415,15 @@ final class AppSession: ObservableObject {
   func append(
     songs: [RemoteSong],
     canonicalAlbumArtworkID: String? = nil,
+    canonicalAlbumArtworkIDsBySongID: [String: String] = [:],
     to player: PlayerController
   ) {
     do {
       player.enqueue(
         try queueEntries(
           for: songs,
-          canonicalAlbumArtworkID: canonicalAlbumArtworkID
+          canonicalAlbumArtworkID: canonicalAlbumArtworkID,
+          canonicalAlbumArtworkIDsBySongID: canonicalAlbumArtworkIDsBySongID
         )
       )
     } catch {
@@ -433,48 +443,108 @@ final class AppSession: ObservableObject {
     guard let client, !libraryItems.isEmpty else { return }
     do {
       var songs: [RemoteSong] = []
+      var canonicalArtworkIDsBySongID: [String: String] = [:]
       for item in libraryItems {
         switch item.kind {
         case .album:
-          songs.append(contentsOf: try await client.album(id: item.id).songs)
+          let page = try await client.album(id: item.id)
+          let albumSongs = page.songs
+          songs.append(contentsOf: albumSongs)
+          rememberCanonicalArtwork(
+            page.album.coverArt ?? item.canonicalAlbumArtworkID ?? page.album.id,
+            for: albumSongs,
+            in: &canonicalArtworkIDsBySongID
+          )
         case .albumDisc:
           guard let discNumber = item.discNumber else { continue }
-          let album = try await client.album(id: item.id)
-          songs.append(
-            contentsOf: album.songs.filter { max(1, $0.discNumber ?? 1) == discNumber }
+          let page = try await client.album(id: item.id)
+          let discSongs = page.songs.filter { max(1, $0.discNumber ?? 1) == discNumber }
+          songs.append(contentsOf: discSongs)
+          rememberCanonicalArtwork(
+            page.album.coverArt ?? item.canonicalAlbumArtworkID ?? page.album.id,
+            for: discSongs,
+            in: &canonicalArtworkIDsBySongID
           )
         case .artist:
-          songs.append(contentsOf: try await songsForArtist(id: item.id, client: client))
+          let prepared = try await songsForArtist(id: item.id, client: client)
+          songs.append(contentsOf: prepared.songs)
+          canonicalArtworkIDsBySongID.merge(
+            prepared.canonicalArtworkIDsBySongID,
+            uniquingKeysWith: { _, later in later }
+          )
         case .playlist:
           songs.append(contentsOf: try await client.playlist(id: item.id).songs)
         case .song:
-          songs.append(try await client.song(id: item.id))
+          let song = try await client.song(id: item.id)
+          songs.append(song)
+          rememberCanonicalArtwork(
+            item.canonicalAlbumArtworkID,
+            for: [song],
+            in: &canonicalArtworkIDsBySongID
+          )
         case .songs:
-          songs.append(
-            contentsOf: try await fetchSongs(ids: item.songIDs ?? [], client: client)
+          let fetchedSongs = try await fetchSongs(ids: item.songIDs ?? [], client: client)
+          songs.append(contentsOf: fetchedSongs)
+          rememberCanonicalArtwork(
+            item.canonicalAlbumArtworkID,
+            for: fetchedSongs,
+            in: &canonicalArtworkIDsBySongID
           )
         }
       }
-      player.insert(try queueEntries(for: songs), before: entryID)
+      player.insert(
+        try queueEntries(
+          for: songs,
+          canonicalAlbumArtworkIDsBySongID: canonicalArtworkIDsBySongID
+        ),
+        before: entryID
+      )
     } catch {
       player.report(error: error)
     }
   }
 
-  private func songsForArtist(id: String, client: NavidromeClient) async throws -> [RemoteSong] {
+  private func songsForArtist(
+    id: String,
+    client: NavidromeClient
+  ) async throws -> (
+    songs: [RemoteSong],
+    canonicalArtworkIDsBySongID: [String: String]
+  ) {
     let artist = try await client.artist(id: id)
-    return try await withThrowingTaskGroup(of: (Int, [RemoteSong]).self) { group in
+    return try await withThrowingTaskGroup(of: (Int, AlbumPage).self) { group in
       for (index, album) in artist.albums.enumerated() {
         group.addTask {
-          (index, try await client.album(id: album.id).songs)
+          (index, try await client.album(id: album.id))
         }
       }
 
-      var albums: [(Int, [RemoteSong])] = []
+      var albums: [(Int, AlbumPage)] = []
       for try await album in group {
         albums.append(album)
       }
-      return albums.sorted { $0.0 < $1.0 }.flatMap(\.1)
+      var songs: [RemoteSong] = []
+      var canonicalArtworkIDsBySongID: [String: String] = [:]
+      for (_, page) in albums.sorted(by: { $0.0 < $1.0 }) {
+        songs.append(contentsOf: page.songs)
+        rememberCanonicalArtwork(
+          page.album.coverArt ?? page.album.id,
+          for: page.songs,
+          in: &canonicalArtworkIDsBySongID
+        )
+      }
+      return (songs, canonicalArtworkIDsBySongID)
+    }
+  }
+
+  private func rememberCanonicalArtwork(
+    _ artworkID: String?,
+    for songs: [RemoteSong],
+    in artworkIDsBySongID: inout [String: String]
+  ) {
+    guard let artworkID, !artworkID.isEmpty else { return }
+    for song in songs {
+      artworkIDsBySongID[song.id] = artworkID
     }
   }
 

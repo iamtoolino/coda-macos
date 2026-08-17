@@ -42,14 +42,36 @@ struct LibraryInteractionTests {
   func libraryQueueDragPayloadRoundTrip() throws {
     let items = [
       LibraryQueueDragItem.artist("artist/1"),
-      LibraryQueueDragItem.album("album/1"),
-      LibraryQueueDragItem.albumDisc("album/1", discNumber: 3),
+      LibraryQueueDragItem.album(
+        "album/1",
+        canonicalAlbumArtworkID: "al-album-1_version"
+      ),
+      LibraryQueueDragItem.albumDisc(
+        "album/1",
+        discNumber: 3,
+        canonicalAlbumArtworkID: "al-album-1_version"
+      ),
       LibraryQueueDragItem.playlist("playlist/1"),
-      LibraryQueueDragItem.song("song/1"),
-      LibraryQueueDragItem.songs(["song/2", "song/3"]),
+      LibraryQueueDragItem.song(
+        "song/1",
+        canonicalAlbumArtworkID: "al-album-1_version"
+      ),
+      LibraryQueueDragItem.songs(
+        ["song/2", "song/3"],
+        canonicalAlbumArtworkID: "al-album-1_version"
+      ),
     ]
     let data = try JSONEncoder().encode(items)
     #expect(try JSONDecoder().decode([LibraryQueueDragItem].self, from: data) == items)
+  }
+
+  @Test("older library queue drag payloads remain decodable")
+  func olderLibraryQueueDragPayloadsRemainDecodable() throws {
+    let data = Data(#"{"kind":"album","id":"album/1"}"#.utf8)
+    let item = try JSONDecoder().decode(LibraryQueueDragItem.self, from: data)
+
+    #expect(item == .album("album/1"))
+    #expect(item.canonicalAlbumArtworkID == nil)
   }
 
   @Test("queue reorder drag payload round trip")

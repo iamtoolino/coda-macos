@@ -734,20 +734,28 @@ struct ArtistDetailView: View {
   }
 
   private func play(_ page: ArtistPage, shuffled: Bool) {
-    prepareSongs(page) { songs in
-      session.play(songs: shuffled ? songs.shuffled() : songs, with: player)
+    prepareSongs(page) { songs, artworkIDsBySongID in
+      session.play(
+        songs: shuffled ? songs.shuffled() : songs,
+        canonicalAlbumArtworkIDsBySongID: artworkIDsBySongID,
+        with: player
+      )
     }
   }
 
   private func queue(_ page: ArtistPage) {
-    prepareSongs(page) { songs in
-      session.append(songs: songs, to: player)
+    prepareSongs(page) { songs, artworkIDsBySongID in
+      session.append(
+        songs: songs,
+        canonicalAlbumArtworkIDsBySongID: artworkIDsBySongID,
+        to: player
+      )
     }
   }
 
   private func prepareSongs(
     _ page: ArtistPage,
-    action: @escaping @MainActor ([RemoteSong]) -> Void
+    action: @escaping @MainActor ([RemoteSong], [String: String]) -> Void
   ) {
     guard !isPreparingPlayback else { return }
     isPreparingPlayback = true
@@ -756,10 +764,17 @@ struct ArtistDetailView: View {
       guard let client = session.client else { return }
       do {
         var songs: [RemoteSong] = []
+        var artworkIDsBySongID: [String: String] = [:]
         for album in page.albums {
-          songs.append(contentsOf: try await client.album(id: album.id).songs)
+          let albumPage = try await client.album(id: album.id)
+          let albumSongs = albumPage.songs
+          songs.append(contentsOf: albumSongs)
+          let artworkID = albumPage.album.coverArt ?? albumPage.album.id
+          for song in albumSongs {
+            artworkIDsBySongID[song.id] = artworkID
+          }
         }
-        action(songs)
+        action(songs, artworkIDsBySongID)
       } catch {
         player.report(error: error)
       }
@@ -952,7 +967,8 @@ struct AlbumDetailView: View {
                       QueueDropItem.library(
                         .albumDisc(
                           page.album.id,
-                          discNumber: section.number
+                          discNumber: section.number,
+                          canonicalAlbumArtworkID: page.album.coverArt ?? page.album.id
                         )
                       )
                     ) {
@@ -964,7 +980,11 @@ struct AlbumDetailView: View {
                     .dragConfiguration(.codaInternal())
                     .contextMenu {
                       Button("Add Disc to Queue", systemImage: "text.badge.plus") {
-                        session.append(songs: section.songs, to: player)
+                        session.append(
+                          songs: section.songs,
+                          canonicalAlbumArtworkID: page.album.coverArt ?? page.album.id,
+                          to: player
+                        )
                       }
                     }
                     .help("Drag Disc \(section.number) to the queue")
@@ -978,6 +998,7 @@ struct AlbumDetailView: View {
                       isSelected: selectedSongIDs.contains(song.id),
                       dragSongIDs: selectedSongIDs.contains(song.id)
                         ? selectedSongIDs : [song.id],
+                      canonicalAlbumArtworkID: page.album.coverArt ?? page.album.id,
                       selectionAction: { modifiers in
                         selectTrack(song.id, in: page, modifiers: modifiers)
                         trackListHasFocus = true
@@ -1119,7 +1140,10 @@ struct AlbumDetailView: View {
           to: player
         )
       },
-      queueDragItem: .album(page.album.id)
+      queueDragItem: .album(
+        page.album.id,
+        canonicalAlbumArtworkID: albumArtworkID
+      )
     )
   }
 
@@ -1535,7 +1559,14 @@ private struct AlbumCard: View {
             AlbumRatingBadge(rating: rating)
           }
         }
-        .draggable(QueueDropItem.library(.album(album.id)))
+        .draggable(
+          QueueDropItem.library(
+            .album(
+              album.id,
+              canonicalAlbumArtworkID: album.coverArt ?? album.id
+            )
+          )
+        )
         .dragConfiguration(.codaInternal())
         .help("Drag album to queue")
         Text(album.name)
@@ -1731,6 +1762,7 @@ private struct SongRow: View {
   var horizontalPadding: CGFloat = 22
   var isSelected = false
   var dragSongIDs: [String] = []
+  var canonicalAlbumArtworkID: String? = nil
   var selectionAction: ((TrackSelectionModifiers) -> Void)?
   let action: () -> Void
 
@@ -1747,7 +1779,15 @@ private struct SongRow: View {
       .accessibilityAction(named: "Play") { action() }
       .draggable(
         QueueDropItem.library(
-          dragSongIDs.count > 1 ? .songs(dragSongIDs) : .song(song.id)
+          dragSongIDs.count > 1
+            ? .songs(
+              dragSongIDs,
+              canonicalAlbumArtworkID: canonicalAlbumArtworkID
+            )
+            : .song(
+              song.id,
+              canonicalAlbumArtworkID: canonicalAlbumArtworkID
+            )
         )
       ) {
         LibraryDragPreview(

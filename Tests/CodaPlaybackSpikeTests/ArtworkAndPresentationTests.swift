@@ -505,22 +505,62 @@ struct ArtworkAndPresentationTests {
   }
 
   @Test("canonical album artwork is preserved when songs enter the queue")
-  func canonicalAlbumArtworkIsPreservedForQueueEntries() {
-    let song = RemoteSong(
+  func canonicalAlbumArtworkIsPreservedForQueueEntries() throws {
+    let firstSong = RemoteSong(
       id: "1", title: "Track",
       albumId: "album-id", coverArt: "embedded-track-artwork")
+    let secondSong = RemoteSong(
+      id: "2", title: "Another Track",
+      albumId: "another-album-id", coverArt: "another-embedded-artwork")
 
     #expect(
       AppSession.resolvedAlbumArtworkID(
-        for: song,
-        canonicalAlbumArtworkID: "canonical-album-artwork"
-      ) == "canonical-album-artwork"
+        for: firstSong,
+        canonicalAlbumArtworkID: "single-album-artwork",
+        canonicalAlbumArtworkIDsBySongID: ["1": "mapped-album-artwork"]
+      ) == "mapped-album-artwork"
     )
     #expect(
       AppSession.resolvedAlbumArtworkID(
-        for: song,
-        canonicalAlbumArtworkID: nil
-      ) == "album-id"
+        for: secondSong,
+        canonicalAlbumArtworkID: "single-album-artwork",
+        canonicalAlbumArtworkIDsBySongID: ["1": "mapped-album-artwork"]
+      ) == "single-album-artwork"
     )
+    #expect(
+      AppSession.resolvedAlbumArtworkID(
+        for: secondSong,
+        canonicalAlbumArtworkID: nil,
+        canonicalAlbumArtworkIDsBySongID: ["1": "mapped-album-artwork"]
+      ) == "another-album-id"
+    )
+
+    let configuration = try NavidromeConfiguration(
+      server: "https://music.example.test",
+      username: "user",
+      password: "password"
+    )
+    let resolvedID = try #require(
+      AppSession.resolvedAlbumArtworkID(
+        for: firstSong,
+        canonicalAlbumArtworkID: nil,
+        canonicalAlbumArtworkIDsBySongID: ["1": "al-album123_abcd"]
+      )
+    )
+    let browsingURL = try configuration.coverArtURL(
+      id: resolvedID,
+      size: ArtworkPurpose.standard.rawValue,
+      salt: "browsing"
+    )
+    let nowPlayingURL = try configuration.coverArtURL(
+      id: resolvedID,
+      size: ArtworkPurpose.nowPlaying.rawValue,
+      salt: "now-playing"
+    )
+    let browsingKey = try #require(ArtworkDiskCacheKey(url: browsingURL))
+    let nowPlayingKey = try #require(ArtworkDiskCacheKey(url: nowPlayingURL))
+
+    #expect(browsingKey == nowPlayingKey.withVariant(.browsing500))
+    #expect(nowPlayingKey == browsingKey.withVariant(.original))
   }
 }

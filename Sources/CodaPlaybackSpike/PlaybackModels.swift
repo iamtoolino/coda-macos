@@ -24,16 +24,35 @@ struct LibraryQueueDragItem: Codable, Hashable, Sendable {
   let id: String
   var discNumber: Int? = nil
   var songIDs: [String]? = nil
+  var canonicalAlbumArtworkID: String? = nil
 
-  static func album(_ id: String) -> Self { Self(kind: .album, id: id) }
-  static func albumDisc(_ id: String, discNumber: Int) -> Self {
-    Self(kind: .albumDisc, id: id, discNumber: max(1, discNumber))
+  static func album(_ id: String, canonicalAlbumArtworkID: String? = nil) -> Self {
+    Self(kind: .album, id: id, canonicalAlbumArtworkID: canonicalAlbumArtworkID)
+  }
+  static func albumDisc(
+    _ id: String,
+    discNumber: Int,
+    canonicalAlbumArtworkID: String? = nil
+  ) -> Self {
+    Self(
+      kind: .albumDisc,
+      id: id,
+      discNumber: max(1, discNumber),
+      canonicalAlbumArtworkID: canonicalAlbumArtworkID
+    )
   }
   static func artist(_ id: String) -> Self { Self(kind: .artist, id: id) }
   static func playlist(_ id: String) -> Self { Self(kind: .playlist, id: id) }
-  static func song(_ id: String) -> Self { Self(kind: .song, id: id) }
-  static func songs(_ ids: [String]) -> Self {
-    Self(kind: .songs, id: ids.first ?? "", songIDs: ids)
+  static func song(_ id: String, canonicalAlbumArtworkID: String? = nil) -> Self {
+    Self(kind: .song, id: id, canonicalAlbumArtworkID: canonicalAlbumArtworkID)
+  }
+  static func songs(_ ids: [String], canonicalAlbumArtworkID: String? = nil) -> Self {
+    Self(
+      kind: .songs,
+      id: ids.first ?? "",
+      songIDs: ids,
+      canonicalAlbumArtworkID: canonicalAlbumArtworkID
+    )
   }
 }
 
