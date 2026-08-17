@@ -1109,6 +1109,7 @@ private struct NavidromeLoginView: View {
 struct ArtworkImage: View {
   let url: URL?
   var cornerRadius: CGFloat = 8
+  var showsBorder = false
   @ObservedObject private var cache = ArtworkImageCache.shared
   @State private var image: NSImage?
 
@@ -1122,19 +1123,29 @@ struct ArtworkImage: View {
   }
 
   var body: some View {
-    ZStack {
-      RoundedRectangle(cornerRadius: cornerRadius)
-        .fill(Color.secondary.opacity(0.12))
-      if let image {
-        Image(nsImage: image)
-          .resizable()
-          .scaledToFill()
-      } else {
-        ProgressView()
-          .controlSize(.small)
+    GeometryReader { geometry in
+      ZStack {
+        Color.secondary.opacity(0.12)
+        if let image {
+          Image(nsImage: image)
+            .resizable()
+            .scaledToFill()
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
+        } else {
+          ProgressView()
+            .controlSize(.small)
+        }
+      }
+      .frame(width: geometry.size.width, height: geometry.size.height)
+    }
+    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    .overlay {
+      if showsBorder {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+          .strokeBorder(.white.opacity(0.10), lineWidth: 0.7)
       }
     }
-    .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     .task(id: request) {
       let request = request
       image = nil

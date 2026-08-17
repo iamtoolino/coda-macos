@@ -893,46 +893,9 @@ private extension View {
 private struct ArtistContainedImage: View {
   let url: URL?
   let cornerRadius: CGFloat
-  @ObservedObject private var cache = ArtworkImageCache.shared
-  @State private var image: NSImage?
-
-  private struct Request: Hashable {
-    let url: URL?
-    let cacheGeneration: Int
-  }
-
-  private var request: Request {
-    Request(url: url, cacheGeneration: cache.generation)
-  }
 
   var body: some View {
-    GeometryReader { geometry in
-      ZStack {
-        if let image {
-          Image(nsImage: image)
-            .resizable()
-            .scaledToFill()
-            .frame(width: geometry.size.width, height: geometry.size.height)
-            .clipped()
-        } else {
-          Color.secondary.opacity(0.12)
-          ProgressView().controlSize(.small)
-        }
-      }
-      .frame(width: geometry.size.width, height: geometry.size.height)
-    }
-    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-    .overlay {
-      RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        .strokeBorder(.white.opacity(0.10), lineWidth: 0.7)
-    }
-    .task(id: request) {
-      let request = request
-      image = nil
-      let loadedImage = await cache.image(for: request.url)
-      guard self.request == request else { return }
-      image = loadedImage
-    }
+    ArtworkImage(url: url, cornerRadius: cornerRadius, showsBorder: true)
   }
 }
 
