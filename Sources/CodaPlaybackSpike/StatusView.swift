@@ -139,7 +139,7 @@ struct CodaStatusView: View {
   }
 
   private func copyDiagnostics() {
-    let serverHost = session.configuration?.serverURL.host ?? "not configured"
+    let hasServerConfiguration = session.configuration != nil ? "yes" : "no"
     let serverSoftware = session.serverDetails?.software ?? "unknown"
     let serverVersion = session.serverDetails?.version ?? "unknown"
     let diagnostics = """
@@ -148,7 +148,7 @@ struct CodaStatusView: View {
       Commit: \(build.commit)
       Configuration: \(build.configuration)
       Connection: \(connectionTitle)
-      Server: \(serverHost)
+      Server configured: \(hasServerConfiguration)
       Server software: \(serverSoftware) \(serverVersion)
       Client: \(NavidromeConfiguration.clientName)
       Playback engine: \(player.playbackEngineName)
