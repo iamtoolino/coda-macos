@@ -4,6 +4,7 @@
 
 - Coda is a focused, largely feature-complete hobby project: a native macOS 26 client for Navidrome and OpenSubsonic servers, built with SwiftUI/AppKit and embedded libmpv/CoreAudio.
 - Preserve its artwork-led dark UI, original streams, visible queue, and native macOS behavior. Prefer SwiftUI and small native integrations over custom infrastructure.
+- Coda is primarily a LAN-focused desktop player, not a mobile or bandwidth-constrained client. It deliberately streams original/lossless audio and may transfer original artwork or a few additional megabytes when that keeps behavior simpler or avoids server-side transformation; this does not waive privacy/security requirements, preclude remote use, or justify unbounded resource growth.
 - Keep solutions proportional to the app's size and expected maintenance. Favor clear ownership and a small central policy/helper when several views must make the same semantic decision.
 - Do not broaden a focused fix into a redesign without evidence that the current structure causes recurring bugs, duplicated policy, unclear ownership, or meaningful testing difficulty.
 
@@ -75,6 +76,7 @@
 ### Performance
 
 - Base performance findings on a credible hot path, measurement, or clear complexity issue. Do not recommend speculative micro-optimization.
+- Calibrate network findings to Coda's intended environment: ordinary LAN bandwidth use and small duplicate artwork transfers—including targeted refreshes restarting visible or recently requested covers, usually served from RAM or disk—are not performance defects without measured user-visible latency, resource pressure, or meaningful server impact.
 - Focus on artwork fetching, decoding and caching; blocking work on the main actor; SwiftUI invalidation scope; large library/list rendering; network fan-out; queue updates; and libmpv/CoreAudio transitions.
 - Recommend profiling before a substantial performance refactor, and keep benchmark scripts and results outside tracked source unless they are intentionally productized and scrubbed of personal data.
 
