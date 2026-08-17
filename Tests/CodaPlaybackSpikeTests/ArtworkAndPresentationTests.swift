@@ -101,6 +101,30 @@ struct ArtworkAndPresentationTests {
     #expect(ArtworkDiskCacheKey(url: olderURL) == ArtworkDiskCacheKey(url: newerURL))
   }
 
+  @Test("raw and typed album artwork IDs share persistent cache slots")
+  func rawAndTypedAlbumArtworkIDsSharePersistentCacheSlots() throws {
+    let rawBrowsingURL = try #require(
+      URL(
+        string:
+          "https://music.example.test/rest/getCoverArt?u=user&t=raw&s=one&id=album123&size=500"
+      )
+    )
+    let typedBrowsingURL = try persistentArtworkTestURL(size: 500)
+    let rawNowPlayingURL = try #require(
+      URL(
+        string:
+          "https://music.example.test/rest/getCoverArt?u=user&t=raw&s=two&id=album123&size=1200"
+      )
+    )
+    let rawBrowsingKey = try #require(ArtworkDiskCacheKey(url: rawBrowsingURL))
+    let typedBrowsingKey = try #require(ArtworkDiskCacheKey(url: typedBrowsingURL))
+    let rawNowPlayingKey = try #require(ArtworkDiskCacheKey(url: rawNowPlayingURL))
+
+    #expect(rawBrowsingKey.kind == .album)
+    #expect(rawBrowsingKey == typedBrowsingKey)
+    #expect(rawNowPlayingKey == typedBrowsingKey.withVariant(.original))
+  }
+
   @Test("artist and album IDs occupy separate cache namespaces")
   func artistAndAlbumIDsOccupySeparateCacheNamespaces() throws {
     let artistURL = try #require(

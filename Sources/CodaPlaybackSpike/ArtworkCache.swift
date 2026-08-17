@@ -83,13 +83,21 @@ struct ArtworkDiskCacheKey: Hashable, Sendable {
   private static func entityIdentity(from artworkID: String) -> (kind: Kind, id: String)? {
     guard artworkID.count > 3 else { return nil }
     let kind: Kind
+    let versionedID: Substring
     switch artworkID.prefix(3) {
-    case "ar-": kind = .artist
-    case "al-", "dc-", "mf-": kind = .album
-    default: return nil
+    case "ar-":
+      kind = .artist
+      versionedID = artworkID.dropFirst(3)
+    case "al-", "dc-", "mf-":
+      kind = .album
+      versionedID = artworkID.dropFirst(3)
+    default:
+      // Navidrome accepts a raw album ID for getCoverArt. Its typed album
+      // artwork ID embeds the same stable ID as al-<album-id>_<version>.
+      guard artworkID.dropFirst(2).first != "-" else { return nil }
+      return (.album, artworkID)
     }
 
-    let versionedID = artworkID.dropFirst(3)
     let stableID: Substring
     if let separator = versionedID.lastIndex(of: "_") {
       let version = versionedID[versionedID.index(after: separator)...]
