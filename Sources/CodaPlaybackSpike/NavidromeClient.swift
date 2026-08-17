@@ -4,7 +4,8 @@ import SystemConfiguration
 
 enum CodaURLSessions {
   static let api = makeEphemeralSession()
-  static let artwork = makeEphemeralSession()
+  static let artworkCache = ArtworkURLCachePolicy.makeCache()
+  static let artwork = ArtworkURLCachePolicy.makeSession(cache: artworkCache)
 
   private static func makeEphemeralSession() -> URLSession {
     let configuration = URLSessionConfiguration.ephemeral
