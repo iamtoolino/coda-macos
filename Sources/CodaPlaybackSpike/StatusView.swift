@@ -14,7 +14,7 @@ struct CodaStatusView: View {
       buildSection
 
       HStack {
-        if session.client != nil {
+        if session.hasEstablishedConnection {
           Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
             Task {
               await session.signOut()

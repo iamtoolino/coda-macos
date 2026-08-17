@@ -149,11 +149,8 @@ final class AppSession: ObservableObject {
         username: username,
         password: password
       )
-      try await establishConnection(configuration: configuration)
       let login = StoredLogin(configuration: configuration)
-      try await Task.detached(priority: .userInitiated) {
-        try CredentialStore.save(login)
-      }.value
+      try await establishConnection(configuration: configuration, loginToStore: login)
     } catch {
       handleConnectionFailure(error, configuration: configuration)
     }
@@ -184,7 +181,8 @@ final class AppSession: ObservableObject {
 
   private func establishConnection(
     configuration: NavidromeConfiguration,
-    preservingExistingClient: Bool = false
+    preservingExistingClient: Bool = false,
+    loginToStore: StoredLogin? = nil
   ) async throws {
     prepareForConnection(
       configuration: configuration,
@@ -193,6 +191,13 @@ final class AppSession: ObservableObject {
     let client = NavidromeClient(configuration: configuration)
     let serverDetails = try await client.ping()
     try Task.checkCancellation()
+    if let loginToStore {
+      // Do not publish a connected session while Sign Out could race an older save.
+      try await Task.detached(priority: .userInitiated) {
+        try CredentialStore.save(loginToStore)
+      }.value
+      try Task.checkCancellation()
+    }
     self.client = client
     self.serverDetails = serverDetails
     activeSessionID = UUID()
