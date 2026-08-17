@@ -50,14 +50,14 @@ struct ArtworkAndPresentationTests {
     #expect(CodaURLSessions.artwork.configuration.urlCache === cache)
   }
 
-  @Test("artwork cache hits do not revalidate until explicitly refreshed")
-  func artworkCacheHitsDoNotRevalidateUntilExplicitlyRefreshed() throws {
+  @Test("artwork cache freshness follows the server cache policy")
+  func artworkCacheFreshnessFollowsTheServerCachePolicy() throws {
     let url = try #require(URL(string: "https://music.example.test/cover?size=500"))
     let request = ArtworkURLCachePolicy.request(for: url)
 
-    #expect(ArtworkURLCachePolicy.requestCachePolicy == .returnCacheDataElseLoad)
-    #expect(request.cachePolicy == .returnCacheDataElseLoad)
-    #expect(CodaURLSessions.artwork.configuration.requestCachePolicy == .returnCacheDataElseLoad)
+    #expect(ArtworkURLCachePolicy.requestCachePolicy == .useProtocolCachePolicy)
+    #expect(request.cachePolicy == .useProtocolCachePolicy)
+    #expect(CodaURLSessions.artwork.configuration.requestCachePolicy == .useProtocolCachePolicy)
   }
 
   @Test("API requests remain ephemeral and uncached")

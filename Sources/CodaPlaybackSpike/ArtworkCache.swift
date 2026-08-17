@@ -5,7 +5,7 @@ import Foundation
 enum ArtworkURLCachePolicy {
   static let memoryCapacity = 64 * 1_024 * 1_024
   static let diskCapacity = 500 * 1_024 * 1_024
-  static let requestCachePolicy: URLRequest.CachePolicy = .returnCacheDataElseLoad
+  static let requestCachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy
 
   static func makeCache() -> URLCache {
     URLCache(memoryCapacity: memoryCapacity, diskCapacity: diskCapacity)
