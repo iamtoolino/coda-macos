@@ -150,7 +150,7 @@ struct CodaStatusView: View {
       Connection: \(connectionTitle)
       Server configured: \(hasServerConfiguration)
       Server software: \(serverSoftware) \(serverVersion)
-      Client: \(NavidromeConfiguration.clientName)
+      Client: Coda on Mac
       Playback engine: \(player.playbackEngineName)
       """
     NSPasteboard.general.clearContents()
