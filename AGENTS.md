@@ -76,8 +76,8 @@
 ### Performance
 
 - Base performance findings on a credible hot path, measurement, or clear complexity issue. Do not recommend speculative micro-optimization.
-- Calibrate network findings to Coda's intended environment: ordinary LAN bandwidth use and small duplicate artwork transfers—including targeted refreshes restarting visible or recently requested covers, usually served from RAM or disk—are not performance defects without measured user-visible latency, resource pressure, or meaningful server impact.
-- Distinguish genuinely unbounded per-request or over-time growth from caches bounded by stable domain entities. A durable artwork cache proportional to the user's library is intentional; do not require fixed byte or age eviction without measured disk pressure, because it can make large libraries thrash instead of becoming fully warm.
+- Calibrate network findings to Coda's intended environment: ordinary LAN bandwidth use and small duplicate artwork transfers—including targeted refreshes restarting visible or recently requested covers, usually served from Coda's bounded memory caches or Navidrome's persistent transformed-image cache—are not performance defects without measured user-visible latency, resource pressure, or meaningful server impact.
+- Coda's client artwork caching is intentionally bounded and memory-only; Navidrome's transformed-image cache provides persistence across app launches. Do not recommend restoring persistent client caching of authenticated artwork requests without addressing the credential-bearing URL metadata that may accompany them and demonstrating a measured need.
 - Focus on artwork fetching, decoding and caching; blocking work on the main actor; SwiftUI invalidation scope; large library/list rendering; network fan-out; queue updates; and libmpv/CoreAudio transitions.
 - Recommend profiling before a substantial performance refactor, and keep benchmark scripts and results outside tracked source unless they are intentionally productized and scrubbed of personal data.
 
