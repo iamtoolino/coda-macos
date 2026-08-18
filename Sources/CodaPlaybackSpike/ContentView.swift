@@ -29,7 +29,7 @@ struct ContentView: View {
       GeometryReader { geometry in
         let contentWidth = max(0, geometry.size.width - 20)
         let contentHeight = max(0, geometry.size.height - 20)
-        let queueWidth = min(330, max(285, geometry.size.width * 0.22))
+        let queueWidth = codaQueueWidth(windowWidth: geometry.size.width)
         let queueIsVisible = codaQueueIsVisible(
           windowWidth: geometry.size.width,
           hasEstablishedConnection: session.hasEstablishedConnection
@@ -250,9 +250,13 @@ func codaQueueIsVisible(
   hasEstablishedConnection: Bool
 ) -> Bool {
   let contentWidth = max(0, windowWidth - 20)
-  let queueWidth = min(330, max(285, windowWidth * 0.22))
+  let queueWidth = codaQueueWidth(windowWidth: windowWidth)
   return hasEstablishedConnection
     && contentWidth - queueWidth - 10 >= PlaybackDockMetrics.minimumMainContentWidth
+}
+
+func codaQueueWidth(windowWidth: CGFloat) -> CGFloat {
+  min(330, max(285, windowWidth * 0.22))
 }
 
 private struct PlaybackWindowVisibilityObserver: NSViewRepresentable {

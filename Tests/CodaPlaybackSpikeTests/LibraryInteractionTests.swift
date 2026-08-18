@@ -204,6 +204,26 @@ struct LibraryInteractionTests {
     #expect(!route(true, false, false))
     #expect(!route(false, true, false))
     #expect(!route(true, true, true))
+    #expect(
+      shouldRouteQueueSelectAllShortcut(
+        modifiers: [.command, .capsLock],
+        charactersIgnoringModifiers: "a",
+        appIsActive: true,
+        mainPlaybackWindowIsKey: true,
+        queueIsVisible: true,
+        isTextEditing: false
+      ))
+    #expect(
+      !shouldRouteQueueSelectAllShortcut(
+        modifiers: [.command, .shift],
+        charactersIgnoringModifiers: "a",
+        appIsActive: true,
+        mainPlaybackWindowIsKey: true,
+        queueIsVisible: true,
+        isTextEditing: false
+      ))
+    #expect(codaQueueWidth(windowWidth: 800) == 285)
+    #expect(codaQueueWidth(windowWidth: 2_000) == 330)
     #expect(codaQueueIsVisible(windowWidth: 800, hasEstablishedConnection: true))
     #expect(!codaQueueIsVisible(windowWidth: 700, hasEstablishedConnection: true))
     #expect(!codaQueueIsVisible(windowWidth: 1_440, hasEstablishedConnection: false))

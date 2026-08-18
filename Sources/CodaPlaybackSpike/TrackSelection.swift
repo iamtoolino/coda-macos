@@ -138,7 +138,7 @@ func shouldRouteQueueSelectAllShortcut(
   queueIsVisible: Bool,
   isTextEditing: Bool
 ) -> Bool {
-  modifiers.intersection(.deviceIndependentFlagsMask) == .command
+  queueSelectionActionModifiers(modifiers) == .command
     && charactersIgnoringModifiers?.lowercased() == "a"
     && queueSelectionShortcutsAreActive(
       appIsActive: appIsActive,
@@ -157,8 +157,7 @@ func shouldRouteQueueClearSelectionShortcut(
   isTextEditing: Bool,
   hasSelection: Bool
 ) -> Bool {
-  let actionModifiers = modifiers.intersection([.command, .option, .control, .shift])
-  return actionModifiers.isEmpty
+  queueSelectionActionModifiers(modifiers).isEmpty
     && charactersIgnoringModifiers == "\u{1B}"
     && hasSelection
     && queueSelectionShortcutsAreActive(
@@ -167,6 +166,12 @@ func shouldRouteQueueClearSelectionShortcut(
       queueIsVisible: queueIsVisible,
       isTextEditing: isTextEditing
     )
+}
+
+private func queueSelectionActionModifiers(
+  _ modifiers: NSEvent.ModifierFlags
+) -> NSEvent.ModifierFlags {
+  modifiers.intersection([.command, .option, .control, .shift])
 }
 
 private func queueSelectionShortcutsAreActive(
