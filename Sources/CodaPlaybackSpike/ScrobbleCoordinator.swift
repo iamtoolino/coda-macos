@@ -5,6 +5,14 @@ func playedSubmissionPoint(durationSeconds: Double) -> Double {
   max(0, durationSeconds) * 0.95
 }
 
+func restoredOccurrenceIsPastScrobblePoint(
+  positionSeconds: Double,
+  durationSeconds: Double
+) -> Bool {
+  durationSeconds > 0
+    && positionSeconds >= playedSubmissionPoint(durationSeconds: durationSeconds)
+}
+
 func scrobbleRetryDelays(
   maxAttempts: Int = 6,
   initialDelayMilliseconds: Int64 = 1_000
@@ -92,6 +100,18 @@ final class ScrobbleCoordinator: ObservableObject {
     guard let occurrenceID, let entry = player.currentEntry,
       let request = requestContext(songID: entry.sourceID)
     else { return }
+
+    let duration = player.duration > 0
+      ? player.duration
+      : Double(max(0, entry.durationSeconds))
+    if player.restoredPlaybackOccurrenceID == occurrenceID,
+      restoredOccurrenceIsPastScrobblePoint(
+        positionSeconds: player.position,
+        durationSeconds: duration
+      )
+    {
+      submittedOccurrenceID = occurrenceID
+    }
 
     nowPlayingTask = launchScrobble(
       request: request,

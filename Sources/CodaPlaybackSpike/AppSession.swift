@@ -488,7 +488,8 @@ final class AppSession: ObservableObject {
         entries,
         startAt: index,
         positionSeconds: Double(positionMilliseconds) / 1_000,
-        startsPlaying: false
+        startsPlaying: false,
+        restoresSavedPlayback: true
       )
     } catch {
       player.report(error: error)

@@ -54,6 +54,7 @@ final class PlayerController: ObservableObject {
   @Published private(set) var queue: [QueueEntry] = []
   @Published private(set) var currentIndex: Int?
   @Published private(set) var playbackOccurrenceID: UUID?
+  private(set) var restoredPlaybackOccurrenceID: UUID?
   @Published private(set) var isPlaying = false
   @Published private(set) var status = "Nothing queued"
   @Published private(set) var errorMessage: String?
@@ -179,7 +180,8 @@ final class PlayerController: ObservableObject {
     startAt index: Int = 0,
     positionSeconds: Double = 0,
     startsPlaying: Bool = true,
-    scrollQueueToTop: Bool = false
+    scrollQueueToTop: Bool = false,
+    restoresSavedPlayback: Bool = false
   ) {
     backend.clear()
     queue = entries
@@ -195,7 +197,8 @@ final class PlayerController: ObservableObject {
     load(
       index: boundedIndex,
       position: max(0, positionSeconds),
-      autoplay: startsPlaying
+      autoplay: startsPlaying,
+      restoresSavedPlayback: restoresSavedPlayback
     )
   }
 
@@ -344,7 +347,8 @@ final class PlayerController: ObservableObject {
     index: Int,
     position: Double,
     autoplay: Bool,
-    isAutomaticIdleRecovery: Bool = false
+    isAutomaticIdleRecovery: Bool = false,
+    restoresSavedPlayback: Bool = false
   ) {
     guard queue.indices.contains(index) else { return }
     if !isAutomaticIdleRecovery {
@@ -353,7 +357,9 @@ final class PlayerController: ObservableObject {
     }
     currentIndex = index
     if !isAutomaticIdleRecovery || playbackOccurrenceID == nil {
-      playbackOccurrenceID = UUID()
+      let occurrenceID = UUID()
+      restoredPlaybackOccurrenceID = restoresSavedPlayback ? occurrenceID : nil
+      playbackOccurrenceID = occurrenceID
     }
     timeline.reset(position: max(0, position))
     bufferedUntil = 0
@@ -440,6 +446,7 @@ final class PlayerController: ObservableObject {
       automaticIdleRecoveryAttempts = 0
       automaticIdleRecoveryPosition = nil
       self.currentIndex = nextIndex
+      restoredPlaybackOccurrenceID = nil
       playbackOccurrenceID = UUID()
       timeline.reset()
       bufferedUntil = 0
@@ -474,6 +481,7 @@ final class PlayerController: ObservableObject {
 
     case .finished:
       currentIndex = nil
+      restoredPlaybackOccurrenceID = nil
       playbackOccurrenceID = nil
       isPlaying = false
       timeline.reset()
@@ -494,6 +502,7 @@ final class PlayerController: ObservableObject {
 
   private func resetPublishedState() {
     currentIndex = nil
+    restoredPlaybackOccurrenceID = nil
     playbackOccurrenceID = nil
     isPlaying = false
     restartTimelinePublicationTask()

@@ -118,9 +118,14 @@ struct PlaybackTests {
     let backend = TestPlaybackBackend()
     let entry = QueueEntry(
       sourceID: "restored-track", url: URL(string: "https://example.test/restored-track")!,
-      title: "Restored Track")
+      title: "Restored Track", durationSeconds: 87)
     let player = PlayerController(backend: backend)
-    player.replaceQueue([entry], positionSeconds: 83.25, startsPlaying: false)
+    player.replaceQueue(
+      [entry],
+      positionSeconds: 83.25,
+      startsPlaying: false,
+      restoresSavedPlayback: true
+    )
 
     let load = try #require(backend.loadCalls.last)
     #expect(load.url == entry.url)
@@ -128,6 +133,12 @@ struct PlaybackTests {
     #expect(!load.autoplay)
     #expect(player.position == 83.25)
     #expect(!player.isPlaying)
+    #expect(player.restoredPlaybackOccurrenceID == player.playbackOccurrenceID)
+    #expect(
+      restoredOccurrenceIsPastScrobblePoint(
+        positionSeconds: player.position,
+        durationSeconds: Double(entry.durationSeconds)
+      ))
   }
 
   @Test("volume level survives player recreation")

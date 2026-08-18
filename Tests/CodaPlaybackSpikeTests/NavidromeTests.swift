@@ -103,6 +103,16 @@ struct NavidromeTests {
   func androidCompatibleScrobbleThresholdAndRetrySchedule() {
     #expect(playedSubmissionPoint(durationSeconds: 240) == 228)
     #expect(playedSubmissionPoint(durationSeconds: -1) == 0)
+    #expect(
+      restoredOccurrenceIsPastScrobblePoint(
+        positionSeconds: 228,
+        durationSeconds: 240
+      ))
+    #expect(
+      !restoredOccurrenceIsPastScrobblePoint(
+        positionSeconds: 227.99,
+        durationSeconds: 240
+      ))
     #expect(scrobbleRetryDelays() == [1_000, 2_000, 4_000, 8_000, 16_000])
     #expect(scrobbleRetryDelays(maxAttempts: 1).isEmpty)
   }
