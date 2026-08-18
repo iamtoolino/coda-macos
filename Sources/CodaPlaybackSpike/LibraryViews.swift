@@ -936,8 +936,7 @@ struct AlbumDetailView: View {
                     DiscSectionHeading(
                       number: section.number,
                       subtitle: section.subtitle,
-                      durationSeconds: section.durationSeconds,
-                      showsSeparator: false
+                      durationSeconds: section.durationSeconds
                     )
                     .padding(.horizontal, 22)
                     .frame(maxWidth: 840, alignment: .leading)
@@ -1858,7 +1857,6 @@ struct DiscSectionHeading: View {
   let subtitle: String?
   let durationSeconds: Int
   var compact = false
-  var showsSeparator = true
 
   var body: some View {
     HStack(spacing: compact ? 6 : 8) {
@@ -1872,13 +1870,7 @@ struct DiscSectionHeading: View {
           .lineLimit(1)
       }
 
-      if showsSeparator {
-        Rectangle()
-          .fill(.separator.opacity(0.45))
-          .frame(height: 0.5)
-      } else {
-        Spacer(minLength: 8)
-      }
+      Spacer(minLength: 8)
 
       if durationSeconds > 0 {
         Text(formatCollectionDuration(durationSeconds))
