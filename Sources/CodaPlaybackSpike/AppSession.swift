@@ -51,7 +51,7 @@ enum ConnectionState: Equatable, Sendable {
 }
 
 enum ArtworkPurpose: Int, Sendable {
-  case standard = 500
+  case standard = 472
   case nowPlaying = 1_200
 }
 

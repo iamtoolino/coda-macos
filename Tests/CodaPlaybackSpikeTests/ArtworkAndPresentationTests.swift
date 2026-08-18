@@ -26,7 +26,7 @@ struct ArtworkAndPresentationTests {
 
   @Test("artwork purposes use one browsing size and one Retina presentation size")
   func artworkPurposesUseOneBrowsingSizeAndOneRetinaPresentationSize() {
-    #expect(ArtworkPurpose.standard.rawValue == 500)
+    #expect(ArtworkPurpose.standard.rawValue == 472)
     #expect(ArtworkPurpose.nowPlaying.rawValue == 1_200)
   }
 
@@ -57,7 +57,7 @@ struct ArtworkAndPresentationTests {
 
   @Test("artwork response cache uses the server cache policy")
   func artworkResponseCacheUsesTheServerCachePolicy() throws {
-    let url = try #require(URL(string: "https://music.example.test/cover?size=500"))
+    let url = try #require(URL(string: "https://music.example.test/cover?size=472"))
     let request = ArtworkURLCachePolicy.request(for: url)
 
     #expect(ArtworkURLCachePolicy.requestCachePolicy == .useProtocolCachePolicy)
@@ -78,8 +78,8 @@ struct ArtworkAndPresentationTests {
       responseCache: responseCache,
       session: ArtworkURLCachePolicy.makeSession(cache: responseCache)
     )
-    let refreshedURL = try #require(URL(string: "https://music.example.test/refreshed?size=500"))
-    let retainedURL = try #require(URL(string: "https://music.example.test/retained?size=500"))
+    let refreshedURL = try #require(URL(string: "https://music.example.test/refreshed?size=472"))
+    let retainedURL = try #require(URL(string: "https://music.example.test/retained?size=472"))
     let refreshedRequest = ArtworkURLCachePolicy.request(for: refreshedURL)
     let retainedRequest = ArtworkURLCachePolicy.request(for: retainedURL)
     let response = try #require(
@@ -117,7 +117,7 @@ struct ArtworkAndPresentationTests {
 
   @Test("queue entries keep browsing and now playing artwork separate")
   func queueEntriesKeepBrowsingAndNowPlayingArtworkSeparate() {
-    let browsingURL = URL(string: "https://example.test/cover?size=500")!
+    let browsingURL = URL(string: "https://example.test/cover?size=472")!
     let nowPlayingURL = URL(string: "https://example.test/cover?size=1200")!
     let entry = QueueEntry(
       sourceID: "song",
@@ -446,7 +446,7 @@ struct ArtworkAndPresentationTests {
 
     #expect(browsingParameters.first(where: { $0.name == "id" })?.value == resolvedID)
     #expect(nowPlayingParameters.first(where: { $0.name == "id" })?.value == resolvedID)
-    #expect(browsingParameters.first(where: { $0.name == "size" })?.value == "500")
+    #expect(browsingParameters.first(where: { $0.name == "size" })?.value == "472")
     #expect(nowPlayingParameters.first(where: { $0.name == "size" })?.value == "1200")
   }
 }

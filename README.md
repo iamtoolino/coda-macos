@@ -29,27 +29,6 @@ Coda is an independent community project and is not affiliated with or endorsed 
 - A Navidrome server or compatible OpenSubsonic implementation.
 - Network access to that server; HTTPS is recommended outside a trusted network.
 
-## Artwork performance
-
-Coda requests 500 px artwork while browsing and 1200 px artwork for Now Playing. It keeps up to
-256 MB of compressed responses in memory so recently viewed covers remain quick when scrolling
-away and back. This cache is discarded when Coda exits, so the server's transformed-image cache
-remains important for large libraries.
-
-Navidrome defaults `ND_IMAGECACHESIZE` to only `100MB`. Once that cache fills, repeatedly resizing
-artwork can cause high server CPU use and slow browsing even over a fast local network. `1GB` is a
-reasonable starting point; `5GB` to `10GB` may suit large artwork libraries when server storage
-allows it. Values require explicit units. For example, in Docker Compose:
-
-```yaml
-environment:
-  ND_IMAGECACHESIZE: "5GB"
-```
-
-See Navidrome's [configuration options](https://www.navidrome.org/docs/usage/configuration/options/#available-options)
-for the current default and supported configuration methods. Other OpenSubsonic servers may have
-an equivalent artwork or thumbnail cache setting.
-
 ## Install
 
 Download the macOS arm64 ZIP from the latest GitHub release, extract `Coda.app`, and move it to
