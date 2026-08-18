@@ -12,9 +12,12 @@ enum ArtworkURLCachePolicy {
   }
 
   static func makeSession(cache: URLCache) -> URLSession {
-    let configuration = URLSessionConfiguration.default
+    let configuration = URLSessionConfiguration.ephemeral
     configuration.urlCache = cache
     configuration.requestCachePolicy = requestCachePolicy
+    configuration.httpShouldSetCookies = false
+    configuration.httpCookieStorage = nil
+    configuration.urlCredentialStorage = nil
     return URLSession(configuration: configuration)
   }
 

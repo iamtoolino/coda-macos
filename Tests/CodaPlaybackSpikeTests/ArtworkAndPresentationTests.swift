@@ -38,9 +38,10 @@ struct ArtworkAndPresentationTests {
     #expect(cache.generation == previousGeneration + 1)
   }
 
-  @Test("artwork uses bounded memory-only response and decoded caches")
-  func artworkUsesBoundedMemoryOnlyResponseAndDecodedCaches() {
+  @Test("artwork uses an ephemeral session with bounded memory-only caches")
+  func artworkUsesAnEphemeralSessionWithBoundedMemoryOnlyCaches() {
     let cache = CodaURLSessions.artworkCache
+    let configuration = CodaURLSessions.artwork.configuration
 
     #expect(cache !== URLCache.shared)
     #expect(cache.memoryCapacity == ArtworkURLCachePolicy.memoryCapacity)
@@ -48,7 +49,10 @@ struct ArtworkAndPresentationTests {
     #expect(cache.memoryCapacity == 256 * 1_024 * 1_024)
     #expect(cache.diskCapacity == 0)
     #expect(ArtworkImageCache.decodedImageCapacity == 128 * 1_024 * 1_024)
-    #expect(CodaURLSessions.artwork.configuration.urlCache === cache)
+    #expect(configuration.urlCache === cache)
+    #expect(configuration.httpShouldSetCookies == false)
+    #expect(configuration.httpCookieStorage == nil)
+    #expect(configuration.urlCredentialStorage == nil)
   }
 
   @Test("artwork cache freshness follows the server cache policy")
