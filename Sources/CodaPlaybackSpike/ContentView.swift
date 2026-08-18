@@ -30,9 +30,10 @@ struct ContentView: View {
         let contentWidth = max(0, geometry.size.width - 20)
         let contentHeight = max(0, geometry.size.height - 20)
         let queueWidth = min(330, max(285, geometry.size.width * 0.22))
-        let queueIsVisible =
-          session.hasEstablishedConnection
-          && contentWidth - queueWidth - 10 >= PlaybackDockMetrics.minimumMainContentWidth
+        let queueIsVisible = codaQueueIsVisible(
+          windowWidth: geometry.size.width,
+          hasEstablishedConnection: session.hasEstablishedConnection
+        )
 
         ZStack {
           HStack(alignment: .top, spacing: 10) {
@@ -242,6 +243,16 @@ struct ContentView: View {
       )
     )
   }
+}
+
+func codaQueueIsVisible(
+  windowWidth: CGFloat,
+  hasEstablishedConnection: Bool
+) -> Bool {
+  let contentWidth = max(0, windowWidth - 20)
+  let queueWidth = min(330, max(285, windowWidth * 0.22))
+  return hasEstablishedConnection
+    && contentWidth - queueWidth - 10 >= PlaybackDockMetrics.minimumMainContentWidth
 }
 
 private struct PlaybackWindowVisibilityObserver: NSViewRepresentable {

@@ -27,7 +27,8 @@ struct CodaPlaybackSpikeApp: App {
     _queueSelectAllShortcut = StateObject(
       wrappedValue: QueueSelectAllShortcutMonitor(
         selection: queueSelection,
-        player: player
+        player: player,
+        session: session
       ))
     _artworkTreatments = StateObject(wrappedValue: ArtworkTreatmentSettings())
     _nowPlayingPresentation = StateObject(

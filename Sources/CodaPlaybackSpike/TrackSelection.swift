@@ -82,13 +82,23 @@ final class QueueSelectionModel: ObservableObject {
 final class QueueSelectAllShortcutMonitor: ObservableObject {
   nonisolated(unsafe) private var monitor: Any?
 
-  init(selection: QueueSelectionModel, player: PlayerController) {
+  init(selection: QueueSelectionModel, player: PlayerController, session: AppSession) {
     monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-      let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-      guard modifiers == .command,
-        event.charactersIgnoringModifiers?.lowercased() == "a",
-        !(NSApp.keyWindow?.firstResponder is NSTextView)
-      else { return event }
+      guard let keyWindow = NSApp.keyWindow else { return event }
+      let isMainPlaybackWindow = keyWindow.title != "Coda Status"
+        && keyWindow.sheetParent == nil
+      let queueIsVisible = codaQueueIsVisible(
+        windowWidth: keyWindow.contentView?.bounds.width ?? 0,
+        hasEstablishedConnection: session.hasEstablishedConnection
+      )
+      guard shouldRouteQueueSelectAllShortcut(
+        modifiers: event.modifierFlags,
+        charactersIgnoringModifiers: event.charactersIgnoringModifiers,
+        appIsActive: NSApp.isActive,
+        mainPlaybackWindowIsKey: isMainPlaybackWindow,
+        queueIsVisible: queueIsVisible,
+        isTextEditing: keyWindow.firstResponder is NSTextView
+      ) else { return event }
 
       selection.selectAll(player.queue.map(\.id))
       return nil
@@ -100,6 +110,22 @@ final class QueueSelectAllShortcutMonitor: ObservableObject {
       NSEvent.removeMonitor(monitor)
     }
   }
+}
+
+func shouldRouteQueueSelectAllShortcut(
+  modifiers: NSEvent.ModifierFlags,
+  charactersIgnoringModifiers: String?,
+  appIsActive: Bool,
+  mainPlaybackWindowIsKey: Bool,
+  queueIsVisible: Bool,
+  isTextEditing: Bool
+) -> Bool {
+  modifiers.intersection(.deviceIndependentFlagsMask) == .command
+    && charactersIgnoringModifiers?.lowercased() == "a"
+    && appIsActive
+    && mainPlaybackWindowIsKey
+    && queueIsVisible
+    && !isTextEditing
 }
 
 func queueSelectionContainsAll<ID: Hashable>(
