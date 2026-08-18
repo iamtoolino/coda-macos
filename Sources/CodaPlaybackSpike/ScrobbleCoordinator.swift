@@ -1,18 +1,6 @@
 import Combine
 import Foundation
 
-func playedSubmissionPoint(durationSeconds: Double) -> Double {
-  max(0, durationSeconds) * 0.95
-}
-
-func restoredOccurrenceIsPastScrobblePoint(
-  positionSeconds: Double,
-  durationSeconds: Double
-) -> Bool {
-  durationSeconds > 0
-    && positionSeconds >= playedSubmissionPoint(durationSeconds: durationSeconds)
-}
-
 func scrobbleRetryDelays(
   maxAttempts: Int = 6,
   initialDelayMilliseconds: Int64 = 1_000
@@ -55,10 +43,7 @@ final class ScrobbleCoordinator: ObservableObject {
   private let session: AppSession
   private let player: PlayerController
   private var cancellables: Set<AnyCancellable> = []
-  private var activeOccurrenceID: UUID?
-  private var submittedOccurrenceID: UUID?
   private var nowPlayingTask: Task<Void, Never>?
-  private var progressTask: Task<Void, Never>?
   private var submissionTasks: [UUID: Task<Void, Never>] = [:]
 
   init(session: AppSession, player: PlayerController) {
@@ -78,6 +63,16 @@ final class ScrobbleCoordinator: ObservableObject {
       }
       .store(in: &cancellables)
 
+    player.$completedPlayback
+      .dropFirst()
+      .compactMap { $0 }
+      .sink { [weak self] completion in
+        Task { @MainActor [weak self] in
+          self?.submitCompletedPlayback(completion)
+        }
+      }
+      .store(in: &cancellables)
+
     session.$activeSessionID
       .removeDuplicates()
       .dropFirst()
@@ -92,55 +87,20 @@ final class ScrobbleCoordinator: ObservableObject {
   private func beginOccurrence(_ occurrenceID: UUID?) {
     nowPlayingTask?.cancel()
     nowPlayingTask = nil
-    progressTask?.cancel()
-    progressTask = nil
-    activeOccurrenceID = occurrenceID
-    submittedOccurrenceID = nil
 
-    guard let occurrenceID, let entry = player.currentEntry,
+    guard occurrenceID != nil, let entry = player.currentEntry,
       let request = requestContext(songID: entry.sourceID)
     else { return }
-
-    let duration = player.duration > 0
-      ? player.duration
-      : Double(max(0, entry.durationSeconds))
-    if player.restoredPlaybackOccurrenceID == occurrenceID,
-      restoredOccurrenceIsPastScrobblePoint(
-        positionSeconds: player.position,
-        durationSeconds: duration
-      )
-    {
-      submittedOccurrenceID = occurrenceID
-    }
 
     nowPlayingTask = launchScrobble(
       request: request,
       submission: false,
       timeMilliseconds: currentTimeMilliseconds()
     )
-
-    progressTask = Task { @MainActor [weak self] in
-      while !Task.isCancelled {
-        try? await Task.sleep(for: .milliseconds(500))
-        guard !Task.isCancelled, let self,
-          self.activeOccurrenceID == occurrenceID,
-          self.player.currentEntry?.id == entry.id
-        else { return }
-        self.submitIfPlayed(occurrenceID: occurrenceID, entry: entry)
-      }
-    }
   }
 
-  private func submitIfPlayed(occurrenceID: UUID, entry: QueueEntry) {
-    guard submittedOccurrenceID != occurrenceID else { return }
-    let duration = player.duration > 0
-      ? player.duration
-      : Double(max(0, entry.durationSeconds))
-    guard duration > 0, player.position >= playedSubmissionPoint(durationSeconds: duration),
-      let request = requestContext(songID: entry.sourceID)
-    else { return }
-
-    submittedOccurrenceID = occurrenceID
+  private func submitCompletedPlayback(_ completion: CompletedPlayback) {
+    guard let request = requestContext(songID: completion.sourceID) else { return }
     let taskID = UUID()
     let task = launchScrobble(
       request: request,
@@ -187,12 +147,8 @@ final class ScrobbleCoordinator: ObservableObject {
   }
 
   private func invalidateForSessionChange() {
-    activeOccurrenceID = nil
-    submittedOccurrenceID = nil
     nowPlayingTask?.cancel()
     nowPlayingTask = nil
-    progressTask?.cancel()
-    progressTask = nil
     submissionTasks.values.forEach { $0.cancel() }
     submissionTasks.removeAll()
   }

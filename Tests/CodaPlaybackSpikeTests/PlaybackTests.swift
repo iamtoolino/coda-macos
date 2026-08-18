@@ -67,6 +67,7 @@ struct PlaybackTests {
     #expect(player.currentIndex == 1)
     #expect(player.currentEntry?.id == second.id)
     #expect(player.playbackOccurrenceID != firstOccurrence)
+    #expect(player.completedPlayback?.sourceID == first.sourceID)
     #expect(player.currentEntry?.album == "Album Two")
     #expect(player.position == 0)
     #expect(player.duration == 0)
@@ -107,6 +108,7 @@ struct PlaybackTests {
     #expect(player.currentIndex == nil)
     #expect(player.currentEntry == nil)
     #expect(player.playbackOccurrenceID == nil)
+    #expect(player.completedPlayback?.sourceID == entry.sourceID)
     #expect(!player.isPlaying)
     #expect(player.position == 0)
     #expect(player.duration == 0)
@@ -123,8 +125,7 @@ struct PlaybackTests {
     player.replaceQueue(
       [entry],
       positionSeconds: 83.25,
-      startsPlaying: false,
-      restoresSavedPlayback: true
+      startsPlaying: false
     )
 
     let load = try #require(backend.loadCalls.last)
@@ -133,12 +134,7 @@ struct PlaybackTests {
     #expect(!load.autoplay)
     #expect(player.position == 83.25)
     #expect(!player.isPlaying)
-    #expect(player.restoredPlaybackOccurrenceID == player.playbackOccurrenceID)
-    #expect(
-      restoredOccurrenceIsPastScrobblePoint(
-        positionSeconds: player.position,
-        durationSeconds: Double(entry.durationSeconds)
-      ))
+    #expect(player.completedPlayback == nil)
   }
 
   @Test("volume level survives player recreation")
@@ -262,6 +258,63 @@ struct PlaybackTests {
     #expect(backend.loadCalls.last?.autoplay == true)
     #expect(player.currentEntry?.id == entry.id)
     #expect(player.playbackOccurrenceID == playbackOccurrence)
+    #expect(player.completedPlayback == nil)
     #expect(player.isPlaying)
+  }
+
+  @Test("end-of-track idle recovery completes the outgoing track")
+  func endOfTrackIdleRecoveryCompletesTheOutgoingTrack() {
+    let backend = TestPlaybackBackend()
+    let first = QueueEntry(
+      sourceID: "first", url: URL(string: "https://example.test/first")!, title: "First")
+    let second = QueueEntry(
+      sourceID: "second", url: URL(string: "https://example.test/second")!, title: "Second")
+    let player = PlayerController(backend: backend)
+    player.replaceQueue([first, second], startsPlaying: true)
+    let firstOccurrence = player.playbackOccurrenceID
+    backend.emit(.snapshot(PlaybackBackendSnapshot(position: 100, duration: 100, isPlaying: true)))
+    backend.hasLoadedItem = false
+    backend.emit(.unexpectedlyBecameIdle(position: 100, wasPlaying: true))
+
+    #expect(player.completedPlayback?.sourceID == first.sourceID)
+    #expect(player.currentEntry?.id == second.id)
+    #expect(player.playbackOccurrenceID != firstOccurrence)
+    #expect(backend.loadCalls.last?.url == second.url)
+    #expect(backend.loadCalls.last?.position == 0)
+    #expect(backend.loadCalls.last?.autoplay == true)
+  }
+
+  @Test("manual track changes do not complete playback")
+  func manualTrackChangesDoNotCompletePlayback() {
+    let backend = TestPlaybackBackend()
+    let first = QueueEntry(
+      sourceID: "first", url: URL(string: "https://example.test/first")!, title: "First")
+    let second = QueueEntry(
+      sourceID: "second", url: URL(string: "https://example.test/second")!, title: "Second")
+    let player = PlayerController(backend: backend)
+    player.replaceQueue([first, second], startsPlaying: true)
+
+    player.play(index: 1)
+
+    #expect(player.currentEntry?.id == second.id)
+    #expect(player.completedPlayback == nil)
+  }
+
+  @Test("finishing the same track again publishes another completion")
+  func finishingTheSameTrackAgainPublishesAnotherCompletion() throws {
+    let backend = TestPlaybackBackend()
+    let entry = QueueEntry(
+      sourceID: "repeat", url: URL(string: "https://example.test/repeat")!, title: "Repeat")
+    let player = PlayerController(backend: backend)
+    player.replaceQueue([entry], startsPlaying: true)
+    backend.emit(.finished)
+    let firstCompletion = try #require(player.completedPlayback)
+
+    player.replaceQueue([entry], startsPlaying: true)
+    backend.emit(.finished)
+    let secondCompletion = try #require(player.completedPlayback)
+
+    #expect(secondCompletion.sourceID == firstCompletion.sourceID)
+    #expect(secondCompletion.id != firstCompletion.id)
   }
 }
