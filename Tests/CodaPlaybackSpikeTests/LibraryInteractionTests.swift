@@ -134,6 +134,59 @@ struct LibraryInteractionTests {
     #expect(toggled.anchor == "three")
   }
 
+  @Test("queue collection selection follows macOS modifier semantics")
+  func queueCollectionSelectionFollowsMacosModifierSemantics() {
+    let ordered = ["a1", "a2", "b1", "b2", "c1", "c2"]
+    let albumA = ["a1", "a2"]
+    let albumB = ["b1", "b2"]
+    let albumC = ["c1", "c2"]
+
+    let plain = updatedQueueSelection(
+      current: [], anchorIDs: [], clickedIDs: albumB, ordered: ordered, modifiers: [])
+    let extended = updatedQueueSelection(
+      current: plain.ids, anchorIDs: plain.anchorIDs, clickedIDs: albumC,
+      ordered: ordered, modifiers: [.command])
+    let toggled = updatedQueueSelection(
+      current: extended.ids, anchorIDs: extended.anchorIDs, clickedIDs: albumB,
+      ordered: ordered, modifiers: [.command])
+    let ranged = updatedQueueSelection(
+      current: albumC, anchorIDs: albumC, clickedIDs: albumA,
+      ordered: ordered, modifiers: [.shift])
+    let additiveRange = updatedQueueSelection(
+      current: albumA, anchorIDs: albumB, clickedIDs: albumC,
+      ordered: ordered, modifiers: [.command, .shift])
+
+    #expect(plain.ids == albumB)
+    #expect(plain.anchorIDs == albumB)
+    #expect(extended.ids == albumB + albumC)
+    #expect(toggled.ids == albumC)
+    #expect(ranged.ids == ordered)
+    #expect(additiveRange.ids == ordered)
+    #expect(queueSelectionContainsAll(ordered, collection: albumA))
+    #expect(queueSelectionContainsAll(ordered, collection: albumB))
+    #expect(!queueSelectionContainsAll(albumA, collection: albumB))
+    #expect(queueCollectionDragIDs(collection: albumB, selected: ordered) == ordered)
+    #expect(queueCollectionDragIDs(collection: albumB, selected: albumA) == albumB)
+  }
+
+  @Test("queue selection survives focus changes and follows queue mutations")
+  func queueSelectionSurvivesFocusChangesAndFollowsQueueMutations() {
+    let ids = [UUID(), UUID(), UUID()]
+    let selection = QueueSelectionModel()
+
+    selection.selectAll(ids)
+    #expect(selection.selectedEntryIDs == ids)
+
+    selection.reconcile(with: [ids[2], ids[0]])
+    #expect(selection.selectedEntryIDs == [ids[2], ids[0]])
+
+    selection.remove([ids[2]])
+    #expect(selection.selectedEntryIDs == [ids[0]])
+
+    selection.clear()
+    #expect(selection.selectedEntryIDs == nil)
+  }
+
   @Test("queue reorder keeps one authoritative insertion result")
   func queueReorderKeepsOneAuthoritativeInsertionResult() {
     let ids = [UUID(), UUID(), UUID(), UUID()]

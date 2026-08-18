@@ -10,6 +10,7 @@ private enum CodaWindowLayout {
 struct ContentView: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
+  @EnvironmentObject private var queueSelection: QueueSelectionModel
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   @EnvironmentObject private var playlistSaver: QueuePlaylistSaveCoordinator
   @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
@@ -226,6 +227,9 @@ struct ContentView: View {
     .onChange(of: player.currentEntry?.id) {
       applyArtworkDisplayContext()
       volumePresentation.dismiss()
+    }
+    .onChange(of: player.queue.map(\.id)) { _, entryIDs in
+      queueSelection.reconcile(with: entryIDs)
     }
   }
 
@@ -1187,10 +1191,9 @@ private struct QueueDropGeometryMeasurement: Equatable {
 private struct QueuePanel: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
+  @EnvironmentObject private var queueSelection: QueueSelectionModel
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
-  @State private var selectedEntryIDs: [UUID]?
-  @State private var selectionAnchorEntryID: UUID?
   @State private var groups: [QueueGroup] = []
   @State private var fullyVisibleGroupIDs: Set<UUID> = []
   @State private var visibleEntryIDs: Set<UUID> = []
@@ -1225,7 +1228,10 @@ private struct QueuePanel: View {
                 .contentShape(Rectangle())
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: viewportHeight)
-                .onTapGesture { clearSelection() }
+                .onTapGesture {
+                  clearSelection()
+                  queueHasFocus = true
+                }
                 .contextMenu {
                   Button("Clear Queue", systemImage: "trash", role: .destructive) {
                     clearSelection()
@@ -1240,6 +1246,7 @@ private struct QueuePanel: View {
                     currentIndex: player.currentIndex,
                     isPlaying: player.isPlaying,
                     selectedEntryIDs: selectedEntryIDs,
+                    selectedEntryIDSet: Set(selectedEntryIDs ?? []),
                     selectAction: select,
                     trackSelectAction: selectTrack,
                     deleteAction: remove,
@@ -1308,10 +1315,8 @@ private struct QueuePanel: View {
           nowPlayingPresentation.dismiss()
         }
       }
-      .onCommand(#selector(NSResponder.selectAll(_:)), perform: selectAll)
       .onChange(of: player.queue.map(\.id)) { previousIDs, currentIDs in
         groups = queueGroups(player.queue)
-        reconcileSelection()
         refreshDropGeometry()
         if previousIDs.isEmpty, !currentIDs.isEmpty {
           Task { @MainActor in
@@ -1434,6 +1439,10 @@ private struct QueuePanel: View {
     return !visibleEntryIDs.contains(currentID)
   }
 
+  private var selectedEntryIDs: [UUID]? {
+    queueSelection.selectedEntryIDs
+  }
+
   private var queueDurationHelp: String {
     let trackCount = player.queue.count
     let duration = formatCollectionDuration(
@@ -1449,35 +1458,22 @@ private struct QueuePanel: View {
     return count == 1 ? "Remove Selected Track" : "Remove \(count) Selected Tracks"
   }
 
-  private func select(_ entryIDs: [UUID]) {
-    selectedEntryIDs = selectedEntryIDs == entryIDs ? nil : entryIDs
-    selectionAnchorEntryID = nil
+  private func select(_ entryIDs: [UUID], modifiers: TrackSelectionModifiers) {
+    queueSelection.select(
+      entryIDs,
+      orderedBy: player.queue.map(\.id),
+      modifiers: modifiers
+    )
     queueHasFocus = true
   }
 
   private func selectTrack(_ entryID: UUID, modifiers: TrackSelectionModifiers) {
-    let selection = updatedTrackSelection(
-      current: selectedEntryIDs ?? [],
-      anchor: selectionAnchorEntryID,
-      clicked: entryID,
-      ordered: player.queue.map(\.id),
-      modifiers: modifiers
-    )
-    selectedEntryIDs = selection.ids.isEmpty ? nil : selection.ids
-    selectionAnchorEntryID = selection.anchor
-    queueHasFocus = true
+    select([entryID], modifiers: modifiers)
   }
 
   private func remove(_ entryIDs: [UUID]) {
     player.remove(entryIDs: entryIDs)
-    if let selectedEntryIDs {
-      let removed = Set(entryIDs)
-      let remainingSelection = selectedEntryIDs.filter { !removed.contains($0) }
-      self.selectedEntryIDs = remainingSelection.isEmpty ? nil : remainingSelection
-    }
-    if let selectionAnchorEntryID, entryIDs.contains(selectionAnchorEntryID) {
-      self.selectionAnchorEntryID = nil
-    }
+    queueSelection.remove(entryIDs)
   }
 
   private func removeSelection() {
@@ -1487,15 +1483,7 @@ private struct QueuePanel: View {
   }
 
   private func clearSelection() {
-    selectedEntryIDs = nil
-    selectionAnchorEntryID = nil
-  }
-
-  private func selectAll() {
-    guard !player.queue.isEmpty else { return }
-    selectedEntryIDs = player.queue.map(\.id)
-    selectionAnchorEntryID = player.queue.first?.id
-    queueHasFocus = true
+    queueSelection.clear()
   }
 
   private func move(_ item: QueueReorderDragItem, before targetID: UUID?) -> Bool {
@@ -1620,16 +1608,6 @@ private struct QueuePanel: View {
     }
   }
 
-  private func reconcileSelection() {
-    guard let selectedEntryIDs else { return }
-    let queueIDs = Set(player.queue.map(\.id))
-    let remainingSelection = selectedEntryIDs.filter(queueIDs.contains)
-    self.selectedEntryIDs = remainingSelection.isEmpty ? nil : remainingSelection
-    if let selectionAnchorEntryID, !queueIDs.contains(selectionAnchorEntryID) {
-      self.selectionAnchorEntryID = nil
-    }
-  }
-
   private func updateEntryVisibility(_ entryID: UUID, _ isVisible: Bool) {
     if isVisible {
       visibleEntryIDs.insert(entryID)
@@ -1683,7 +1661,8 @@ private struct QueueAlbumBlock: View {
   let currentIndex: Int?
   let isPlaying: Bool
   let selectedEntryIDs: [UUID]?
-  let selectAction: ([UUID]) -> Void
+  let selectedEntryIDSet: Set<UUID>
+  let selectAction: ([UUID], TrackSelectionModifiers) -> Void
   let trackSelectAction: (UUID, TrackSelectionModifiers) -> Void
   let deleteAction: ([UUID]) -> Void
   let playAction: (Int) -> Void
@@ -1703,7 +1682,11 @@ private struct QueueAlbumBlock: View {
       QueueAlbumHeader(
         group: group,
         album: album,
-        selectAction: { selectAction(group.entryIDs) },
+        dragEntryIDs: queueCollectionDragIDs(
+          collection: group.entryIDs,
+          selected: selectedEntryIDs ?? []
+        ),
+        selectAction: { modifiers in selectAction(group.entryIDs, modifiers) },
         deleteAction: { deleteAction(group.entryIDs) },
         dragStateAction: dragStateAction
       )
@@ -1714,8 +1697,8 @@ private struct QueueAlbumBlock: View {
             number: group.discNumber(at: offset),
             subtitle: group.discSubtitle(at: offset),
             durationSeconds: group.discDuration(at: offset),
-            isSelected: selectedEntryIDs == discEntryIDs,
-            selectAction: { selectAction(discEntryIDs) },
+            isSelected: discEntryIDs.allSatisfy(selectedEntryIDSet.contains),
+            selectAction: { modifiers in selectAction(discEntryIDs, modifiers) },
             deleteAction: { deleteAction(discEntryIDs) }
           )
           .padding(.top, offset == 0 ? 3 : 7)
@@ -1728,7 +1711,7 @@ private struct QueueAlbumBlock: View {
           isPlaying: isPlaying,
           isTrackSelected: selectedEntryIDs?.contains(entry.id) == true,
           isCollectionSelected: group.showsDiscHeadings
-            && selectedEntryIDs == group.discEntryIDs(at: offset),
+            && group.discEntryIDs(at: offset).allSatisfy(selectedEntryIDSet.contains),
           dragEntryIDs: selectedEntryIDs?.contains(entry.id) == true
             ? selectedEntryIDs ?? [entry.id] : [entry.id],
           selectAction: { modifiers in
@@ -1757,13 +1740,13 @@ private struct QueueAlbumBlock: View {
       groupFrameAction(measurement.generation, measurement.frame)
     }
     .background {
-      if selectedEntryIDs == group.entryIDs {
+      if group.entryIDs.allSatisfy(selectedEntryIDSet.contains) {
         RoundedRectangle(cornerRadius: 9, style: .continuous)
           .fill(interfaceAccent.opacity(0.12))
       }
     }
     .overlay {
-      if selectedEntryIDs == group.entryIDs {
+      if group.entryIDs.allSatisfy(selectedEntryIDSet.contains) {
         RoundedRectangle(cornerRadius: 9, style: .continuous)
           .strokeBorder(interfaceAccent.opacity(0.42), lineWidth: 1)
           .allowsHitTesting(false)
@@ -1798,13 +1781,16 @@ private struct QueueAlbumBlock: View {
 private struct QueueAlbumHeader: View {
   let group: QueueGroup
   let album: RemoteAlbum?
-  let selectAction: () -> Void
+  let dragEntryIDs: [UUID]
+  let selectAction: (TrackSelectionModifiers) -> Void
   let deleteAction: () -> Void
   let dragStateAction: (QueueReorderDragItem, Bool) -> Void
 
   var body: some View {
     HStack(spacing: 10) {
-      Button(action: selectAction) {
+      Button {
+        selectAction(currentTrackSelectionModifiers())
+      } label: {
         HStack(spacing: 10) {
           ArtworkImage(url: group.entries.first?.artworkURL, cornerRadius: 6)
             .frame(width: 48, height: 48)
@@ -1826,10 +1812,11 @@ private struct QueueAlbumHeader: View {
       }
       .buttonStyle(NoPressEffectButtonStyle())
     }
-    .draggable(QueueDropItem.reorder(.albumBlock(group.entryIDs)))
+    .accessibilityAction { selectAction([]) }
+    .draggable(QueueDropItem.reorder(.albumBlock(dragEntryIDs)))
     .dragConfiguration(.codaInternal(allowMove: true))
     .onDragSessionUpdated { dragSession in
-      let item = QueueReorderDragItem.albumBlock(group.entryIDs)
+      let item = QueueReorderDragItem.albumBlock(dragEntryIDs)
       dragStateAction(item, dragSession.phase == .initial || dragSession.phase == .active)
     }
     .contextMenu {
@@ -1888,7 +1875,7 @@ private struct QueueDiscHeader: View {
   let subtitle: String?
   let durationSeconds: Int
   let isSelected: Bool
-  let selectAction: () -> Void
+  let selectAction: (TrackSelectionModifiers) -> Void
   let deleteAction: () -> Void
 
   private var interfaceAccent: Color {
@@ -1897,7 +1884,9 @@ private struct QueueDiscHeader: View {
 
   var body: some View {
     HStack(spacing: 6) {
-      Button(action: selectAction) {
+      Button {
+        selectAction(currentTrackSelectionModifiers())
+      } label: {
         DiscSectionHeading(
           number: number,
           subtitle: subtitle,
@@ -1907,6 +1896,7 @@ private struct QueueDiscHeader: View {
         .contentShape(Rectangle())
       }
       .buttonStyle(NoPressEffectButtonStyle())
+      .accessibilityAction { selectAction([]) }
     }
     .padding(.horizontal, 5)
     .padding(.vertical, 4)

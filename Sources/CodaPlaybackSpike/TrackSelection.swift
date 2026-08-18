@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 
 struct TrackSelectionModifiers: OptionSet {
@@ -11,6 +12,159 @@ struct TrackSelectionModifiers: OptionSet {
 struct OrderedTrackSelection<ID: Hashable> {
   let ids: [ID]
   let anchor: ID?
+}
+
+struct OrderedQueueSelection<ID: Hashable> {
+  let ids: [ID]
+  let anchorIDs: [ID]
+}
+
+@MainActor
+final class QueueSelectionModel: ObservableObject {
+  @Published private(set) var selectedEntryIDs: [UUID]?
+  private var anchorEntryIDs: [UUID] = []
+
+  func select(
+    _ entryIDs: [UUID],
+    orderedBy orderedEntryIDs: [UUID],
+    modifiers: TrackSelectionModifiers
+  ) {
+    let selection = updatedQueueSelection(
+      current: selectedEntryIDs ?? [],
+      anchorIDs: anchorEntryIDs,
+      clickedIDs: entryIDs,
+      ordered: orderedEntryIDs,
+      modifiers: modifiers
+    )
+    selectedEntryIDs = selection.ids.isEmpty ? nil : selection.ids
+    anchorEntryIDs = selection.anchorIDs
+  }
+
+  func selectAll(_ orderedEntryIDs: [UUID]) {
+    guard !orderedEntryIDs.isEmpty else {
+      clear()
+      return
+    }
+    selectedEntryIDs = orderedEntryIDs
+    anchorEntryIDs = [orderedEntryIDs[0]]
+  }
+
+  func remove(_ entryIDs: [UUID]) {
+    let removed = Set(entryIDs)
+    if let selectedEntryIDs {
+      let remaining = selectedEntryIDs.filter { !removed.contains($0) }
+      self.selectedEntryIDs = remaining.isEmpty ? nil : remaining
+    }
+    if !removed.isDisjoint(with: anchorEntryIDs) {
+      anchorEntryIDs = []
+    }
+  }
+
+  func reconcile(with orderedEntryIDs: [UUID]) {
+    let queueIDs = Set(orderedEntryIDs)
+    if let selectedEntryIDs {
+      let selected = Set(selectedEntryIDs)
+      let remaining = orderedEntryIDs.filter(selected.contains)
+      self.selectedEntryIDs = remaining.isEmpty ? nil : remaining
+    }
+    if !anchorEntryIDs.allSatisfy(queueIDs.contains) {
+      anchorEntryIDs = []
+    }
+  }
+
+  func clear() {
+    selectedEntryIDs = nil
+    anchorEntryIDs = []
+  }
+}
+
+@MainActor
+final class QueueSelectAllShortcutMonitor: ObservableObject {
+  nonisolated(unsafe) private var monitor: Any?
+
+  init(selection: QueueSelectionModel, player: PlayerController) {
+    monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+      let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+      guard modifiers == .command,
+        event.charactersIgnoringModifiers?.lowercased() == "a",
+        !(NSApp.keyWindow?.firstResponder is NSTextView)
+      else { return event }
+
+      selection.selectAll(player.queue.map(\.id))
+      return nil
+    }
+  }
+
+  deinit {
+    if let monitor {
+      NSEvent.removeMonitor(monitor)
+    }
+  }
+}
+
+func queueSelectionContainsAll<ID: Hashable>(
+  _ selected: [ID],
+  collection: [ID]
+) -> Bool {
+  guard !collection.isEmpty else { return false }
+  let selectedSet = Set(selected)
+  return collection.allSatisfy(selectedSet.contains)
+}
+
+func queueCollectionDragIDs<ID: Hashable>(
+  collection: [ID],
+  selected: [ID]
+) -> [ID] {
+  queueSelectionContainsAll(selected, collection: collection)
+    ? selected
+    : collection
+}
+
+func updatedQueueSelection<ID: Hashable>(
+  current: [ID],
+  anchorIDs: [ID],
+  clickedIDs: [ID],
+  ordered: [ID],
+  modifiers: TrackSelectionModifiers
+) -> OrderedQueueSelection<ID> {
+  let clickedSet = Set(clickedIDs)
+  let orderedClicked = ordered.filter(clickedSet.contains)
+  guard !orderedClicked.isEmpty else {
+    return OrderedQueueSelection(ids: current, anchorIDs: anchorIDs)
+  }
+
+  if modifiers.contains(.shift) {
+    let anchorIndices = anchorIDs.compactMap(ordered.firstIndex)
+    let clickedIndices = orderedClicked.compactMap(ordered.firstIndex)
+    if let anchorStart = anchorIndices.min(), let anchorEnd = anchorIndices.max(),
+      let clickedStart = clickedIndices.min(), let clickedEnd = clickedIndices.max()
+    {
+      let bounds = min(anchorStart, clickedStart)...max(anchorEnd, clickedEnd)
+      let range = Set(ordered[bounds])
+      let selected = modifiers.contains(.command)
+        ? Set(current).union(range)
+        : range
+      return OrderedQueueSelection(
+        ids: ordered.filter(selected.contains),
+        anchorIDs: anchorIDs
+      )
+    }
+  }
+
+  if modifiers.contains(.command) {
+    var selected = Set(current)
+    if queueSelectionContainsAll(current, collection: orderedClicked) {
+      selected.subtract(orderedClicked)
+    } else {
+      selected.formUnion(orderedClicked)
+    }
+    return OrderedQueueSelection(
+      ids: ordered.filter(selected.contains),
+      anchorIDs: orderedClicked
+    )
+  }
+
+  return OrderedQueueSelection(ids: orderedClicked, anchorIDs: orderedClicked)
 }
 
 func updatedTrackSelection<ID: Hashable>(

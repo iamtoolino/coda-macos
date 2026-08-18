@@ -7,6 +7,8 @@ struct CodaPlaybackSpikeApp: App {
   @NSApplicationDelegateAdaptor(CodaAppDelegate.self) private var appDelegate
   @StateObject private var session: AppSession
   @StateObject private var player: PlayerController
+  @StateObject private var queueSelection: QueueSelectionModel
+  @StateObject private var queueSelectAllShortcut: QueueSelectAllShortcutMonitor
   @StateObject private var artworkTreatments: ArtworkTreatmentSettings
   @StateObject private var queueHandoff: QueueHandoffCoordinator
   @StateObject private var scrobbler: ScrobbleCoordinator
@@ -18,8 +20,15 @@ struct CodaPlaybackSpikeApp: App {
       || CommandLine.arguments.contains("--mpv-stream-test")
     let session = AppSession(loadCredentials: !isPlaybackTest)
     let player = PlayerController()
+    let queueSelection = QueueSelectionModel()
     _session = StateObject(wrappedValue: session)
     _player = StateObject(wrappedValue: player)
+    _queueSelection = StateObject(wrappedValue: queueSelection)
+    _queueSelectAllShortcut = StateObject(
+      wrappedValue: QueueSelectAllShortcutMonitor(
+        selection: queueSelection,
+        player: player
+      ))
     _artworkTreatments = StateObject(wrappedValue: ArtworkTreatmentSettings())
     _nowPlayingPresentation = StateObject(
       wrappedValue: NowPlayingPresentationController()
@@ -41,6 +50,7 @@ struct CodaPlaybackSpikeApp: App {
       ContentView()
         .environmentObject(session)
         .environmentObject(player)
+        .environmentObject(queueSelection)
         .environmentObject(artworkTreatments)
         .environmentObject(queueHandoff)
         .environmentObject(playlistSaver)
@@ -116,6 +126,13 @@ struct CodaPlaybackSpikeApp: App {
         Button("Next Track") { player.next() }
           .keyboardShortcut(.rightArrow, modifiers: [.command])
           .disabled(!player.canGoNext)
+
+        Divider()
+
+        Button("Clear Queue", systemImage: "trash", role: .destructive) {
+          clearQueueOrEditText()
+        }
+        .keyboardShortcut(.delete, modifiers: [.command])
       }
     }
 
@@ -127,6 +144,14 @@ struct CodaPlaybackSpikeApp: App {
     .defaultSize(width: 540, height: 620)
     .windowResizability(.contentSize)
     .defaultLaunchBehavior(.suppressed)
+  }
+
+  private func clearQueueOrEditText() {
+    if let textView = NSApp.keyWindow?.firstResponder as? NSTextView {
+      textView.deleteToBeginningOfLine(nil)
+    } else {
+      player.clear()
+    }
   }
 }
 
