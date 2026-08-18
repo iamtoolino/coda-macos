@@ -209,6 +209,38 @@ struct LibraryInteractionTests {
     #expect(!codaQueueIsVisible(windowWidth: 1_440, hasEstablishedConnection: false))
   }
 
+  @Test("queue Escape clears only a visible main-window selection")
+  func queueEscapeClearsOnlyAVisibleMainWindowSelection() {
+    let route = {
+      (mainWindow: Bool, queueVisible: Bool, textEditing: Bool, hasSelection: Bool) in
+      shouldRouteQueueClearSelectionShortcut(
+        modifiers: [],
+        charactersIgnoringModifiers: "\u{1B}",
+        appIsActive: true,
+        mainPlaybackWindowIsKey: mainWindow,
+        queueIsVisible: queueVisible,
+        isTextEditing: textEditing,
+        hasSelection: hasSelection
+      )
+    }
+
+    #expect(route(true, true, false, true))
+    #expect(!route(true, true, false, false))
+    #expect(!route(true, false, false, true))
+    #expect(!route(false, true, false, true))
+    #expect(!route(true, true, true, true))
+    #expect(
+      !shouldRouteQueueClearSelectionShortcut(
+        modifiers: .command,
+        charactersIgnoringModifiers: "\u{1B}",
+        appIsActive: true,
+        mainPlaybackWindowIsKey: true,
+        queueIsVisible: true,
+        isTextEditing: false,
+        hasSelection: true
+      ))
+  }
+
   @Test("queue reorder keeps one authoritative insertion result")
   func queueReorderKeepsOneAuthoritativeInsertionResult() {
     let ids = [UUID(), UUID(), UUID(), UUID()]

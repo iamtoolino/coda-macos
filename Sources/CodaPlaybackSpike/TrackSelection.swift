@@ -79,7 +79,7 @@ final class QueueSelectionModel: ObservableObject {
 }
 
 @MainActor
-final class QueueSelectAllShortcutMonitor: ObservableObject {
+final class QueueSelectionShortcutMonitor: ObservableObject {
   nonisolated(unsafe) private var monitor: Any?
 
   init(selection: QueueSelectionModel, player: PlayerController, session: AppSession) {
@@ -91,17 +91,35 @@ final class QueueSelectAllShortcutMonitor: ObservableObject {
         windowWidth: keyWindow.contentView?.bounds.width ?? 0,
         hasEstablishedConnection: session.hasEstablishedConnection
       )
-      guard shouldRouteQueueSelectAllShortcut(
+      let appIsActive = NSApp.isActive
+      let isTextEditing = keyWindow.firstResponder is NSTextView
+
+      if shouldRouteQueueSelectAllShortcut(
         modifiers: event.modifierFlags,
         charactersIgnoringModifiers: event.charactersIgnoringModifiers,
-        appIsActive: NSApp.isActive,
+        appIsActive: appIsActive,
         mainPlaybackWindowIsKey: isMainPlaybackWindow,
         queueIsVisible: queueIsVisible,
-        isTextEditing: keyWindow.firstResponder is NSTextView
-      ) else { return event }
+        isTextEditing: isTextEditing
+      ) {
+        selection.selectAll(player.queue.map(\.id))
+        return nil
+      }
 
-      selection.selectAll(player.queue.map(\.id))
-      return nil
+      if shouldRouteQueueClearSelectionShortcut(
+        modifiers: event.modifierFlags,
+        charactersIgnoringModifiers: event.charactersIgnoringModifiers,
+        appIsActive: appIsActive,
+        mainPlaybackWindowIsKey: isMainPlaybackWindow,
+        queueIsVisible: queueIsVisible,
+        isTextEditing: isTextEditing,
+        hasSelection: selection.selectedEntryIDs != nil
+      ) {
+        selection.clear()
+        return nil
+      }
+
+      return event
     }
   }
 
@@ -122,7 +140,42 @@ func shouldRouteQueueSelectAllShortcut(
 ) -> Bool {
   modifiers.intersection(.deviceIndependentFlagsMask) == .command
     && charactersIgnoringModifiers?.lowercased() == "a"
-    && appIsActive
+    && queueSelectionShortcutsAreActive(
+      appIsActive: appIsActive,
+      mainPlaybackWindowIsKey: mainPlaybackWindowIsKey,
+      queueIsVisible: queueIsVisible,
+      isTextEditing: isTextEditing
+    )
+}
+
+func shouldRouteQueueClearSelectionShortcut(
+  modifiers: NSEvent.ModifierFlags,
+  charactersIgnoringModifiers: String?,
+  appIsActive: Bool,
+  mainPlaybackWindowIsKey: Bool,
+  queueIsVisible: Bool,
+  isTextEditing: Bool,
+  hasSelection: Bool
+) -> Bool {
+  let actionModifiers = modifiers.intersection([.command, .option, .control, .shift])
+  return actionModifiers.isEmpty
+    && charactersIgnoringModifiers == "\u{1B}"
+    && hasSelection
+    && queueSelectionShortcutsAreActive(
+      appIsActive: appIsActive,
+      mainPlaybackWindowIsKey: mainPlaybackWindowIsKey,
+      queueIsVisible: queueIsVisible,
+      isTextEditing: isTextEditing
+    )
+}
+
+private func queueSelectionShortcutsAreActive(
+  appIsActive: Bool,
+  mainPlaybackWindowIsKey: Bool,
+  queueIsVisible: Bool,
+  isTextEditing: Bool
+) -> Bool {
+  appIsActive
     && mainPlaybackWindowIsKey
     && queueIsVisible
     && !isTextEditing

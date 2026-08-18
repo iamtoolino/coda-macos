@@ -8,7 +8,7 @@ struct CodaPlaybackSpikeApp: App {
   @StateObject private var session: AppSession
   @StateObject private var player: PlayerController
   @StateObject private var queueSelection: QueueSelectionModel
-  @StateObject private var queueSelectAllShortcut: QueueSelectAllShortcutMonitor
+  @StateObject private var queueSelectionShortcuts: QueueSelectionShortcutMonitor
   @StateObject private var artworkTreatments: ArtworkTreatmentSettings
   @StateObject private var queueHandoff: QueueHandoffCoordinator
   @StateObject private var scrobbler: ScrobbleCoordinator
@@ -24,8 +24,8 @@ struct CodaPlaybackSpikeApp: App {
     _session = StateObject(wrappedValue: session)
     _player = StateObject(wrappedValue: player)
     _queueSelection = StateObject(wrappedValue: queueSelection)
-    _queueSelectAllShortcut = StateObject(
-      wrappedValue: QueueSelectAllShortcutMonitor(
+    _queueSelectionShortcuts = StateObject(
+      wrappedValue: QueueSelectionShortcutMonitor(
         selection: queueSelection,
         player: player,
         session: session
