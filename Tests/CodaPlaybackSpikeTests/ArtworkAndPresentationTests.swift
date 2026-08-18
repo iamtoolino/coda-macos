@@ -55,8 +55,8 @@ struct ArtworkAndPresentationTests {
     #expect(configuration.urlCredentialStorage == nil)
   }
 
-  @Test("artwork cache freshness follows the server cache policy")
-  func artworkCacheFreshnessFollowsTheServerCachePolicy() throws {
+  @Test("artwork response cache uses the server cache policy")
+  func artworkResponseCacheUsesTheServerCachePolicy() throws {
     let url = try #require(URL(string: "https://music.example.test/cover?size=500"))
     let request = ArtworkURLCachePolicy.request(for: url)
 
