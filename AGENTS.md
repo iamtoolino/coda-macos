@@ -97,6 +97,7 @@
 
 - Check that logs, errors, diagnostics, and generated reports do not expose credentials, private server details, or library contents.
 - Review changes to signing, entitlements, Keychain access, bundled libraries, and license attribution as release-sensitive even in this hobby project.
+- On the maintainer's Mac, normal and release bundles must use the long-lived `Coda Local Development` identity (SHA-1 `C0265B406C5DB49A5C626DDA5D1B12EADA89752C`), not the build script's ad-hoc fallback. Sandboxed Keychain queries can falsely report zero identities, so verify signing outside the sandbox and escalate the build when necessary. Before release, require the app's designated requirement to reference that certificate and run strict nested signature validation. An intentional signing-identity migration requires explicit user direction because it affects Keychain and Local Network privacy identity.
 - When adding, updating, or changing linkage of bundled dependencies, inspect the final transitive dependency closure, not only direct dependencies. Verify license compatibility, static- and dynamic-linking obligations, required notices, source or relinking requirements, and that the built app contains the promised materials. Treat this as release engineering while avoiding unsupported legal conclusions.
 - Preserve native keyboard, focus, inactive-window, accessibility, and first-click behavior. Treat regressions in these areas as product defects rather than cosmetic differences.
 
