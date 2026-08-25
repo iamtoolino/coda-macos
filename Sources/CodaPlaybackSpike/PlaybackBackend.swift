@@ -28,10 +28,10 @@ func mpvExpectedNextCommands(_ next: URL?) -> [[String]] {
 enum MPVFileStartOutcome: Equatable {
   case ignored
   case startedCurrent
-  case automaticallyAdvanced
+  case startedNext
 }
 
-struct MPVFileStartAdvanceTracker {
+struct MPVPlaylistAdvanceTracker {
   private var currentEntryID: Int64?
   private var nextEntryID: Int64?
 
@@ -49,9 +49,14 @@ struct MPVFileStartAdvanceTracker {
       return .startedCurrent
     }
     guard entryID == nextEntryID else { return .ignored }
-    currentEntryID = entryID
-    nextEntryID = nil
-    return .automaticallyAdvanced
+    return .startedNext
+  }
+
+  mutating func observeEnd(entryID: Int64) -> Int64? {
+    guard entryID == currentEntryID, let nextEntryID else { return nil }
+    currentEntryID = nextEntryID
+    self.nextEntryID = nil
+    return nextEntryID
   }
 }
 
@@ -104,7 +109,7 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
 
   private let engine: OpaquePointer
   private var snapshot = PlaybackBackendSnapshot()
-  private var fileStartAdvanceTracker = MPVFileStartAdvanceTracker()
+  private var playlistAdvanceTracker = MPVPlaylistAdvanceTracker()
   private var activePlaylistEntryID: Int64?
   private var hasExpectedNext = false
   private var isLoadingItem = false
@@ -153,7 +158,7 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
         return coda_mpv_load(engine, currentURL, nil, max(0, position), autoplay)
       }
     }
-    fileStartAdvanceTracker.reset(
+    playlistAdvanceTracker.reset(
       currentEntryID: mpvPlaylistEntryID(playlistState.current_entry_id),
       nextEntryID: mpvPlaylistEntryID(playlistState.next_entry_id)
     )
@@ -164,7 +169,7 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
       coda_mpv_update_next(engine, nextURL)
     }
     hasExpectedNext = next != nil
-    fileStartAdvanceTracker.updateNext(
+    playlistAdvanceTracker.updateNext(
       entryID: mpvPlaylistEntryID(playlistState.next_entry_id)
     )
   }
@@ -194,7 +199,7 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
     hasLoadedItem = false
     hasExpectedNext = false
     isLoadingItem = false
-    fileStartAdvanceTracker.reset()
+    playlistAdvanceTracker.reset()
     activePlaylistEntryID = nil
     snapshot = PlaybackBackendSnapshot()
     eventHandler?(.snapshot(snapshot))
@@ -229,21 +234,28 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
     case CODA_MPV_EVENT_SNAPSHOT:
       updateSnapshot(from: event)
     case CODA_MPV_EVENT_START_FILE:
-      switch fileStartAdvanceTracker.observeStart(entryID: event.playlist_entry_id) {
+      switch playlistAdvanceTracker.observeStart(entryID: event.playlist_entry_id) {
       case .ignored:
         return
       case .startedCurrent:
         activePlaylistEntryID = event.playlist_entry_id
-      case .automaticallyAdvanced:
-        activePlaylistEntryID = event.playlist_entry_id
-        eventHandler?(.automaticallyAdvanced)
+      case .startedNext:
+        // Gapless playback may start preparing the next playlist entry before
+        // the current entry reaches EOF. Do not advance Coda's queue yet.
+        break
       }
     case CODA_MPV_EVENT_END_FILE_EOF:
       guard mpvEndEventMatchesActiveFile(
         activeID: activePlaylistEntryID,
         endedID: event.playlist_entry_id
       ) else { return }
-      if !hasExpectedNext {
+      if hasExpectedNext,
+        let nextEntryID = playlistAdvanceTracker.observeEnd(
+          entryID: event.playlist_entry_id)
+      {
+        activePlaylistEntryID = nextEntryID
+        eventHandler?(.automaticallyAdvanced)
+      } else if !hasExpectedNext {
         hasLoadedItem = false
         isLoadingItem = false
         activePlaylistEntryID = nil
