@@ -39,6 +39,7 @@ struct HomeView: View {
               songs: queue.songs,
               startAt: queue.resolvedCurrentIndex,
               positionMilliseconds: queue.position ?? 0,
+              scrollQueueToCurrent: true,
               with: player
             )
           }
@@ -151,10 +152,11 @@ struct HomeView: View {
 
   private var offeredContinueQueue: RemotePlayQueue? {
     guard let queue = queueHandoff.remoteQueue,
-      !queue.songs.isEmpty,
-      !queue.wasWrittenByThisCoda,
-      !player.isPlaying,
-      !session.hasHandledPlayQueue(queue)
+      shouldOfferContinuePlaying(
+        queue: queue,
+        macPlaybackIsPlaying: player.isPlaying,
+        queueWasHandled: session.hasHandledPlayQueue(queue)
+      )
     else { return nil }
     return queue
   }
@@ -175,6 +177,32 @@ struct HomeView: View {
       with: player
     )
   }
+}
+
+func shouldOfferContinuePlaying(
+  queue: RemotePlayQueue?,
+  macPlaybackIsPlaying: Bool,
+  queueWasHandled: Bool
+) -> Bool {
+  guard let queue else { return false }
+  return !queue.songs.isEmpty
+    && !queue.wasWrittenByThisCoda
+    && !macPlaybackIsPlaying
+    && !queueWasHandled
+}
+
+func shouldRevealContinuePlaying(
+  queue: RemotePlayQueue?,
+  macPlaybackIsPlaying: Bool,
+  queueWasHandled: Bool,
+  nowPlayingIsPresented: Bool
+) -> Bool {
+  nowPlayingIsPresented
+    && shouldOfferContinuePlaying(
+      queue: queue,
+      macPlaybackIsPlaying: macPlaybackIsPlaying,
+      queueWasHandled: queueWasHandled
+    )
 }
 
 struct SearchView: View {

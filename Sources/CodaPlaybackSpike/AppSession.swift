@@ -455,6 +455,7 @@ final class AppSession: ObservableObject {
     songs: [RemoteSong],
     startAt index: Int = 0,
     positionMilliseconds: Int = 0,
+    scrollQueueToCurrent: Bool = false,
     canonicalAlbumArtworkID: String? = nil,
     canonicalAlbumArtworkIDsBySongID: [String: String] = [:],
     with player: PlayerController
@@ -469,7 +470,8 @@ final class AppSession: ObservableObject {
         entries,
         startAt: index,
         positionSeconds: Double(positionMilliseconds) / 1_000,
-        scrollQueueToTop: true
+        scrollQueueToTop: !scrollQueueToCurrent,
+        scrollQueueToCurrent: scrollQueueToCurrent
       )
     } catch {
       player.report(error: error)
@@ -488,7 +490,8 @@ final class AppSession: ObservableObject {
         entries,
         startAt: index,
         positionSeconds: Double(positionMilliseconds) / 1_000,
-        startsPlaying: false
+        startsPlaying: false,
+        scrollQueueToCurrent: true
       )
     } catch {
       player.report(error: error)

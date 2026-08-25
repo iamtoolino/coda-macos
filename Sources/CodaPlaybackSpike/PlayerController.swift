@@ -67,6 +67,7 @@ final class PlayerController: ObservableObject {
   @Published private(set) var isMuted = false
   @Published private(set) var playbackEngineName = "Unknown"
   @Published private(set) var queueTopScrollRequest = 0
+  @Published private(set) var queueCurrentScrollRequest = 0
   private(set) var bufferedUntil: Double = 0
 
   let timeline = PlaybackTimeline()
@@ -185,12 +186,16 @@ final class PlayerController: ObservableObject {
     startAt index: Int = 0,
     positionSeconds: Double = 0,
     startsPlaying: Bool = true,
-    scrollQueueToTop: Bool = false
+    scrollQueueToTop: Bool = false,
+    scrollQueueToCurrent: Bool = false
   ) {
     backend.clear()
     queue = entries
     if scrollQueueToTop, !entries.isEmpty {
       queueTopScrollRequest &+= 1
+    }
+    if scrollQueueToCurrent, !entries.isEmpty {
+      queueCurrentScrollRequest &+= 1
     }
     guard !entries.isEmpty else {
       resetPublishedState()

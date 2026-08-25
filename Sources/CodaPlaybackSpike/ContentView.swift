@@ -12,9 +12,11 @@ struct ContentView: View {
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var queueSelection: QueueSelectionModel
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
+  @EnvironmentObject private var queueHandoff: QueueHandoffCoordinator
   @EnvironmentObject private var playlistSaver: QueuePlaylistSaveCoordinator
   @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   @StateObject private var volumePresentation = PlaybackVolumePresentationState()
+  @State private var isRevealingContinueOffer = false
 
   var body: some View {
     ZStack {
@@ -212,11 +214,15 @@ struct ContentView: View {
       applyArtworkDisplayContext()
     }
     .onChange(of: session.path) {
-      nowPlayingPresentation.dismiss()
+      if !isRevealingContinueOffer {
+        nowPlayingPresentation.dismiss()
+      }
       applyArtworkDisplayContext()
     }
     .onChange(of: session.selectedRoot) {
-      nowPlayingPresentation.dismiss()
+      if !isRevealingContinueOffer {
+        nowPlayingPresentation.dismiss()
+      }
       applyArtworkDisplayContext()
     }
     .onChange(of: session.hasEstablishedConnection) {
@@ -231,6 +237,30 @@ struct ContentView: View {
     }
     .onChange(of: player.queue.map(\.id)) { _, entryIDs in
       queueSelection.reconcile(with: entryIDs)
+    }
+    .onChange(of: queueHandoff.remoteQueue?.handoffIdentity) {
+      revealContinueOfferIfNeeded()
+    }
+  }
+
+  private func revealContinueOfferIfNeeded() {
+    guard let queue = queueHandoff.remoteQueue,
+      shouldRevealContinuePlaying(
+        queue: queue,
+        macPlaybackIsPlaying: player.isPlaying,
+        queueWasHandled: session.hasHandledPlayQueue(queue),
+        nowPlayingIsPresented: nowPlayingPresentation.isPresented
+      )
+    else { return }
+
+    isRevealingContinueOffer = true
+    session.selectRoot(.home)
+    Task { @MainActor in
+      // Let Home and its Continue card render behind NPS before fading NPS away.
+      await Task.yield()
+      isRevealingContinueOffer = false
+      guard nowPlayingPresentation.isPresented else { return }
+      nowPlayingPresentation.dismiss()
     }
   }
 
@@ -1210,9 +1240,7 @@ private struct QueuePanel: View {
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   @State private var groups: [QueueGroup] = []
-  @State private var fullyVisibleGroupIDs: Set<UUID> = []
   @State private var visibleEntryIDs: Set<UUID> = []
-  @State private var groupHeights: [UUID: CGFloat] = [:]
   @State private var groupFrames: [UUID: CGRect] = [:]
   @State private var entryFrames: [UUID: CGRect] = [:]
   @State private var dropGeometryGeneration = 0
@@ -1280,18 +1308,6 @@ private struct QueuePanel: View {
                     visibilityAction: updateEntryVisibility
                   )
                   .id(group.id)
-                  .onGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.size.height
-                  } action: { height in
-                    groupHeights[group.id] = height
-                  }
-                  .onScrollVisibilityChange(threshold: 0.98) { isVisible in
-                    if isVisible {
-                      fullyVisibleGroupIDs.insert(group.id)
-                    } else {
-                      fullyVisibleGroupIDs.remove(group.id)
-                    }
-                  }
                 }
               }
               .padding(12)
@@ -1358,8 +1374,19 @@ private struct QueuePanel: View {
           proxy.scrollTo(firstEntryID, anchor: .top)
         }
       }
+      .onChange(of: player.queueCurrentScrollRequest) { _, request in
+        clearSelection()
+        Task { @MainActor in
+          await Task.yield()
+          guard request == player.queueCurrentScrollRequest else { return }
+          groups = queueGroups(player.queue)
+          await Task.yield()
+          guard request == player.queueCurrentScrollRequest else { return }
+          scrollToPlayingTrack(proxy, animated: false)
+        }
+      }
       .onChange(of: player.currentEntry?.id) { oldEntryID, newEntryID in
-        followCurrentAlbum(from: oldEntryID, to: newEntryID, proxy: proxy)
+        followCurrentTrack(from: oldEntryID, to: newEntryID, proxy: proxy)
       }
       .task {
         groups = queueGroups(player.queue)
@@ -1631,26 +1658,20 @@ private struct QueuePanel: View {
     }
   }
 
-  private func followCurrentAlbum(
+  private func followCurrentTrack(
     from oldEntryID: UUID?,
     to newEntryID: UUID?,
     proxy: ScrollViewProxy
   ) {
-    guard let newEntryID,
-      let newGroup = groups.first(where: { $0.entryIDs.contains(newEntryID) })
-    else { return }
-    let oldGroup = oldEntryID.flatMap { oldID in
-      groups.first(where: { $0.entryIDs.contains(oldID) })
-    }
-    guard oldGroup?.id != newGroup.id,
-      !fullyVisibleGroupIDs.contains(newGroup.id)
+    guard let oldEntryID, let newEntryID,
+      shouldAutomaticallyRevealCurrentTrack(
+        previousWasVisible: visibleEntryIDs.contains(oldEntryID),
+        currentIsVisible: visibleEntryIDs.contains(newEntryID)
+      )
     else { return }
 
-    let isOversized = (groupHeights[newGroup.id] ?? 0) > max(0, viewportHeight - 24)
-    let movingForward = (oldGroup?.startIndex ?? -1) < newGroup.startIndex
-    let anchor: UnitPoint = isOversized ? .top : (movingForward ? .bottom : .top)
     withAnimation(.easeInOut(duration: 0.28)) {
-      proxy.scrollTo(newGroup.id, anchor: anchor)
+      proxy.scrollTo(newEntryID, anchor: .center)
     }
   }
 
@@ -1658,13 +1679,32 @@ private struct QueuePanel: View {
     guard let currentID = player.currentEntry?.id,
       let currentGroup = groups.first(where: { $0.entryIDs.contains(currentID) })
     else { return }
-    let action = { proxy.scrollTo(currentGroup.id, anchor: .center) }
+    let revealGroup = { proxy.scrollTo(currentGroup.id, anchor: .center) }
     if animated {
-      withAnimation(.easeInOut(duration: 0.25), action)
+      withAnimation(.easeInOut(duration: 0.25), revealGroup)
     } else {
-      action()
+      revealGroup()
+    }
+    Task { @MainActor in
+      // A far-away row inside LazyVStack is not addressable until its album
+      // group has entered the layout. Center the exact row on the next pass.
+      await Task.yield()
+      guard player.currentEntry?.id == currentID else { return }
+      let revealTrack = { proxy.scrollTo(currentID, anchor: .center) }
+      if animated {
+        withAnimation(.easeInOut(duration: 0.25), revealTrack)
+      } else {
+        revealTrack()
+      }
     }
   }
+}
+
+func shouldAutomaticallyRevealCurrentTrack(
+  previousWasVisible: Bool,
+  currentIsVisible: Bool
+) -> Bool {
+  previousWasVisible && !currentIsVisible
 }
 
 private struct QueueAlbumBlock: View {

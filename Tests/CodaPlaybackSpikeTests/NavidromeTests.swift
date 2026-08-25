@@ -222,6 +222,48 @@ struct NavidromeTests {
     #expect(!externalQueue.wasWrittenByThisCoda)
   }
 
+  @Test("continue offer requires a paused Mac and an external unhandled queue")
+  func continueOfferEligibility() {
+    let external = RemotePlayQueue(
+      changedBy: "Coda Android",
+      entry: [RemoteSong(id: "one", title: "One")]
+    )
+    let own = RemotePlayQueue(
+      changedBy: NavidromeConfiguration.clientName,
+      entry: [RemoteSong(id: "one", title: "One")]
+    )
+
+    #expect(
+      shouldOfferContinuePlaying(
+        queue: external, macPlaybackIsPlaying: false, queueWasHandled: false))
+    #expect(
+      !shouldOfferContinuePlaying(
+        queue: external, macPlaybackIsPlaying: true, queueWasHandled: false))
+    #expect(
+      !shouldOfferContinuePlaying(
+        queue: external, macPlaybackIsPlaying: false, queueWasHandled: true))
+    #expect(
+      !shouldOfferContinuePlaying(
+        queue: own, macPlaybackIsPlaying: false, queueWasHandled: false))
+    #expect(
+      !shouldOfferContinuePlaying(
+        queue: RemotePlayQueue(), macPlaybackIsPlaying: false, queueWasHandled: false))
+    #expect(
+      shouldRevealContinuePlaying(
+        queue: external,
+        macPlaybackIsPlaying: false,
+        queueWasHandled: false,
+        nowPlayingIsPresented: true
+      ))
+    #expect(
+      !shouldRevealContinuePlaying(
+        queue: external,
+        macPlaybackIsPlaying: false,
+        queueWasHandled: false,
+        nowPlayingIsPresented: false
+      ))
+  }
+
   @Test("human-readable device client identity")
   func humanReadableDeviceClientIdentity() {
     #expect(NavidromeConfiguration.makeClientName(deviceName: " su ") == "Coda on su")

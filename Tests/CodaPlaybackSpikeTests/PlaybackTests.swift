@@ -78,8 +78,8 @@ struct PlaybackTests {
     #expect(backend.updatedNextURLs == [nil])
   }
 
-  @Test("queue replacement can explicitly request the top")
-  func queueReplacementCanExplicitlyRequestTheTop() {
+  @Test("queue replacement can explicitly request the top or current track")
+  func queueReplacementCanRequestItsScrollDestination() {
     let backend = TestPlaybackBackend()
     let first = QueueEntry(
       sourceID: "first-queue", url: URL(string: "https://example.test/first-queue")!,
@@ -88,13 +88,21 @@ struct PlaybackTests {
       sourceID: "second-queue", url: URL(string: "https://example.test/second-queue")!,
       title: "Second Queue")
     let player = PlayerController(backend: backend)
-    let initialRequest = player.queueTopScrollRequest
+    let initialTopRequest = player.queueTopScrollRequest
+    let initialCurrentRequest = player.queueCurrentScrollRequest
 
     player.replaceQueue([first])
-    #expect(player.queueTopScrollRequest == initialRequest)
+    #expect(player.queueTopScrollRequest == initialTopRequest)
+    #expect(player.queueCurrentScrollRequest == initialCurrentRequest)
 
     player.replaceQueue([second], scrollQueueToTop: true)
-    #expect(player.queueTopScrollRequest == initialRequest + 1)
+    #expect(player.queueTopScrollRequest == initialTopRequest + 1)
+    #expect(player.queueCurrentScrollRequest == initialCurrentRequest)
+
+    player.replaceQueue([first, second], startAt: 1, scrollQueueToCurrent: true)
+    #expect(player.queueTopScrollRequest == initialTopRequest + 1)
+    #expect(player.queueCurrentScrollRequest == initialCurrentRequest + 1)
+    #expect(player.currentEntry?.id == second.id)
   }
 
   @Test("finishing the queue retains it without an active track")

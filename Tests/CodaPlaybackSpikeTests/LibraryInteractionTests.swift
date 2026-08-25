@@ -261,6 +261,25 @@ struct LibraryInteractionTests {
       ))
   }
 
+  @Test("queue follows playback only while the previous track remains visible")
+  func queuePlaybackFollowPolicy() {
+    #expect(
+      shouldAutomaticallyRevealCurrentTrack(
+        previousWasVisible: true,
+        currentIsVisible: false
+      ))
+    #expect(
+      !shouldAutomaticallyRevealCurrentTrack(
+        previousWasVisible: false,
+        currentIsVisible: false
+      ))
+    #expect(
+      !shouldAutomaticallyRevealCurrentTrack(
+        previousWasVisible: true,
+        currentIsVisible: true
+      ))
+  }
+
   @Test("queue reorder keeps one authoritative insertion result")
   func queueReorderKeepsOneAuthoritativeInsertionResult() {
     let ids = [UUID(), UUID(), UUID(), UUID()]
