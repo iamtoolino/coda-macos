@@ -265,17 +265,39 @@ struct NavidromeClient: Sendable {
     size: Int = 40,
     offset: Int = 0
   ) async throws -> [RemoteAlbum] {
+    try await albumPage(kind, size: size, offset: offset).albums
+  }
+
+  func albumPage(
+    _ kind: AlbumCollectionKind,
+    size: Int = 40,
+    offset: Int = 0
+  ) async throws -> RemoteAlbumPage {
+    let requestedSize = max(1, min(size, 500))
+    let requestedOffset = max(0, offset)
     var parameters = [
       URLQueryItem(name: "type", value: kind.apiValue),
-      URLQueryItem(name: "size", value: String(max(1, min(size, 500)))),
-      URLQueryItem(name: "offset", value: String(max(0, offset))),
+      URLQueryItem(name: "size", value: String(requestedSize)),
+      URLQueryItem(name: "offset", value: String(requestedOffset)),
     ]
     if kind == .recentReleases {
       parameters.append(URLQueryItem(name: "fromYear", value: "3000"))
       parameters.append(URLQueryItem(name: "toYear", value: "0"))
     }
-    let response = try await checkedResponse(endpoint: "getAlbumList2", parameters: parameters)
-    return response.albumList2?.album ?? []
+    let result = try await checkedResponseWithHTTPMetadata(
+      endpoint: "getAlbumList2",
+      parameters: parameters
+    )
+    let albums = result.response.albumList2?.album ?? []
+    return RemoteAlbumPage(
+      albums: albums,
+      totalCount: resolvedAlbumTotalCount(
+        headerValue: result.httpResponse.value(forHTTPHeaderField: "X-Total-Count"),
+        offset: requestedOffset,
+        returnedCount: albums.count,
+        requestedSize: requestedSize
+      )
+    )
   }
 
   func allAlbums(_ kind: AlbumCollectionKind) async throws -> [RemoteAlbum] {
@@ -479,11 +501,23 @@ struct NavidromeClient: Sendable {
     endpoint: String,
     parameters: [URLQueryItem] = []
   ) async throws -> SubsonicResponse {
+    try await checkedResponseWithHTTPMetadata(endpoint: endpoint, parameters: parameters).response
+  }
+
+  private func checkedResponseWithHTTPMetadata(
+    endpoint: String,
+    parameters: [URLQueryItem] = []
+  ) async throws -> (response: SubsonicResponse, httpResponse: HTTPURLResponse) {
     let url = try configuration.endpointURL(endpoint, parameters: parameters)
     var request = URLRequest(url: url)
     request.timeoutInterval = 30
     request.cachePolicy = .reloadIgnoringLocalCacheData
-    return try await checkedResponse(request)
+    let result = try await responseWithHTTPMetadata(for: request)
+    guard result.response.status == "ok" else {
+      throw NavidromeError.server(
+        result.response.error?.message ?? "The server rejected the request.")
+    }
+    return result
   }
 
   private func checkedResponse(_ request: URLRequest) async throws -> SubsonicResponse {
@@ -495,6 +529,12 @@ struct NavidromeClient: Sendable {
   }
 
   private func response(for request: URLRequest) async throws -> SubsonicResponse {
+    try await responseWithHTTPMetadata(for: request).response
+  }
+
+  private func responseWithHTTPMetadata(
+    for request: URLRequest
+  ) async throws -> (response: SubsonicResponse, httpResponse: HTTPURLResponse) {
     let (data, urlResponse) = try await session.data(for: request)
     guard let httpResponse = urlResponse as? HTTPURLResponse else {
       throw NavidromeError.invalidResponse
@@ -504,11 +544,36 @@ struct NavidromeClient: Sendable {
     }
 
     do {
-      return try JSONDecoder().decode(SubsonicEnvelope.self, from: data).response
+      return (
+        try JSONDecoder().decode(SubsonicEnvelope.self, from: data).response,
+        httpResponse
+      )
     } catch {
       throw NavidromeError.decoding(error.localizedDescription)
     }
   }
+}
+
+struct RemoteAlbumPage: Sendable {
+  let albums: [RemoteAlbum]
+  let totalCount: Int?
+}
+
+func resolvedAlbumTotalCount(
+  headerValue: String?,
+  offset: Int,
+  returnedCount: Int,
+  requestedSize: Int
+) -> Int? {
+  let loadedCount = max(0, offset) + max(0, returnedCount)
+  if returnedCount < requestedSize {
+    return loadedCount
+  }
+  guard let headerValue,
+    let totalCount = Int(headerValue.trimmingCharacters(in: .whitespacesAndNewlines)),
+    totalCount >= loadedCount
+  else { return nil }
+  return totalCount
 }
 
 enum NavidromeError: LocalizedError, Equatable {

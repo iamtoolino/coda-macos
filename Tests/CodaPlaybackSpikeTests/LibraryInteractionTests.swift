@@ -50,6 +50,58 @@ struct LibraryInteractionTests {
     #expect(AlbumCollectionKind.mostPlayed.apiValue == "frequent")
   }
 
+  @Test("album pages accept a trustworthy server total")
+  func albumPageAcceptsTrustworthyServerTotal() {
+    #expect(
+      resolvedAlbumTotalCount(
+        headerValue: " 1250 ",
+        offset: 100,
+        returnedCount: 100,
+        requestedSize: 100
+      ) == 1_250
+    )
+  }
+
+  @Test("album pages infer their total from a short final page")
+  func albumPageInfersTotalFromShortPage() {
+    #expect(
+      resolvedAlbumTotalCount(
+        headerValue: nil,
+        offset: 300,
+        returnedCount: 42,
+        requestedSize: 100
+      ) == 342
+    )
+  }
+
+  @Test("album pages reject missing and inconsistent totals")
+  func albumPageRejectsUntrustworthyTotals() {
+    #expect(
+      resolvedAlbumTotalCount(
+        headerValue: nil,
+        offset: 0,
+        returnedCount: 100,
+        requestedSize: 100
+      ) == nil
+    )
+    #expect(
+      resolvedAlbumTotalCount(
+        headerValue: "150",
+        offset: 100,
+        returnedCount: 100,
+        requestedSize: 100
+      ) == nil
+    )
+    #expect(
+      resolvedAlbumTotalCount(
+        headerValue: "not-a-number",
+        offset: 0,
+        returnedCount: 100,
+        requestedSize: 100
+      ) == nil
+    )
+  }
+
   @Test("library queue drag payload round trip")
   func libraryQueueDragPayloadRoundTrip() throws {
     let items = [

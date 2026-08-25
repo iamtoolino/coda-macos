@@ -557,11 +557,21 @@ private struct AlbumsLoadRequest: Hashable {
 }
 
 struct AlbumsView: View {
+  private static let pageSize = 100
+  private static let unknownTotalPlaceholderCount = 12
+
   @EnvironmentObject private var session: AppSession
   let resetToken: UUID?
 
   @State private var selectedKind: AlbumCollectionKind
-  @State private var albums: [RemoteAlbum]?
+  @State private var albumsByIndex: [Int: RemoteAlbum] = [:]
+  @State private var totalCount: Int?
+  @State private var loadedPrefixCount = 0
+  @State private var reachedEnd = false
+  @State private var loadGeneration = UUID()
+  @State private var loadingPageOffsets: Set<Int> = []
+  @State private var failedPageOffsets: Set<Int> = []
+  @State private var hasLoadedInitialPage = false
   @State private var isLoading = false
   @State private var errorMessage: String?
 
@@ -572,9 +582,9 @@ struct AlbumsView: View {
 
   var body: some View {
     Group {
-      if isLoading, albums == nil {
+      if isLoading, !hasLoadedInitialPage {
         LibraryLoadingView(label: "Loading Albums…")
-      } else if let errorMessage, albums == nil {
+      } else if let errorMessage, !hasLoadedInitialPage {
         LibraryErrorView(title: "Could Not Load Albums", message: errorMessage) {
           Task { await load(selectedKind) }
         }
@@ -593,8 +603,8 @@ struct AlbumsView: View {
               alignment: .leading,
               spacing: 22
             ) {
-              ForEach(albums ?? []) { album in
-                AlbumCard(album: album)
+              ForEach(0..<albumSlotCount, id: \.self) { index in
+                albumGridItem(at: index)
               }
             }
           }
@@ -646,24 +656,164 @@ struct AlbumsView: View {
 
   @MainActor
   private func load(_ requestedKind: AlbumCollectionKind) async {
-    guard let client = session.client else { return }
+    guard let request = session.sessionRequestContext() else { return }
+    let generation = UUID()
+    loadGeneration = generation
     isLoading = true
-    albums = nil
+    albumsByIndex = [:]
+    totalCount = nil
+    loadedPrefixCount = 0
+    reachedEnd = false
+    loadingPageOffsets = [0]
+    failedPageOffsets = []
+    hasLoadedInitialPage = false
     errorMessage = nil
     do {
-      let loadedAlbums = try await client.allAlbums(requestedKind)
+      let page = try await request.client.albumPage(
+        requestedKind,
+        size: Self.pageSize,
+        offset: 0
+      )
       try Task.checkCancellation()
-      guard selectedKind == requestedKind else { return }
-      albums = loadedAlbums
+      guard selectedKind == requestedKind, generation == loadGeneration,
+        session.isCurrent(request)
+      else { return }
+      apply(page, at: 0)
+      hasLoadedInitialPage = true
     } catch is CancellationError {
       return
     } catch {
-      guard selectedKind == requestedKind else { return }
+      guard selectedKind == requestedKind, generation == loadGeneration,
+        session.isCurrent(request)
+      else { return }
       errorMessage = error.localizedDescription
     }
-    if selectedKind == requestedKind {
+    if selectedKind == requestedKind, generation == loadGeneration {
+      loadingPageOffsets.remove(0)
       isLoading = false
     }
+  }
+
+  private var albumSlotCount: Int {
+    if let totalCount {
+      return totalCount
+    }
+    return loadedPrefixCount + (reachedEnd ? 0 : Self.unknownTotalPlaceholderCount)
+  }
+
+  @ViewBuilder
+  private func albumGridItem(at index: Int) -> some View {
+    if let album = albumsByIndex[index] {
+      AlbumCard(album: album)
+    } else {
+      let offset = pageOffset(containing: index)
+      AlbumLoadingCard(
+        showsRetry: failedPageOffsets.contains(offset),
+        retryAction: {
+          requestPage(at: offset, generation: loadGeneration)
+        }
+      )
+      .onAppear {
+        requestPage(at: offset, generation: loadGeneration)
+      }
+    }
+  }
+
+  private func pageOffset(containing index: Int) -> Int {
+    if totalCount == nil {
+      return loadedPrefixCount
+    }
+    return max(0, index / Self.pageSize) * Self.pageSize
+  }
+
+  @MainActor
+  private func requestPage(at offset: Int, generation: UUID) {
+    // A lazy grid cell may disappear while the user drags the scrollbar. The page
+    // remains useful, so let the collection own this task rather than the cell.
+    Task { @MainActor in
+      await loadPage(at: offset, generation: generation)
+    }
+  }
+
+  @MainActor
+  private func loadPage(at offset: Int, generation: UUID) async {
+    guard generation == loadGeneration, hasLoadedInitialPage,
+      !reachedEnd || offset < loadedPrefixCount,
+      albumsByIndex[offset] == nil,
+      !loadingPageOffsets.contains(offset),
+      let request = session.sessionRequestContext()
+    else { return }
+
+    loadingPageOffsets.insert(offset)
+    failedPageOffsets.remove(offset)
+    defer {
+      if generation == loadGeneration {
+        loadingPageOffsets.remove(offset)
+      }
+    }
+    do {
+      let page = try await request.client.albumPage(
+        selectedKind,
+        size: Self.pageSize,
+        offset: offset
+      )
+      try Task.checkCancellation()
+      guard generation == loadGeneration, session.isCurrent(request) else { return }
+      apply(page, at: offset)
+    } catch is CancellationError {
+      return
+    } catch let error as URLError where error.code == .cancelled {
+      return
+    } catch {
+      guard generation == loadGeneration, session.isCurrent(request) else { return }
+      failedPageOffsets.insert(offset)
+    }
+  }
+
+  private func apply(_ page: RemoteAlbumPage, at offset: Int) {
+    for (pageIndex, album) in page.albums.enumerated() {
+      albumsByIndex[offset + pageIndex] = album
+    }
+    while albumsByIndex[loadedPrefixCount] != nil {
+      loadedPrefixCount += 1
+    }
+    if let pageTotalCount = page.totalCount {
+      totalCount = pageTotalCount
+      reachedEnd = loadedPrefixCount >= pageTotalCount
+    } else if page.albums.count < Self.pageSize {
+      reachedEnd = true
+    }
+  }
+}
+
+private struct AlbumLoadingCard: View {
+  let showsRetry: Bool
+  let retryAction: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      ZStack {
+        RoundedRectangle(cornerRadius: 9, style: .continuous)
+          .fill(.secondary.opacity(0.08))
+          .aspectRatio(1, contentMode: .fit)
+        if showsRetry {
+          Button(action: retryAction) {
+            Image(systemName: "arrow.clockwise")
+              .font(.title3.weight(.medium))
+              .frame(width: 34, height: 34)
+          }
+          .buttonStyle(.borderless)
+          .help("Retry loading albums")
+        }
+      }
+      RoundedRectangle(cornerRadius: 3, style: .continuous)
+        .fill(.secondary.opacity(0.10))
+        .frame(width: 104, height: 14)
+      RoundedRectangle(cornerRadius: 3, style: .continuous)
+        .fill(.secondary.opacity(0.07))
+        .frame(width: 76, height: 12)
+    }
+    .accessibilityHidden(!showsRetry)
   }
 }
 
