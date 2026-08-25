@@ -50,6 +50,25 @@ struct LibraryInteractionTests {
     #expect(AlbumCollectionKind.mostPlayed.apiValue == "frequent")
   }
 
+  @Test("root navigation does not recreate the active collection")
+  func activeRootNavigationPreservesCollection() {
+    let session = AppSession(loadCredentials: false)
+    let initialToken = session.rootToken
+
+    session.selectRoot(.home)
+    #expect(session.rootToken == initialToken)
+
+    session.open(.album("album-1"))
+    #expect(!session.path.isEmpty)
+    session.selectRoot(.home)
+    #expect(session.path.isEmpty)
+    #expect(session.rootToken == initialToken)
+
+    session.selectRoot(.albums)
+    #expect(session.selectedRoot == .albums)
+    #expect(session.rootToken != initialToken)
+  }
+
   @Test("album pages accept a trustworthy server total")
   func albumPageAcceptsTrustworthyServerTotal() {
     #expect(

@@ -2150,6 +2150,7 @@ private struct PlaylistAlbumHeader: View {
 
 private struct LibraryLoadingView: View {
   let label: String
+  @State private var showsIndicator = false
 
   var body: some View {
     VStack(spacing: 12) {
@@ -2157,7 +2158,20 @@ private struct LibraryLoadingView: View {
       Text(label)
         .foregroundStyle(.secondary)
     }
+    .opacity(showsIndicator ? 1 : 0)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .accessibilityHidden(!showsIndicator)
+    .task {
+      do {
+        try await Task.sleep(for: .milliseconds(150))
+      } catch {
+        return
+      }
+      guard !Task.isCancelled else { return }
+      withAnimation(.easeOut(duration: 0.08)) {
+        showsIndicator = true
+      }
+    }
   }
 }
 

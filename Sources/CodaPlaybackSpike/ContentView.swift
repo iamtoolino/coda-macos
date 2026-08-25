@@ -42,10 +42,12 @@ struct ContentView: View {
             NavigationStack(path: $session.path) {
                 RootContentView()
                   .id(session.rootToken)
+                  .transition(.opacity)
                   .navigationDestination(for: LibraryRoute.self) { route in
                     RouteContentView(route: route)
                   }
             }
+            .animation(.easeOut(duration: 0.14), value: session.rootToken)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.clear)
             .allowsHitTesting(

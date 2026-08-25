@@ -328,6 +328,11 @@ final class AppSession: ObservableObject {
   }
 
   func selectRoot(_ destination: SidebarDestination) {
+    if selectedRoot == destination {
+      guard !path.isEmpty else { return }
+      path.removeAll()
+      return
+    }
     selectedRoot = destination
     path.removeAll()
     rootToken = UUID()
