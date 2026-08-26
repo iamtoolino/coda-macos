@@ -301,6 +301,45 @@ struct ArtworkAndPresentationTests {
     #expect(presentation.isPresented)
   }
 
+  @Test("now playing holds the previous theme while the next theme prepares")
+  func nowPlayingHoldsThePreviousThemeWhileTheNextThemePrepares() throws {
+    let presentation = NowPlayingPresentationController()
+    let firstArtwork = NSImage(size: NSSize(width: 2, height: 2))
+    let secondArtwork = NSImage(size: NSSize(width: 3, height: 3))
+    presentation.prepare(
+      playbackKey: "album:first",
+      artwork: firstArtwork,
+      accent: ArtworkColor(red: 0.2, green: 0.4, blue: 0.7)
+    )
+    presentation.updateContext(
+      window: nil, isApplicationActive: true, hasEstablishedConnection: true,
+      playbackKey: "album:first", isPlaying: true)
+    presentation.present()
+
+    presentation.updateContext(
+      window: nil, isApplicationActive: true, hasEstablishedConnection: true,
+      playbackKey: "album:second", isPlaying: true)
+
+    let pendingTheme = try #require(presentation.preparedTheme)
+    #expect(pendingTheme.playbackKey == "album:first")
+    #expect(pendingTheme.artwork === firstArtwork)
+
+    presentation.prepare(
+      playbackKey: "album:second",
+      artwork: secondArtwork,
+      accent: ArtworkColor(red: 0.8, green: 0.3, blue: 0.1)
+    )
+
+    let replacementTheme = try #require(presentation.preparedTheme)
+    #expect(replacementTheme.playbackKey == "album:second")
+    #expect(replacementTheme.artwork === secondArtwork)
+
+    presentation.updateContext(
+      window: nil, isApplicationActive: true, hasEstablishedConnection: true,
+      playbackKey: nil, isPlaying: false)
+    #expect(presentation.preparedTheme == nil)
+  }
+
   @Test("now playing automatic presentation preference persists")
   func nowPlayingAutomaticPresentationPreferencePersists() throws {
     let suiteName = "CodaTests-NowPlaying-\(UUID().uuidString)"
