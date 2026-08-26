@@ -13,7 +13,6 @@ private struct HomeData {
 
 struct HomeView: View {
   @EnvironmentObject private var session: AppSession
-  @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var queueHandoff: QueueHandoffCoordinator
   let resetToken: UUID?
 
@@ -32,17 +31,8 @@ struct HomeView: View {
           }
         }
 
-        if let queue = offeredContinueQueue {
-          ContinuePlayingCard(queue: queue) {
-            session.markPlayQueueHandled(queue)
-            session.play(
-              songs: queue.songs,
-              startAt: queue.resolvedCurrentIndex,
-              positionMilliseconds: queue.position ?? 0,
-              scrollQueueToCurrent: true,
-              with: player
-            )
-          }
+        if let queue = queueHandoff.continueQueue {
+          ContinuePlayingCard(queue: queue, action: queueHandoff.continuePlaying)
         }
 
         if let artists = data?.recentArtists, !artists.isEmpty {
@@ -94,14 +84,11 @@ struct HomeView: View {
       \.codaRefreshAction,
       CodaRefreshAction {
         Task { await load() }
-        Task { await loadPlayQueue() }
+        Task { await queueHandoff.refreshRemoteQueue() }
       }
     )
     .task(id: resetToken) {
       await load()
-    }
-    .task(id: resetToken) {
-      await loadPlayQueue()
     }
   }
 
@@ -137,78 +124,6 @@ struct HomeView: View {
     }
   }
 
-  @MainActor
-  private func loadPlayQueue() async {
-    let savedQueue = await queueHandoff.refreshRemoteQueue()
-    autoRestoreIfNeeded(savedQueue)
-  }
-
-  private var offeredContinueQueue: RemotePlayQueue? {
-    guard let queue = queueHandoff.remoteQueue,
-      shouldOfferContinuePlaying(
-        queue: queue,
-        macPlaybackIsPlaying: player.isPlaying,
-        queueWasHandled: session.hasHandledPlayQueue(queue)
-      )
-    else { return nil }
-    return queue
-  }
-
-  private func autoRestoreIfNeeded(_ queue: RemotePlayQueue?) {
-    guard let queue,
-      shouldAutoRestorePlayQueue(
-        queue: queue,
-        localQueueIsEmpty: player.queue.isEmpty,
-        queueWasHandled: session.hasHandledPlayQueue(queue)
-      )
-    else { return }
-
-    session.markPlayQueueHandled(queue)
-    session.restore(
-      songs: queue.songs,
-      startAt: queue.resolvedCurrentIndex,
-      positionMilliseconds: queue.position ?? 0,
-      with: player
-    )
-  }
-}
-
-func shouldAutoRestorePlayQueue(
-  queue: RemotePlayQueue?,
-  localQueueIsEmpty: Bool,
-  queueWasHandled: Bool
-) -> Bool {
-  guard let queue else { return false }
-  return queue.wasWrittenByThisCoda
-    && !queue.songs.isEmpty
-    && localQueueIsEmpty
-    && !queueWasHandled
-}
-
-func shouldOfferContinuePlaying(
-  queue: RemotePlayQueue?,
-  macPlaybackIsPlaying: Bool,
-  queueWasHandled: Bool
-) -> Bool {
-  guard let queue else { return false }
-  return !queue.songs.isEmpty
-    && !queue.wasWrittenByThisCoda
-    && !macPlaybackIsPlaying
-    && !queueWasHandled
-}
-
-func shouldRevealContinuePlaying(
-  queue: RemotePlayQueue?,
-  macPlaybackIsPlaying: Bool,
-  queueWasHandled: Bool,
-  nowPlayingIsPresented: Bool
-) -> Bool {
-  nowPlayingIsPresented
-    && shouldOfferContinuePlaying(
-      queue: queue,
-      macPlaybackIsPlaying: macPlaybackIsPlaying,
-      queueWasHandled: queueWasHandled
-    )
 }
 
 struct SearchView: View {

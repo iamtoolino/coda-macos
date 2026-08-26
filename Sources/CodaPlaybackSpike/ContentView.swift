@@ -240,20 +240,13 @@ struct ContentView: View {
     .onChange(of: player.queue.map(\.id)) { _, entryIDs in
       queueSelection.reconcile(with: entryIDs)
     }
-    .onChange(of: queueHandoff.remoteQueue?.handoffIdentity) {
+    .onChange(of: queueHandoff.continueQueue?.handoffIdentity) {
       revealContinueOfferIfNeeded()
     }
   }
 
   private func revealContinueOfferIfNeeded() {
-    guard let queue = queueHandoff.remoteQueue,
-      shouldRevealContinuePlaying(
-        queue: queue,
-        macPlaybackIsPlaying: player.isPlaying,
-        queueWasHandled: session.hasHandledPlayQueue(queue),
-        nowPlayingIsPresented: nowPlayingPresentation.isPresented
-      )
-    else { return }
+    guard queueHandoff.continueQueue != nil, nowPlayingPresentation.isPresented else { return }
 
     isRevealingContinueOffer = true
     session.selectRoot(.home)

@@ -24,24 +24,47 @@ struct QueueHandoffSnapshot: Equatable, Sendable {
   }
 }
 
+enum QueueHandoffDisposition: Equatable {
+  case restore
+  case offer
+  case ignore
+}
+
+func queueHandoffDisposition(
+  for queue: RemotePlayQueue?,
+  allowsOwnedQueueRestore: Bool,
+  localQueueIsEmpty: Bool,
+  localPlaybackIsPlaying: Bool,
+  queueWasHandled: Bool
+) -> QueueHandoffDisposition {
+  guard let queue, !queue.songs.isEmpty, !queueWasHandled, !localPlaybackIsPlaying else {
+    return .ignore
+  }
+  if queue.wasWrittenByThisCoda {
+    return allowsOwnedQueueRestore && localQueueIsEmpty ? .restore : .ignore
+  }
+  return .offer
+}
+
 @MainActor
 final class QueueHandoffCoordinator: ObservableObject {
+  private enum Ownership: Equatable {
+    case none
+    case awaitingInitialQueue(UUID)
+    case local
+  }
+
   private enum RefreshResult: Sendable {
     case success(RemotePlayQueue?)
     case failure
   }
 
-  private struct RefreshRequest {
-    let sequence: UInt64
-    let sessionID: UUID
-    let task: Task<RefreshResult, Never>
-  }
-
   private struct SaveRequest: Sendable {
-    let sequence: UInt64
+    let generation: UUID
     let sessionID: UUID
     let client: NavidromeClient
     let snapshot: QueueHandoffSnapshot
+    let isPauseBoundary: Bool
   }
 
   private let session: AppSession
@@ -49,18 +72,18 @@ final class QueueHandoffCoordinator: ObservableObject {
   private var cancellables: Set<AnyCancellable> = []
   private var scheduledSaveTask: Task<Void, Never>?
   private var saveWorkerTask: Task<Void, Never>?
+  private var refreshTask: Task<Void, Never>?
   private var periodicSaveTask: Task<Void, Never>?
   private var periodicRefreshTask: Task<Void, Never>?
   private var lifecycleRefreshTask: Task<Void, Never>?
   private var pendingRequest: SaveRequest?
-  private var latestSequence: UInt64 = 0
-  private var latestRefreshSequence: UInt64 = 0
-  private var refreshRequest: RefreshRequest?
-  private var initialRestoreSessionID: UUID?
-  private var pauseSnapshotSequence: UInt64?
-  private var ownsLocalQueueState = false
+  private var saveGeneration = UUID()
+  private var saveWorkerID: UUID?
+  private var refreshID: UUID?
+  private var ownership: Ownership = .none
+  private var pauseSavePending = false
 
-  @Published private(set) var remoteQueue: RemotePlayQueue?
+  @Published private(set) var continueQueue: RemotePlayQueue?
 
   init(session: AppSession, player: PlayerController) {
     self.session = session
@@ -72,16 +95,11 @@ final class QueueHandoffCoordinator: ObservableObject {
   }
 
   func saveBeforeTermination(timeout: Duration = .seconds(4)) async {
-    guard ownsLocalQueueState, let client = session.client,
+    guard ownership == .local, let client = session.client,
       session.activeSessionID != nil
     else { return }
 
-    latestSequence &+= 1
-    scheduledSaveTask?.cancel()
-    scheduledSaveTask = nil
-    pendingRequest = nil
-    saveWorkerTask?.cancel()
-    saveWorkerTask = nil
+    cancelSavePipeline()
 
     let snapshot = QueueHandoffSnapshot(
       queue: player.queue,
@@ -106,61 +124,56 @@ final class QueueHandoffCoordinator: ObservableObject {
   }
 
   func observeRemoteQueue(_ queue: RemotePlayQueue?) {
-    remoteQueue = queue
-    guard !player.isPlaying, let queue, !queue.songs.isEmpty,
-      !queue.wasWrittenByThisCoda
-    else { return }
-    relinquishServerQueueOwnership()
+    applyRemoteQueue(queue, allowsOwnedQueueRestore: false)
   }
 
-  @discardableResult
-  func refreshRemoteQueue() async -> RemotePlayQueue? {
-    guard !player.isPlaying, pauseSnapshotSequence == nil, let client = session.client,
+  func continuePlaying() {
+    guard let queue = continueQueue else { return }
+    session.markPlayQueueHandled(queue)
+    takeLocalQueueOwnership()
+    session.play(
+      songs: queue.songs,
+      startAt: queue.resolvedCurrentIndex,
+      positionMilliseconds: queue.position ?? 0,
+      scrollQueueToCurrent: true,
+      with: player
+    )
+  }
+
+  func refreshRemoteQueue() async {
+    if let refreshTask {
+      await refreshTask.value
+      return
+    }
+    guard !player.isPlaying, !pauseSavePending, let client = session.client,
       let sessionID = session.activeSessionID
-    else { return nil }
+    else { return }
 
-    let request: RefreshRequest
-    if let activeRequest = refreshRequest, activeRequest.sessionID == sessionID {
-      request = activeRequest
-    } else {
-      latestRefreshSequence &+= 1
-      let sequence = latestRefreshSequence
-      request = RefreshRequest(
-        sequence: sequence,
-        sessionID: sessionID,
-        task: Task {
-          do {
-            return .success(try await client.playQueue())
-          } catch {
-            return .failure
-          }
-        }
-      )
-      refreshRequest = request
+    let id = UUID()
+    let allowsOwnedQueueRestore = ownership == .awaitingInitialQueue(sessionID)
+    refreshID = id
+    let task = Task { @MainActor [weak self] in
+      let result: RefreshResult
+      do {
+        result = .success(try await client.playQueue())
+      } catch {
+        result = .failure
+      }
+      guard let self, self.refreshID == id, self.session.activeSessionID == sessionID else {
+        return
+      }
+      self.refreshID = nil
+      self.refreshTask = nil
+      if allowsOwnedQueueRestore, self.ownership == .awaitingInitialQueue(sessionID) {
+        self.ownership = .none
+      }
+      guard case .success(let queue) = result, !self.player.isPlaying,
+        !self.pauseSavePending
+      else { return }
+      self.applyRemoteQueue(queue, allowsOwnedQueueRestore: allowsOwnedQueueRestore)
     }
-
-    let result = await request.task.value
-    if refreshRequest?.sequence == request.sequence {
-      refreshRequest = nil
-    }
-    guard request.sequence == latestRefreshSequence, !player.isPlaying,
-      pauseSnapshotSequence == nil, request.sessionID == session.activeSessionID
-    else { return nil }
-
-    let restoresOwnedQueue = initialRestoreSessionID == request.sessionID
-    if restoresOwnedQueue {
-      initialRestoreSessionID = nil
-    }
-
-    guard case .success(let queue) = result else {
-      // Handoff refreshes are opportunistic. The next lifecycle event or timer retries.
-      return nil
-    }
-    observeRemoteQueue(queue)
-    if restoresOwnedQueue {
-      restoreOwnedQueueIfNeeded(queue)
-    }
-    return queue
+    refreshTask = task
+    await task.value
   }
 
   private func observePlayback() {
@@ -172,9 +185,10 @@ final class QueueHandoffCoordinator: ObservableObject {
         Task { @MainActor [weak self] in
           guard let self else { return }
           self.takeLocalQueueOwnership()
-          if self.player.isPlaying {
-            self.scheduleSave(after: .milliseconds(250))
-          }
+          self.scheduleSave(
+            after: self.player.isPlaying ? .milliseconds(250) : .zero,
+            isPauseBoundary: !self.player.isPlaying
+          )
         }
       }
       .store(in: &cancellables)
@@ -184,7 +198,7 @@ final class QueueHandoffCoordinator: ObservableObject {
       .dropFirst()
       .sink { [weak self] _ in
         Task { @MainActor [weak self] in
-          guard let self, self.ownsLocalQueueState, self.player.isPlaying else { return }
+          guard let self, self.ownership == .local, self.player.isPlaying else { return }
           self.scheduleSave(after: .milliseconds(500))
         }
       }
@@ -197,13 +211,13 @@ final class QueueHandoffCoordinator: ObservableObject {
         Task { @MainActor [weak self] in
           guard let self else { return }
           if isPlaying {
-            self.pauseSnapshotSequence = nil
+            self.pauseSavePending = false
             self.takeLocalQueueOwnership()
             self.scheduleSave(after: .milliseconds(500))
-          } else if self.ownsLocalQueueState {
+          } else if self.ownership == .local {
             // One final handoff snapshot at the pause boundary. No later paused-state
             // event is permitted to write to the shared server queue.
-            self.scheduleSave(after: .zero, permitsPausedSnapshot: true)
+            self.scheduleSave(after: .zero, isPauseBoundary: true)
           }
         }
       }
@@ -222,7 +236,7 @@ final class QueueHandoffCoordinator: ObservableObject {
     NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
       .sink { [weak self] _ in
         Task { @MainActor [weak self] in
-          self?.scheduleLifecycleRefresh(after: .milliseconds(250))
+          self?.scheduleRefresh(after: .milliseconds(250))
         }
       }
       .store(in: &cancellables)
@@ -232,7 +246,7 @@ final class QueueHandoffCoordinator: ObservableObject {
       .sink { [weak self] _ in
         Task { @MainActor [weak self] in
           // Give networking a moment to recover after system wake.
-          self?.scheduleLifecycleRefresh(after: .seconds(2))
+          self?.scheduleRefresh(after: .seconds(2))
         }
       }
       .store(in: &cancellables)
@@ -240,7 +254,7 @@ final class QueueHandoffCoordinator: ObservableObject {
     workspaceNotifications.publisher(for: NSWorkspace.sessionDidBecomeActiveNotification)
       .sink { [weak self] _ in
         Task { @MainActor [weak self] in
-          self?.scheduleLifecycleRefresh(after: .seconds(1))
+          self?.scheduleRefresh(after: .seconds(1))
         }
       }
       .store(in: &cancellables)
@@ -251,7 +265,7 @@ final class QueueHandoffCoordinator: ObservableObject {
       while !Task.isCancelled {
         try? await Task.sleep(for: .seconds(15))
         guard !Task.isCancelled, let self else { return }
-        if self.ownsLocalQueueState, self.player.isPlaying {
+        if self.ownership == .local, self.player.isPlaying {
           self.scheduleSave(after: .zero)
         }
       }
@@ -270,26 +284,24 @@ final class QueueHandoffCoordinator: ObservableObject {
     }
   }
 
-  private func scheduleSave(after delay: Duration, permitsPausedSnapshot: Bool = false) {
-    guard ownsLocalQueueState else { return }
-    latestSequence &+= 1
-    let sequence = latestSequence
-    if permitsPausedSnapshot {
-      pauseSnapshotSequence = sequence
+  private func scheduleSave(after delay: Duration, isPauseBoundary: Bool = false) {
+    guard ownership == .local else { return }
+    if isPauseBoundary {
+      pauseSavePending = true
     }
     scheduledSaveTask?.cancel()
     scheduledSaveTask = Task { @MainActor [weak self] in
       if delay > .zero {
         try? await Task.sleep(for: delay)
       }
-      guard !Task.isCancelled, let self, sequence == self.latestSequence,
-        permitsPausedSnapshot || self.player.isPlaying
+      guard !Task.isCancelled, let self, self.ownership == .local,
+        isPauseBoundary || self.player.isPlaying
       else { return }
-      self.enqueueSave(sequence: sequence)
+      self.enqueueSave(isPauseBoundary: isPauseBoundary)
     }
   }
 
-  private func scheduleLifecycleRefresh(after delay: Duration) {
+  private func scheduleRefresh(after delay: Duration) {
     guard !player.isPlaying else { return }
     lifecycleRefreshTask?.cancel()
     lifecycleRefreshTask = Task { @MainActor [weak self] in
@@ -301,40 +313,52 @@ final class QueueHandoffCoordinator: ObservableObject {
     }
   }
 
-  private func enqueueSave(sequence: UInt64) {
-    guard let client = session.client, let sessionID = session.activeSessionID else { return }
+  private func enqueueSave(isPauseBoundary: Bool) {
+    guard let client = session.client, let sessionID = session.activeSessionID else {
+      if isPauseBoundary {
+        pauseSavePending = false
+      }
+      return
+    }
     pendingRequest = SaveRequest(
-      sequence: sequence,
+      generation: saveGeneration,
       sessionID: sessionID,
       client: client,
       snapshot: QueueHandoffSnapshot(
         queue: player.queue,
         currentIndex: player.currentIndex,
         positionSeconds: player.position
-      )
+      ),
+      isPauseBoundary: isPauseBoundary
     )
     guard saveWorkerTask == nil else { return }
+    let workerID = UUID()
+    saveWorkerID = workerID
     saveWorkerTask = Task { @MainActor [weak self] in
-      await self?.drainPendingSaves()
+      await self?.drainPendingSaves(workerID: workerID)
     }
   }
 
-  private func drainPendingSaves() async {
-    while let request = pendingRequest {
+  private func drainPendingSaves(workerID: UUID) async {
+    while saveWorkerID == workerID, let request = pendingRequest {
       pendingRequest = nil
       await save(request)
-      if pauseSnapshotSequence == request.sequence {
-        pauseSnapshotSequence = nil
+      if request.isPauseBoundary, pendingRequest == nil {
+        pauseSavePending = false
       }
     }
-    saveWorkerTask = nil
+    if saveWorkerID == workerID {
+      saveWorkerID = nil
+      saveWorkerTask = nil
+    }
   }
 
   private func save(_ request: SaveRequest) async {
     var retryDelay = Duration.seconds(1)
     for attempt in 0..<3 {
-      guard request.sequence == latestSequence,
-        request.sessionID == session.activeSessionID
+      guard request.generation == saveGeneration,
+        request.sessionID == session.activeSessionID,
+        ownership == .local
       else { return }
 
       do {
@@ -350,59 +374,71 @@ final class QueueHandoffCoordinator: ObservableObject {
         guard attempt < 2 else { return }
       }
 
+      guard pendingRequest == nil else { return }
       try? await Task.sleep(for: retryDelay)
       retryDelay *= 2
     }
   }
 
   private func invalidateForSessionChange() {
-    latestSequence &+= 1
-    latestRefreshSequence &+= 1
-    scheduledSaveTask?.cancel()
-    scheduledSaveTask = nil
-    pendingRequest = nil
-    pauseSnapshotSequence = nil
-    refreshRequest?.task.cancel()
-    refreshRequest = nil
-    initialRestoreSessionID = session.activeSessionID
-    ownsLocalQueueState = false
-    remoteQueue = nil
-    scheduleLifecycleRefresh(after: .milliseconds(250))
+    cancelSavePipeline()
+    cancelRefresh()
+    continueQueue = nil
+    guard let sessionID = session.activeSessionID else {
+      ownership = .none
+      return
+    }
+    ownership = .awaitingInitialQueue(sessionID)
+    scheduleRefresh(after: .milliseconds(250))
   }
 
-  private func restoreOwnedQueueIfNeeded(_ queue: RemotePlayQueue?) {
-    guard let queue,
-      shouldAutoRestorePlayQueue(
-        queue: queue,
-        localQueueIsEmpty: player.queue.isEmpty,
-        queueWasHandled: session.hasHandledPlayQueue(queue)
+  private func applyRemoteQueue(_ queue: RemotePlayQueue?, allowsOwnedQueueRestore: Bool) {
+    switch queueHandoffDisposition(
+      for: queue,
+      allowsOwnedQueueRestore: allowsOwnedQueueRestore,
+      localQueueIsEmpty: player.queue.isEmpty,
+      localPlaybackIsPlaying: player.isPlaying,
+      queueWasHandled: queue.map(session.hasHandledPlayQueue) ?? false
+    ) {
+    case .restore:
+      guard let queue else { return }
+      session.markPlayQueueHandled(queue)
+      ownership = .local
+      session.restore(
+        songs: queue.songs,
+        startAt: queue.resolvedCurrentIndex,
+        positionMilliseconds: queue.position ?? 0,
+        with: player
       )
-    else { return }
-
-    session.markPlayQueueHandled(queue)
-    session.restore(
-      songs: queue.songs,
-      startAt: queue.resolvedCurrentIndex,
-      positionMilliseconds: queue.position ?? 0,
-      with: player
-    )
+    case .offer:
+      cancelSavePipeline()
+      ownership = .none
+      continueQueue = queue
+    case .ignore:
+      continueQueue = nil
+    }
   }
 
   private func takeLocalQueueOwnership() {
-    ownsLocalQueueState = true
-    latestRefreshSequence &+= 1
-    refreshRequest?.task.cancel()
-    refreshRequest = nil
-    remoteQueue = nil
+    ownership = .local
+    cancelRefresh()
+    continueQueue = nil
   }
 
-  private func relinquishServerQueueOwnership() {
-    latestSequence &+= 1
+  private func cancelSavePipeline() {
+    saveGeneration = UUID()
     scheduledSaveTask?.cancel()
     scheduledSaveTask = nil
     pendingRequest = nil
-    pauseSnapshotSequence = nil
     saveWorkerTask?.cancel()
-    ownsLocalQueueState = false
+    saveWorkerTask = nil
+    saveWorkerID = nil
+    pauseSavePending = false
+  }
+
+  private func cancelRefresh() {
+    refreshID = nil
+    refreshTask?.cancel()
+    refreshTask = nil
   }
 }

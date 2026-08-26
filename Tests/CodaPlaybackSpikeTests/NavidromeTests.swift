@@ -239,8 +239,8 @@ struct NavidromeTests {
     #expect(!externalQueue.wasWrittenByThisCoda)
   }
 
-  @Test("only an unhandled owned queue is eligible for launch restoration")
-  func ownedQueueLaunchRestorationEligibility() {
+  @Test("queue handoff disposition keeps restore and offer policy central")
+  func queueHandoffDispositionPolicy() {
     let song = RemoteSong(id: "one", title: "One")
     let ownQueue = RemotePlayQueue(
       changedBy: NavidromeConfiguration.clientName,
@@ -249,32 +249,29 @@ struct NavidromeTests {
     let externalQueue = RemotePlayQueue(changedBy: "Coda Android", entry: [song])
 
     #expect(
-      shouldAutoRestorePlayQueue(
-        queue: ownQueue,
-        localQueueIsEmpty: true,
-        queueWasHandled: false
-      )
+      queueHandoffDisposition(
+        for: ownQueue, allowsOwnedQueueRestore: true, localQueueIsEmpty: true,
+        localPlaybackIsPlaying: false, queueWasHandled: false) == .restore
     )
     #expect(
-      !shouldAutoRestorePlayQueue(
-        queue: externalQueue,
-        localQueueIsEmpty: true,
-        queueWasHandled: false
-      )
+      queueHandoffDisposition(
+        for: externalQueue, allowsOwnedQueueRestore: true, localQueueIsEmpty: true,
+        localPlaybackIsPlaying: false, queueWasHandled: false) == .offer
     )
     #expect(
-      !shouldAutoRestorePlayQueue(
-        queue: ownQueue,
-        localQueueIsEmpty: false,
-        queueWasHandled: false
-      )
+      queueHandoffDisposition(
+        for: ownQueue, allowsOwnedQueueRestore: false, localQueueIsEmpty: true,
+        localPlaybackIsPlaying: false, queueWasHandled: false) == .ignore
     )
     #expect(
-      !shouldAutoRestorePlayQueue(
-        queue: ownQueue,
-        localQueueIsEmpty: true,
-        queueWasHandled: true
-      )
+      queueHandoffDisposition(
+        for: externalQueue, allowsOwnedQueueRestore: true, localQueueIsEmpty: true,
+        localPlaybackIsPlaying: true, queueWasHandled: false) == .ignore
+    )
+    #expect(
+      queueHandoffDisposition(
+        for: externalQueue, allowsOwnedQueueRestore: true, localQueueIsEmpty: true,
+        localPlaybackIsPlaying: false, queueWasHandled: true) == .ignore
     )
   }
 
@@ -289,7 +286,7 @@ struct NavidromeTests {
     )
     coordinator.observeRemoteQueue(external)
 
-    #expect(coordinator.remoteQueue == external)
+    #expect(coordinator.continueQueue == external)
 
     player.replaceQueue(
       [
@@ -304,49 +301,50 @@ struct NavidromeTests {
     await Task.yield()
     await Task.yield()
 
-    #expect(coordinator.remoteQueue == nil)
+    #expect(coordinator.continueQueue == nil)
   }
 
-  @Test("continue offer requires a paused Mac and an external unhandled queue")
-  func continueOfferEligibility() {
+  @Test("ignored remote queues clear an obsolete continue candidate")
+  func ignoredRemoteQueuesClearContinueCandidate() {
+    let session = AppSession(loadCredentials: false)
+    let player = PlayerController(backend: TestPlaybackBackend())
+    let coordinator = QueueHandoffCoordinator(session: session, player: player)
     let external = RemotePlayQueue(
       changedBy: "Coda Android",
-      entry: [RemoteSong(id: "one", title: "One")]
-    )
-    let own = RemotePlayQueue(
-      changedBy: NavidromeConfiguration.clientName,
-      entry: [RemoteSong(id: "one", title: "One")]
+      entry: [RemoteSong(id: "android-song", title: "Android Song")]
     )
 
-    #expect(
-      shouldOfferContinuePlaying(
-        queue: external, macPlaybackIsPlaying: false, queueWasHandled: false))
-    #expect(
-      !shouldOfferContinuePlaying(
-        queue: external, macPlaybackIsPlaying: true, queueWasHandled: false))
-    #expect(
-      !shouldOfferContinuePlaying(
-        queue: external, macPlaybackIsPlaying: false, queueWasHandled: true))
-    #expect(
-      !shouldOfferContinuePlaying(
-        queue: own, macPlaybackIsPlaying: false, queueWasHandled: false))
-    #expect(
-      !shouldOfferContinuePlaying(
-        queue: RemotePlayQueue(), macPlaybackIsPlaying: false, queueWasHandled: false))
-    #expect(
-      shouldRevealContinuePlaying(
-        queue: external,
-        macPlaybackIsPlaying: false,
-        queueWasHandled: false,
-        nowPlayingIsPresented: true
-      ))
-    #expect(
-      !shouldRevealContinuePlaying(
-        queue: external,
-        macPlaybackIsPlaying: false,
-        queueWasHandled: false,
-        nowPlayingIsPresented: false
-      ))
+    coordinator.observeRemoteQueue(external)
+    #expect(coordinator.continueQueue == external)
+
+    session.markPlayQueueHandled(external)
+    coordinator.observeRemoteQueue(external)
+    #expect(coordinator.continueQueue == nil)
+
+    let newerExternal = RemotePlayQueue(
+      changedBy: "Coda Android",
+      entry: [RemoteSong(id: "new-android-song", title: "New Android Song")]
+    )
+    coordinator.observeRemoteQueue(newerExternal)
+    #expect(coordinator.continueQueue == newerExternal)
+
+    coordinator.observeRemoteQueue(nil)
+    #expect(coordinator.continueQueue == nil)
+  }
+
+  @Test("owned queues are never presented as external continue candidates")
+  func ownedQueuesAreNotContinueCandidates() {
+    let session = AppSession(loadCredentials: false)
+    let player = PlayerController(backend: TestPlaybackBackend())
+    let coordinator = QueueHandoffCoordinator(session: session, player: player)
+    let owned = RemotePlayQueue(
+      changedBy: NavidromeConfiguration.clientName,
+      entry: [RemoteSong(id: "mac-song", title: "Mac Song")]
+    )
+
+    coordinator.observeRemoteQueue(owned)
+
+    #expect(coordinator.continueQueue == nil)
   }
 
   @Test("human-readable device client identity")
