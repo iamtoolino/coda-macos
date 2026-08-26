@@ -126,7 +126,7 @@ final class NowPlayingPresentationController: ObservableObject {
     self.playbackKey = playbackKey
     self.isPlaying = isPlaying
 
-    if playbackKey == nil {
+    if playbackKey == nil, preparedTheme != nil {
       self.preparedTheme = nil
     }
 

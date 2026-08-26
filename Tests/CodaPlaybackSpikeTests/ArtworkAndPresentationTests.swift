@@ -340,6 +340,25 @@ struct ArtworkAndPresentationTests {
     #expect(presentation.preparedTheme == nil)
   }
 
+  @Test("empty now playing context does not republish an empty theme")
+  func emptyNowPlayingContextDoesNotRepublishAnEmptyTheme() {
+    let presentation = NowPlayingPresentationController()
+    var themePublicationCount = 0
+    let observation = presentation.$preparedTheme.dropFirst().sink { _ in
+      themePublicationCount += 1
+    }
+
+    presentation.updateContext(
+      window: nil, isApplicationActive: true, hasEstablishedConnection: true,
+      playbackKey: nil, isPlaying: false)
+    presentation.updateContext(
+      window: nil, isApplicationActive: true, hasEstablishedConnection: true,
+      playbackKey: nil, isPlaying: false)
+
+    #expect(themePublicationCount == 0)
+    withExtendedLifetime(observation) {}
+  }
+
   @Test("now playing automatic presentation preference persists")
   func nowPlayingAutomaticPresentationPreferencePersists() throws {
     let suiteName = "CodaTests-NowPlaying-\(UUID().uuidString)"
