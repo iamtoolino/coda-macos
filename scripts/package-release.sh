@@ -5,7 +5,10 @@ set -euo pipefail
 root="${0:A:h:h}"
 plist="$root/Support/Info.plist"
 app="$root/.build/Coda.app"
-signing_identity_name="${CODA_SIGNING_IDENTITY:-Coda Local Development}"
+signing_identity_name="Coda Local Development"
+signing_identity_sha1="C0265B406C5DB49A5C626DDA5D1B12EADA89752C"
+bundle_identifier="io.github.iamtoolino.coda.macos"
+expected_designated_requirement="identifier \"$bundle_identifier\" and certificate root = H\"${(L)signing_identity_sha1}\""
 
 usage() {
   print -u2 "Usage: ${0:t} [X.Y.Z]"
@@ -27,6 +30,12 @@ fi
 
 if [[ "$version" != "$plist_version" ]]; then
   print -u2 "Requested version $version does not match Info.plist $plist_version."
+  exit 1
+fi
+
+if [[ -n "${CODA_SIGNING_IDENTITY:-}" ]]; then
+  print -u2 "CODA_SIGNING_IDENTITY cannot override the public release identity."
+  print -u2 "A signing-identity migration requires an explicit, separately reviewed script change."
   exit 1
 fi
 
@@ -57,17 +66,19 @@ fi
 signing_identity="$({
   security find-identity -v -p codesigning \
     "$HOME/Library/Keychains/login.keychain-db" \
-    | awk -v name="\"$signing_identity_name\"" '$0 ~ name { print $2; exit }'
+    | awk -v fingerprint="$signing_identity_sha1" -v name="\"$signing_identity_name\"" \
+        '$2 == fingerprint && $0 ~ name { print $2; exit }'
 } 2>/dev/null)"
 
 if [[ -z "$signing_identity" ]]; then
-  print -u2 "Release signing identity '$signing_identity_name' was not found."
+  print -u2 "Required release signing identity was not found:"
+  print -u2 "  $signing_identity_sha1 $signing_identity_name"
   print -u2 "Refusing to package an ad-hoc-signed public release."
   exit 1
 fi
 
 swift test --package-path "$root"
-"$root/scripts/build-app.sh" release
+CODA_SIGNING_IDENTITY="$signing_identity_sha1" "$root/scripts/build-app.sh" release
 
 bundle_version="$(/usr/libexec/PlistBuddy \
   -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
@@ -110,6 +121,15 @@ codesign --verify --deep --strict --verbose=2 "$app"
 signature_details="$(codesign -dvvv "$app" 2>&1)"
 if [[ "$signature_details" != *"Authority=$signing_identity_name"* ]]; then
   print -u2 "Built app was not signed by '$signing_identity_name'."
+  exit 1
+fi
+designated_requirement="$(
+  codesign -d -r- "$app" 2>&1 | sed -n 's/^designated => //p'
+)"
+if [[ "$designated_requirement" != "$expected_designated_requirement" ]]; then
+  print -u2 "Built app has an unexpected designated requirement."
+  print -u2 "Expected: $expected_designated_requirement"
+  print -u2 "Actual:   $designated_requirement"
   exit 1
 fi
 

@@ -83,7 +83,8 @@ chmod 755 "$app/Contents/Frameworks/"*.dylib
 
 signing_identity="$({
   security find-identity -v -p codesigning "$HOME/Library/Keychains/login.keychain-db" \
-    | awk -v name="\"$signing_identity_name\"" '$0 ~ name { print $2; exit }'
+    | awk -v identity="$signing_identity_name" -v name="\"$signing_identity_name\"" \
+        '$2 == identity || $0 ~ name { print $2; exit }'
 } 2>/dev/null)"
 
 if [[ -z "$signing_identity" ]]; then

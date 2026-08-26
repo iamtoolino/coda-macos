@@ -9,13 +9,16 @@ preparation and packaging.
 - A clean `main` checkout containing every intended release commit.
 - The version in `Support/Info.plist` set to the release version.
 - Xcode Command Line Tools, Swift, and the dependencies listed in `README.md`.
-- A valid code-signing identity named `Coda Local Development` in the login keychain. Set
-  `CODA_SIGNING_IDENTITY` only when deliberately using another established release identity.
+- The long-lived `Coda Local Development` code-signing identity with SHA-1 fingerprint
+  `C0265B406C5DB49A5C626DDA5D1B12EADA89752C` in the login keychain.
 - An authenticated GitHub CLI session for the final publish step.
 
 The public build is not Developer ID signed or notarized. The local development identity keeps the
 signature stable across Coda releases. `scripts/package-release.sh` refuses to package a public
-release when that identity is unavailable instead of silently falling back to ad-hoc signing.
+release when that exact identity is unavailable instead of silently falling back to ad-hoc signing.
+It also rejects `CODA_SIGNING_IDENTITY` overrides and verifies that the finished app's designated
+requirement references the expected certificate. Changing the public release identity is a
+separately reviewed migration because it changes Coda's Keychain and Local Network privacy identity.
 
 ## 1. Prepare the release commit
 
@@ -64,7 +67,7 @@ tests and release build, then verifies:
 
 - source version, embedded Git commit, and exact tag;
 - release configuration and arm64 architecture;
-- code signature and release signing identity;
+- strict nested code signatures and the pinned release signing identity and designated requirement;
 - release entitlements and bundled license materials through `build-app.sh`;
 - ZIP integrity and SHA-256 checksum.
 
