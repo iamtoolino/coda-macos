@@ -156,10 +156,11 @@ struct HomeView: View {
 
   private func autoRestoreIfNeeded(_ queue: RemotePlayQueue?) {
     guard let queue,
-      queue.wasWrittenByThisCoda,
-      !queue.songs.isEmpty,
-      player.queue.isEmpty,
-      !session.hasHandledPlayQueue(queue)
+      shouldAutoRestorePlayQueue(
+        queue: queue,
+        localQueueIsEmpty: player.queue.isEmpty,
+        queueWasHandled: session.hasHandledPlayQueue(queue)
+      )
     else { return }
 
     session.markPlayQueueHandled(queue)
@@ -170,6 +171,18 @@ struct HomeView: View {
       with: player
     )
   }
+}
+
+func shouldAutoRestorePlayQueue(
+  queue: RemotePlayQueue?,
+  localQueueIsEmpty: Bool,
+  queueWasHandled: Bool
+) -> Bool {
+  guard let queue else { return false }
+  return queue.wasWrittenByThisCoda
+    && !queue.songs.isEmpty
+    && localQueueIsEmpty
+    && !queueWasHandled
 }
 
 func shouldOfferContinuePlaying(

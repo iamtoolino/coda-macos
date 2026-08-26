@@ -56,6 +56,7 @@ final class QueueHandoffCoordinator: ObservableObject {
   private var latestSequence: UInt64 = 0
   private var latestRefreshSequence: UInt64 = 0
   private var refreshRequest: RefreshRequest?
+  private var initialRestoreSessionID: UUID?
   private var pauseSnapshotSequence: UInt64?
   private var ownsLocalQueueState = false
 
@@ -146,11 +147,19 @@ final class QueueHandoffCoordinator: ObservableObject {
       pauseSnapshotSequence == nil, request.sessionID == session.activeSessionID
     else { return nil }
 
+    let restoresOwnedQueue = initialRestoreSessionID == request.sessionID
+    if restoresOwnedQueue {
+      initialRestoreSessionID = nil
+    }
+
     guard case .success(let queue) = result else {
       // Handoff refreshes are opportunistic. The next lifecycle event or timer retries.
       return nil
     }
     observeRemoteQueue(queue)
+    if restoresOwnedQueue {
+      restoreOwnedQueueIfNeeded(queue)
+    }
     return queue
   }
 
@@ -355,9 +364,28 @@ final class QueueHandoffCoordinator: ObservableObject {
     pauseSnapshotSequence = nil
     refreshRequest?.task.cancel()
     refreshRequest = nil
+    initialRestoreSessionID = session.activeSessionID
     ownsLocalQueueState = false
     remoteQueue = nil
     scheduleLifecycleRefresh(after: .milliseconds(250))
+  }
+
+  private func restoreOwnedQueueIfNeeded(_ queue: RemotePlayQueue?) {
+    guard let queue,
+      shouldAutoRestorePlayQueue(
+        queue: queue,
+        localQueueIsEmpty: player.queue.isEmpty,
+        queueWasHandled: session.hasHandledPlayQueue(queue)
+      )
+    else { return }
+
+    session.markPlayQueueHandled(queue)
+    session.restore(
+      songs: queue.songs,
+      startAt: queue.resolvedCurrentIndex,
+      positionMilliseconds: queue.position ?? 0,
+      with: player
+    )
   }
 
   private func takeLocalQueueOwnership() {

@@ -239,6 +239,45 @@ struct NavidromeTests {
     #expect(!externalQueue.wasWrittenByThisCoda)
   }
 
+  @Test("only an unhandled owned queue is eligible for launch restoration")
+  func ownedQueueLaunchRestorationEligibility() {
+    let song = RemoteSong(id: "one", title: "One")
+    let ownQueue = RemotePlayQueue(
+      changedBy: NavidromeConfiguration.clientName,
+      entry: [song]
+    )
+    let externalQueue = RemotePlayQueue(changedBy: "Coda Android", entry: [song])
+
+    #expect(
+      shouldAutoRestorePlayQueue(
+        queue: ownQueue,
+        localQueueIsEmpty: true,
+        queueWasHandled: false
+      )
+    )
+    #expect(
+      !shouldAutoRestorePlayQueue(
+        queue: externalQueue,
+        localQueueIsEmpty: true,
+        queueWasHandled: false
+      )
+    )
+    #expect(
+      !shouldAutoRestorePlayQueue(
+        queue: ownQueue,
+        localQueueIsEmpty: false,
+        queueWasHandled: false
+      )
+    )
+    #expect(
+      !shouldAutoRestorePlayQueue(
+        queue: ownQueue,
+        localQueueIsEmpty: true,
+        queueWasHandled: true
+      )
+    )
+  }
+
   @Test("local queue ownership supersedes an external continue candidate")
   func localQueueOwnershipSupersedesExternalContinueCandidate() async {
     let session = AppSession(loadCredentials: false)
