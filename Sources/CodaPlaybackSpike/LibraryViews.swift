@@ -139,15 +139,8 @@ struct HomeView: View {
 
   @MainActor
   private func loadPlayQueue() async {
-    guard let request = session.sessionRequestContext() else { return }
-    do {
-      let savedQueue = try await request.client.playQueue()
-      guard session.isCurrent(request) else { return }
-      queueHandoff.observeRemoteQueue(savedQueue)
-      autoRestoreIfNeeded(savedQueue)
-    } catch {
-      // Queue handoff is opportunistic and will retry on later refreshes.
-    }
+    let savedQueue = await queueHandoff.refreshRemoteQueue()
+    autoRestoreIfNeeded(savedQueue)
   }
 
   private var offeredContinueQueue: RemotePlayQueue? {

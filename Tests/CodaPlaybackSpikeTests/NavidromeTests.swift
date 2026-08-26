@@ -206,6 +206,23 @@ struct NavidromeTests {
     #expect(snapshot.positionMilliseconds == 12_345)
   }
 
+  @Test("finished queue handoff is not resumable")
+  func finishedQueueHandoffIsNotResumable() {
+    let entries = [
+      QueueEntry(sourceID: "one", url: URL(string: "https://example.test/one")!, title: "One"),
+      QueueEntry(sourceID: "two", url: URL(string: "https://example.test/two")!, title: "Two"),
+    ]
+    let snapshot = QueueHandoffSnapshot(
+      queue: entries,
+      currentIndex: nil,
+      positionSeconds: 999
+    )
+
+    #expect(snapshot.songIDs.isEmpty)
+    #expect(snapshot.currentIndex == 0)
+    #expect(snapshot.positionMilliseconds == 0)
+  }
+
   @Test("Coda Mac queue recognition")
   func codaMacQueueRecognition() {
     let song = RemoteSong(id: "two", title: "Two")
@@ -220,6 +237,35 @@ struct NavidromeTests {
     #expect(ownQueue.wasWrittenByThisCoda)
     #expect(ownQueue.resolvedCurrentIndex == 0)
     #expect(!externalQueue.wasWrittenByThisCoda)
+  }
+
+  @Test("local queue ownership supersedes an external continue candidate")
+  func localQueueOwnershipSupersedesExternalContinueCandidate() async {
+    let session = AppSession(loadCredentials: false)
+    let player = PlayerController(backend: TestPlaybackBackend())
+    let coordinator = QueueHandoffCoordinator(session: session, player: player)
+    let external = RemotePlayQueue(
+      changedBy: "Coda Android",
+      entry: [RemoteSong(id: "android-song", title: "Android Song")]
+    )
+    coordinator.observeRemoteQueue(external)
+
+    #expect(coordinator.remoteQueue == external)
+
+    player.replaceQueue(
+      [
+        QueueEntry(
+          sourceID: "mac-song",
+          url: URL(string: "https://example.test/mac-song")!,
+          title: "Mac Song"
+        )
+      ],
+      startsPlaying: true
+    )
+    await Task.yield()
+    await Task.yield()
+
+    #expect(coordinator.remoteQueue == nil)
   }
 
   @Test("continue offer requires a paused Mac and an external unhandled queue")
