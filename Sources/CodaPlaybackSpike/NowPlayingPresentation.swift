@@ -695,13 +695,11 @@ private struct NowPlayingAlbumRating: View {
   let fallbackRating: Int?
   let accent: Color
 
-  @State private var confirmedRating: Int?
   @State private var hoveredRating: Int?
-  @State private var errorMessage: String?
   @State private var ratingHighlightTrigger = 0
 
   private var rating: Int? {
-    session.rating(forAlbumID: albumID, fallback: confirmedRating ?? fallbackRating)
+    session.rating(forAlbumID: albumID, fallback: fallbackRating)
   }
 
   var body: some View {
@@ -714,7 +712,13 @@ private struct NowPlayingAlbumRating: View {
         ForEach(1...5, id: \.self) { value in
           Button {
             ratingHighlightTrigger &+= 1
-            Task { await updateRating(value) }
+            Task {
+              await session.updateAlbumRating(
+                value,
+                forAlbumID: albumID,
+                fallback: fallbackRating
+              )
+            }
           } label: {
             Image(systemName: value <= displayedRating ? "star.fill" : "star")
               .font(.system(size: 22, weight: .medium))
@@ -742,44 +746,14 @@ private struct NowPlayingAlbumRating: View {
       .onHover { isHovering in
         if !isHovering { hoveredRating = nil }
       }
-
-      if let errorMessage {
-        Text(errorMessage)
-          .font(.caption2)
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-      }
     }
     .onChange(of: albumID) {
-      confirmedRating = nil
       hoveredRating = nil
-      errorMessage = nil
     }
   }
 
   private var displayedRating: Int {
     hoveredRating ?? max(0, min(rating ?? 0, 5))
-  }
-
-  @MainActor
-  private func updateRating(_ newRating: Int) async {
-    guard let request = session.sessionRequestContext() else { return }
-    guard session.beginAlbumRatingUpdate() else { return }
-    defer { session.finishAlbumRatingUpdate(for: request) }
-
-    let requestedAlbumID = albumID
-    let previousRating = rating
-    errorMessage = nil
-    session.rememberRating(newRating, forAlbumID: requestedAlbumID)
-    do {
-      try await request.client.setRating(id: requestedAlbumID, rating: newRating)
-      guard session.isCurrent(request) else { return }
-      if albumID == requestedAlbumID { confirmedRating = newRating }
-    } catch {
-      guard session.isCurrent(request) else { return }
-      session.rememberRating(previousRating, forAlbumID: requestedAlbumID)
-      if albumID == requestedAlbumID { errorMessage = "Could not update rating" }
-    }
   }
 }
 

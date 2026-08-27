@@ -211,6 +211,17 @@ struct ContentView: View {
       QueuePlaylistSaveSheet()
         .environmentObject(playlistSaver)
     }
+    .alert(
+      "Could Not Update Rating",
+      isPresented: Binding(
+        get: { session.albumRatingErrorMessage != nil },
+        set: { if !$0 { session.dismissAlbumRatingError() } }
+      )
+    ) {
+      Button("OK", role: .cancel) { session.dismissAlbumRatingError() }
+    } message: {
+      Text(session.albumRatingErrorMessage ?? "The server rejected the rating.")
+    }
     .onAppear {
       session.startAutomaticConnection()
       applyArtworkDisplayContext()

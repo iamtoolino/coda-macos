@@ -78,6 +78,7 @@ final class AppSession: ObservableObject {
   @Published private(set) var rootToken = UUID()
   @Published private var albumRatingOverrides: [String: Int] = [:]
   @Published private(set) var isUpdatingAlbumRating = false
+  @Published private(set) var albumRatingErrorMessage: String?
   @Published private(set) var isSigningOut = false
 
   private var artworkURLs: [String: URL] = [:]
@@ -268,6 +269,7 @@ final class AppSession: ObservableObject {
     handledPlayQueueIdentity = nil
     albumRatingOverrides.removeAll()
     isUpdatingAlbumRating = false
+    albumRatingErrorMessage = nil
     ratingUpdateSessionID = nil
     if !preservingExistingClient {
       client = nil
@@ -287,6 +289,7 @@ final class AppSession: ObservableObject {
     serverDetails = nil
     self.configuration = configuration
     isUpdatingAlbumRating = false
+    albumRatingErrorMessage = nil
     ratingUpdateSessionID = nil
     connectionState = .failed(error.localizedDescription)
     path.removeAll()
@@ -302,6 +305,7 @@ final class AppSession: ObservableObject {
     handledPlayQueueIdentity = nil
     albumRatingOverrides.removeAll()
     isUpdatingAlbumRating = false
+    albumRatingErrorMessage = nil
     ratingUpdateSessionID = nil
     artworkURLs.removeAll()
     connectionState = state
@@ -366,6 +370,28 @@ final class AppSession: ObservableObject {
 
   func rememberRating(_ rating: Int?, forAlbumID albumID: String) {
     albumRatingOverrides[albumID] = rating ?? 0
+  }
+
+  func updateAlbumRating(_ rating: Int, forAlbumID albumID: String, fallback: Int?) async {
+    guard let request = sessionRequestContext(), beginAlbumRatingUpdate() else { return }
+    defer { finishAlbumRatingUpdate(for: request) }
+
+    let previousRating = self.rating(forAlbumID: albumID, fallback: fallback)
+    albumRatingErrorMessage = nil
+    rememberRating(rating, forAlbumID: albumID)
+
+    do {
+      try await request.client.setRating(id: albumID, rating: rating)
+      guard isCurrent(request) else { return }
+    } catch {
+      guard isCurrent(request) else { return }
+      rememberRating(previousRating, forAlbumID: albumID)
+      albumRatingErrorMessage = error.localizedDescription
+    }
+  }
+
+  func dismissAlbumRatingError() {
+    albumRatingErrorMessage = nil
   }
 
   func beginAlbumRatingUpdate() -> Bool {

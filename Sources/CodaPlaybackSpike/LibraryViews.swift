@@ -1007,7 +1007,6 @@ struct AlbumDetailView: View {
   @StateObject private var artworkLoader = AlbumArtworkLoader()
   @State private var page: AlbumPage?
   @State private var errorMessage: String?
-  @State private var ratingErrorMessage: String?
   @State private var ratingHighlightTrigger = 0
   @State private var selectedSongIDs: [String] = []
   @State private var selectionAnchorSongID: String?
@@ -1148,17 +1147,6 @@ struct AlbumDetailView: View {
       else { return }
       applyLoadedArtwork()
     }
-    .alert(
-      "Could Not Update Rating",
-      isPresented: Binding(
-        get: { ratingErrorMessage != nil },
-        set: { if !$0 { ratingErrorMessage = nil } }
-      )
-    ) {
-      Button("OK", role: .cancel) {}
-    } message: {
-      Text(ratingErrorMessage ?? "The server rejected the rating.")
-    }
   }
 
   private func selectTrack(
@@ -1197,7 +1185,13 @@ struct AlbumDetailView: View {
       ratingHighlightTrigger: ratingHighlightTrigger,
       ratingAction: { rating in
         ratingHighlightTrigger &+= 1
-        Task { await updateRating(rating, albumID: page.album.id) }
+        Task {
+          await session.updateAlbumRating(
+            rating,
+            forAlbumID: page.album.id,
+            fallback: page.album.userRating
+          )
+        }
       },
       artistAction: page.album.artistId.map { artistID in
         { session.open(.artist(artistID)) }
@@ -1230,37 +1224,6 @@ struct AlbumDetailView: View {
       canonicalAlbumArtworkID: page.album.artworkID,
       with: player
     )
-  }
-
-  @MainActor
-  private func updateRating(_ rating: Int, albumID: String) async {
-    guard let request = session.sessionRequestContext(), let currentPage = page,
-      currentPage.album.id == albumID
-    else { return }
-    guard session.beginAlbumRatingUpdate() else { return }
-    defer { session.finishAlbumRatingUpdate(for: request) }
-
-    let previousRating = session.rating(for: currentPage.album)
-    var updatedAlbum = currentPage.album
-    updatedAlbum.userRating = rating
-    page = AlbumPage(album: updatedAlbum, songs: currentPage.songs)
-    session.rememberRating(rating, forAlbumID: albumID)
-
-    do {
-      try await request.client.setRating(id: albumID, rating: rating)
-      guard session.isCurrent(request) else { return }
-    } catch {
-      guard session.isCurrent(request) else { return }
-      if let latestPage = page, latestPage.album.id == albumID,
-        latestPage.album.userRating == rating
-      {
-        var restoredAlbum = latestPage.album
-        restoredAlbum.userRating = previousRating
-        page = AlbumPage(album: restoredAlbum, songs: latestPage.songs)
-        session.rememberRating(previousRating, forAlbumID: albumID)
-      }
-      ratingErrorMessage = error.localizedDescription
-    }
   }
 
   @MainActor
