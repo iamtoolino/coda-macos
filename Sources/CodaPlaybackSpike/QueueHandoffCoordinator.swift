@@ -46,37 +46,29 @@ func queueHandoffDisposition(
   return .offer
 }
 
-@MainActor
-private final class FirstAsyncCompletion {
-  private var continuation: CheckedContinuation<Void, Never>?
-
-  init(_ continuation: CheckedContinuation<Void, Never>) {
-    self.continuation = continuation
+@discardableResult
+func waitForTerminationOperation(
+  timeout: TimeInterval,
+  operation: @escaping @Sendable () async -> Void
+) -> Bool {
+  let completion = DispatchSemaphore(value: 0)
+  Task.detached {
+    await operation()
+    completion.signal()
   }
-
-  func finish() {
-    guard let continuation else { return }
-    self.continuation = nil
-    continuation.resume()
-  }
+  return completion.wait(timeout: .now() + max(0, timeout)) == .success
 }
 
-@MainActor
-func awaitOperationUntilDeadline(
-  _ timeout: Duration,
-  operation: @escaping @Sendable () async -> Void
-) async {
-  await withCheckedContinuation { continuation in
-    let completion = FirstAsyncCompletion(continuation)
-    let operationTask = Task {
-      await operation()
-      completion.finish()
-    }
-    Task {
-      try? await Task.sleep(for: timeout)
-      operationTask.cancel()
-      completion.finish()
-    }
+struct QueueHandoffTerminationSave: Sendable {
+  let client: NavidromeClient
+  let snapshot: QueueHandoffSnapshot
+
+  func perform() async {
+    try? await client.savePlayQueue(
+      songIDs: snapshot.songIDs,
+      currentIndex: snapshot.currentIndex,
+      positionMilliseconds: snapshot.positionMilliseconds
+    )
   }
 }
 
@@ -128,26 +120,21 @@ final class QueueHandoffCoordinator: ObservableObject {
     startPeriodicRefreshes()
   }
 
-  func saveBeforeTermination(timeout: Duration = .seconds(1)) async {
+  func prepareTerminationSave() -> QueueHandoffTerminationSave? {
     guard ownership == .local, let client = session.client,
       session.activeSessionID != nil
-    else { return }
+    else { return nil }
 
     cancelSavePipeline()
 
-    let snapshot = QueueHandoffSnapshot(
-      queue: player.queue,
-      currentIndex: player.currentIndex,
-      positionSeconds: player.position
-    )
-
-    await awaitOperationUntilDeadline(timeout) {
-      try? await client.savePlayQueue(
-        songIDs: snapshot.songIDs,
-        currentIndex: snapshot.currentIndex,
-        positionMilliseconds: snapshot.positionMilliseconds
+    return QueueHandoffTerminationSave(
+      client: client,
+      snapshot: QueueHandoffSnapshot(
+        queue: player.queue,
+        currentIndex: player.currentIndex,
+        positionSeconds: player.position
       )
-    }
+    )
   }
 
   func observeRemoteQueue(_ queue: RemotePlayQueue?) {

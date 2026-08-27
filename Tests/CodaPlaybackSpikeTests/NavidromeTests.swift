@@ -18,11 +18,11 @@ struct NavidromeTests {
   }
 
   @Test("termination deadline does not wait for a cancellation-resistant save")
-  func terminationDeadlineIsHardBound() async {
+  func terminationDeadlineIsHardBound() {
     let clock = ContinuousClock()
     let start = clock.now
 
-    await awaitOperationUntilDeadline(.milliseconds(20)) {
+    let completed = waitForTerminationOperation(timeout: 0.02) {
       await withCheckedContinuation { continuation in
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
           continuation.resume()
@@ -30,6 +30,7 @@ struct NavidromeTests {
       }
     }
 
+    #expect(!completed)
     #expect(clock.now - start < .milliseconds(150))
   }
 

@@ -223,7 +223,6 @@ private final class CodaAppDelegate: NSObject, NSApplicationDelegate {
   private var terminationSignalSource: DispatchSourceSignal?
   private var mouseNavigationMonitor: Any?
   private var windowActivationObserver: NSObjectProtocol?
-  private var isPreparingToTerminate = false
 
   func applicationWillFinishLaunching(_ notification: Notification) {
     NSWindow.allowsAutomaticWindowTabbing = false
@@ -267,13 +266,12 @@ private final class CodaAppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-    guard !isPreparingToTerminate, let queueHandoff else { return .terminateNow }
-    isPreparingToTerminate = true
-    Task { @MainActor in
-      await queueHandoff.saveBeforeTermination()
-      sender.reply(toApplicationShouldTerminate: true)
+    if let save = queueHandoff?.prepareTerminationSave() {
+      waitForTerminationOperation(timeout: 1) {
+        await save.perform()
+      }
     }
-    return .terminateLater
+    return .terminateNow
   }
 
   func applicationDidBecomeActive(_ notification: Notification) {
