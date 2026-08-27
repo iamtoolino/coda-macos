@@ -485,6 +485,7 @@ struct NowPlayingPresentationView: View {
                   Text(entry.artist)
                     .font(.title3.weight(.medium))
                     .foregroundStyle(presentationAccent)
+                    .animation(.easeInOut(duration: 0.85), value: preparedThemeID)
                     .lineLimit(1)
                     .contentShape(Rectangle())
                     .onTapGesture {
@@ -499,6 +500,7 @@ struct NowPlayingPresentationView: View {
                   Text(entry.artist)
                     .font(.title3.weight(.medium))
                     .foregroundStyle(presentationAccent)
+                    .animation(.easeInOut(duration: 0.85), value: preparedThemeID)
                     .lineLimit(1)
                 }
               }
@@ -534,6 +536,7 @@ struct NowPlayingPresentationView: View {
                 fallbackRating: album?.userRating,
                 accent: presentationAccent
               )
+              .animation(.easeInOut(duration: 0.85), value: preparedThemeID)
               .padding(.top, 18)
             }
           }
@@ -606,6 +609,10 @@ struct NowPlayingPresentationView: View {
 
   private var presentationAccent: Color {
     presentation.preparedTheme?.accent.color ?? ArtworkColor.fallback.color
+  }
+
+  private var preparedThemeID: UUID? {
+    presentation.preparedTheme?.id
   }
 
   private func showArtist(_ artistID: String) {
