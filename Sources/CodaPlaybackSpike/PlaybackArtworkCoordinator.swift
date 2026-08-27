@@ -7,15 +7,25 @@ struct PlaybackArtworkPreparationRequest: Equatable {
   let playbackKey: String?
   let standardArtworkURL: URL?
   let nowPlayingArtworkURL: URL?
-  let nextNowPlayingArtworkURL: URL?
   let cacheGeneration: Int
 
-  init(current: QueueEntry?, next: QueueEntry?, cacheGeneration: Int) {
+  init(current: QueueEntry?, cacheGeneration: Int) {
     standardIdentity = current?.artworkThemeIdentity
     playbackKey = current?.nowPlayingPlaybackKey
     standardArtworkURL = current?.artworkURL
     nowPlayingArtworkURL = current?.nowPlayingArtworkURL ?? current?.artworkURL
-    nextNowPlayingArtworkURL = next?.nowPlayingArtworkURL ?? next?.artworkURL
+    self.cacheGeneration = cacheGeneration
+  }
+}
+
+struct PlaybackArtworkPrefetchRequest: Equatable {
+  let currentArtworkURL: URL?
+  let nextArtworkURL: URL?
+  let cacheGeneration: Int
+
+  init(current: QueueEntry?, next: QueueEntry?, cacheGeneration: Int) {
+    currentArtworkURL = current?.nowPlayingArtworkURL ?? current?.artworkURL
+    nextArtworkURL = next?.nowPlayingArtworkURL ?? next?.artworkURL
     self.cacheGeneration = cacheGeneration
   }
 }
@@ -31,6 +41,7 @@ final class PlaybackArtworkCoordinator: ObservableObject {
   private let imageLoader: ImageLoader
   private var standardTask: Task<Void, Never>?
   private var nowPlayingTask: Task<Void, Never>?
+  private var prefetchTask: Task<Void, Never>?
   private var currentRequest: PlaybackArtworkPreparationRequest?
   private var cancellables: Set<AnyCancellable> = []
 
@@ -56,13 +67,29 @@ final class PlaybackArtworkCoordinator: ObservableObject {
     .map { context, generation in
       return PlaybackArtworkPreparationRequest(
         current: context.current,
-        next: context.next,
         cacheGeneration: generation
       )
     }
     .removeDuplicates()
     .sink { @MainActor [weak self] request in
       self?.prepare(request)
+    }
+    .store(in: &cancellables)
+
+    Publishers.CombineLatest(
+      player.$artworkQueueContext,
+      ArtworkImageCache.shared.$generation
+    )
+    .map { context, generation in
+      PlaybackArtworkPrefetchRequest(
+        current: context.current,
+        next: context.next,
+        cacheGeneration: generation
+      )
+    }
+    .removeDuplicates()
+    .sink { @MainActor [weak self] request in
+      self?.prefetch(request)
     }
     .store(in: &cancellables)
   }
@@ -104,11 +131,18 @@ final class PlaybackArtworkCoordinator: ObservableObject {
         artwork: image,
         accent: AlbumArtworkLoader.extractAccent(from: image)
       )
-      if let nextURL = request.nextNowPlayingArtworkURL,
-        nextURL != request.nowPlayingArtworkURL
-      {
-        _ = await self.imageLoader(nextURL)
-      }
+    }
+  }
+
+  private func prefetch(_ request: PlaybackArtworkPrefetchRequest) {
+    prefetchTask?.cancel()
+    guard let nextURL = request.nextArtworkURL,
+      nextURL != request.currentArtworkURL
+    else { return }
+
+    prefetchTask = Task { @MainActor [weak self] in
+      guard let self else { return }
+      _ = await self.imageLoader(nextURL)
     }
   }
 

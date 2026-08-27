@@ -268,6 +268,75 @@ struct ArtworkAndPresentationTests {
     withExtendedLifetime(coordinator) {}
   }
 
+  @Test("entering an album's final track does not republish its artwork")
+  func finalTrackLookaheadDoesNotRepublishCurrentArtwork() async throws {
+    let artworkAURL = URL(string: "https://example.test/a?size=472")!
+    let nowPlayingAURL = URL(string: "https://example.test/a?size=1200")!
+    let nowPlayingBURL = URL(string: "https://example.test/b?size=1200")!
+    let session = AppSession(loadCredentials: false)
+    let backend = TestPlaybackBackend()
+    let player = PlayerController(backend: backend)
+    let treatments = ArtworkTreatmentSettings()
+    let suiteName = "CodaTests-FinalTrackArtwork-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let presentation = NowPlayingPresentationController(defaults: defaults)
+    var requestedURLs: [URL] = []
+    let coordinator = PlaybackArtworkCoordinator(
+      session: session,
+      player: player,
+      treatments: treatments,
+      presentation: presentation,
+      imageLoader: { url in
+        if let url { requestedURLs.append(url) }
+        return NSImage(size: NSSize(width: 1_200, height: 1_200))
+      }
+    )
+    let trackEleven = QueueEntry(
+      sourceID: "a-11",
+      url: URL(string: "https://example.test/a-11")!,
+      artworkURL: artworkAURL,
+      nowPlayingArtworkURL: nowPlayingAURL,
+      title: "Track 11",
+      albumID: "album-a"
+    )
+    let trackTwelve = QueueEntry(
+      sourceID: "a-12",
+      url: URL(string: "https://example.test/a-12")!,
+      artworkURL: artworkAURL,
+      nowPlayingArtworkURL: nowPlayingAURL,
+      title: "Track 12",
+      albumID: "album-a"
+    )
+    let nextAlbum = QueueEntry(
+      sourceID: "b-1",
+      url: URL(string: "https://example.test/b-1")!,
+      nowPlayingArtworkURL: nowPlayingBURL,
+      title: "Next Album",
+      albumID: "album-b"
+    )
+
+    player.replaceQueue([trackEleven, trackTwelve, nextAlbum], startsPlaying: true)
+    for _ in 0..<20 where presentation.preparedTheme?.playbackKey != "album:album-a" {
+      await Task.yield()
+    }
+    let initialTheme = try #require(presentation.preparedTheme)
+    let initialArtwork = try #require(initialTheme.artwork)
+    #expect(requestedURLs.filter { $0 == nowPlayingAURL }.count == 1)
+
+    backend.emit(.automaticallyAdvanced)
+    for _ in 0..<20 where !requestedURLs.contains(nowPlayingBURL) {
+      await Task.yield()
+    }
+
+    #expect(player.currentEntry?.sourceID == "a-12")
+    #expect(presentation.preparedTheme?.id == initialTheme.id)
+    #expect(presentation.preparedTheme?.artwork === initialArtwork)
+    #expect(requestedURLs.filter { $0 == nowPlayingAURL }.count == 1)
+    #expect(requestedURLs.contains(nowPlayingBURL))
+    withExtendedLifetime(coordinator) {}
+  }
+
   @Test("same album identity can repair stale artwork treatment")
   func sameAlbumIdentityCanRepairStaleArtworkTreatment() {
     let treatments = ArtworkTreatmentSettings()
