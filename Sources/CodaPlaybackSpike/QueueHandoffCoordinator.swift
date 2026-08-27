@@ -47,6 +47,40 @@ func queueHandoffDisposition(
 }
 
 @MainActor
+private final class FirstAsyncCompletion {
+  private var continuation: CheckedContinuation<Void, Never>?
+
+  init(_ continuation: CheckedContinuation<Void, Never>) {
+    self.continuation = continuation
+  }
+
+  func finish() {
+    guard let continuation else { return }
+    self.continuation = nil
+    continuation.resume()
+  }
+}
+
+@MainActor
+func awaitOperationUntilDeadline(
+  _ timeout: Duration,
+  operation: @escaping @Sendable () async -> Void
+) async {
+  await withCheckedContinuation { continuation in
+    let completion = FirstAsyncCompletion(continuation)
+    let operationTask = Task {
+      await operation()
+      completion.finish()
+    }
+    Task {
+      try? await Task.sleep(for: timeout)
+      operationTask.cancel()
+      completion.finish()
+    }
+  }
+}
+
+@MainActor
 final class QueueHandoffCoordinator: ObservableObject {
   private enum Ownership: Equatable {
     case none
@@ -94,7 +128,7 @@ final class QueueHandoffCoordinator: ObservableObject {
     startPeriodicRefreshes()
   }
 
-  func saveBeforeTermination(timeout: Duration = .seconds(4)) async {
+  func saveBeforeTermination(timeout: Duration = .seconds(1)) async {
     guard ownership == .local, let client = session.client,
       session.activeSessionID != nil
     else { return }
@@ -107,19 +141,12 @@ final class QueueHandoffCoordinator: ObservableObject {
       positionSeconds: player.position
     )
 
-    await withTaskGroup(of: Void.self) { group in
-      group.addTask {
-        try? await client.savePlayQueue(
-          songIDs: snapshot.songIDs,
-          currentIndex: snapshot.currentIndex,
-          positionMilliseconds: snapshot.positionMilliseconds
-        )
-      }
-      group.addTask {
-        try? await Task.sleep(for: timeout)
-      }
-      await group.next()
-      group.cancelAll()
+    await awaitOperationUntilDeadline(timeout) {
+      try? await client.savePlayQueue(
+        songIDs: snapshot.songIDs,
+        currentIndex: snapshot.currentIndex,
+        positionMilliseconds: snapshot.positionMilliseconds
+      )
     }
   }
 

@@ -17,6 +17,22 @@ struct NavidromeTests {
     #expect(!AppSession.requestMatchesCurrentGeneration(requested, current: nil))
   }
 
+  @Test("termination deadline does not wait for a cancellation-resistant save")
+  func terminationDeadlineIsHardBound() async {
+    let clock = ContinuousClock()
+    let start = clock.now
+
+    await awaitOperationUntilDeadline(.milliseconds(20)) {
+      await withCheckedContinuation { continuation in
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
+          continuation.resume()
+        }
+      }
+    }
+
+    #expect(clock.now - start < .milliseconds(150))
+  }
+
   @Test("server URL normalization")
   func serverUrlNormalization() throws {
     let config = try NavidromeConfiguration(
