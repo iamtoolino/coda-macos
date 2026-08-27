@@ -351,6 +351,30 @@ struct LibraryInteractionTests {
       ))
   }
 
+  @Test("queue drop targeting ignores stale offscreen row geometry")
+  func queueDropTargetingIgnoresStaleOffscreenGeometry() {
+    let stale = QueueEntry(
+      sourceID: "stale",
+      url: URL(string: "https://example.test/stale")!,
+      title: "Stale Album"
+    )
+    let visible = QueueEntry(
+      sourceID: "visible",
+      url: URL(string: "https://example.test/visible")!,
+      title: "Visible Album"
+    )
+    let measurements = visibleQueueDropMeasurements(
+      entries: [stale, visible],
+      frames: [
+        stale.id: CGRect(x: 0, y: 100, width: 300, height: 24),
+        visible.id: CGRect(x: 0, y: 102, width: 300, height: 24),
+      ],
+      visibleEntryIDs: [visible.id]
+    )
+
+    #expect(measurements.map { $0.0.id } == [visible.id])
+  }
+
   @Test("queue reorder keeps one authoritative insertion result")
   func queueReorderKeepsOneAuthoritativeInsertionResult() {
     let ids = [UUID(), UUID(), UUID(), UUID()]

@@ -1529,6 +1529,10 @@ private struct QueuePanel: View {
       return
     }
 
+    if dropSession.phase == .entering, activeReorderItem == nil {
+      refreshDropGeometry()
+    }
+
     isDropTargeted = true
     insertionTarget = calculateTrackInsertionTarget(at: dropSession.location)
   }
@@ -1573,10 +1577,11 @@ private struct QueuePanel: View {
 
   private func calculateTrackInsertionTarget(at location: CGPoint) -> QueueInsertionTarget? {
     guard !player.queue.isEmpty else { return fallbackInsertionTarget }
-    let measuredEntries = player.queue.compactMap { entry -> (QueueEntry, CGRect)? in
-      guard let frame = entryFrames[entry.id] else { return nil }
-      return (entry, frame)
-    }.sorted { $0.1.midY < $1.1.midY }
+    let measuredEntries = visibleQueueDropMeasurements(
+      entries: player.queue,
+      frames: entryFrames,
+      visibleEntryIDs: visibleEntryIDs
+    )
     guard let last = measuredEntries.last else { return nil }
     if let next = measuredEntries.first(where: { location.y < $0.1.midY }) {
       return QueueInsertionTarget(
@@ -1634,6 +1639,7 @@ private struct QueuePanel: View {
       visibleEntryIDs.insert(entryID)
     } else {
       visibleEntryIDs.remove(entryID)
+      entryFrames[entryID] = nil
     }
   }
 
@@ -1677,6 +1683,20 @@ private struct QueuePanel: View {
       }
     }
   }
+}
+
+func visibleQueueDropMeasurements(
+  entries: [QueueEntry],
+  frames: [UUID: CGRect],
+  visibleEntryIDs: Set<UUID>
+) -> [(QueueEntry, CGRect)] {
+  entries.compactMap { entry in
+    guard visibleEntryIDs.contains(entry.id),
+      let frame = frames[entry.id]
+    else { return nil }
+    return (entry, frame)
+  }
+  .sorted { $0.1.midY < $1.1.midY }
 }
 
 func shouldAutomaticallyRevealCurrentTrack(
