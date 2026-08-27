@@ -455,6 +455,7 @@ private enum PlaybackDockMetrics {
   static let collapsedWidth: CGFloat = 431
   static let horizontalPadding: CGFloat = 14
   static let controlButtonWidth: CGFloat = 27
+  static let progressWidth: CGFloat = 241
   static let minimumMainContentWidth = collapsedWidth + 20
   static let volumePanelWidth: CGFloat = 32
   static let volumePanelHeight: CGFloat = 96
@@ -580,19 +581,35 @@ private struct PlaybackProgressControl: View {
   @Binding var previewPosition: Double?
 
   var body: some View {
-    HStack(spacing: 10) {
-      Text(elapsedLabel)
-        .frame(width: 38, alignment: .trailing)
-      PlaybackSeekBar(
-        position: timeline.snapshot.position,
-        duration: timeline.snapshot.duration,
-        previewPosition: $previewPosition,
-        seekAction: player.seek
-      )
-      .frame(width: 145)
-      Text(durationLabel)
-        .frame(width: 38, alignment: .leading)
+    Group {
+      if let errorMessage = player.errorMessage {
+        HStack(spacing: 6) {
+          Image(systemName: "exclamationmark.triangle.fill")
+            .foregroundStyle(.orange)
+          Text("Playback failed · Press Play to retry")
+            .lineLimit(1)
+        }
+        .help(errorMessage)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Playback failed")
+        .accessibilityHint("Press Play to retry. \(errorMessage)")
+      } else {
+        HStack(spacing: 10) {
+          Text(elapsedLabel)
+            .frame(width: 38, alignment: .trailing)
+          PlaybackSeekBar(
+            position: timeline.snapshot.position,
+            duration: timeline.snapshot.duration,
+            previewPosition: $previewPosition,
+            seekAction: player.seek
+          )
+          .frame(width: 145)
+          Text(durationLabel)
+            .frame(width: 38, alignment: .leading)
+        }
+      }
     }
+    .frame(width: PlaybackDockMetrics.progressWidth)
   }
 
   private var elapsedLabel: String {
