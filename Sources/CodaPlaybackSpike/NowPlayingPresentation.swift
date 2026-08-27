@@ -106,6 +106,11 @@ final class NowPlayingPresentationController: ObservableObject {
     )
   }
 
+  func clearPreparedTheme() {
+    guard preparedTheme != nil else { return }
+    preparedTheme = nil
+  }
+
   func updateContext(
     window: NSWindow?,
     isApplicationActive: Bool,
@@ -316,48 +321,6 @@ final class NowPlayingPresentationController: ObservableObject {
       self.presentationRetryIsAutomatic = false
       self.present(automatically: automatically)
     }
-  }
-}
-
-struct NowPlayingPreparationObserver: View {
-  @EnvironmentObject private var player: PlayerController
-  @EnvironmentObject private var presentation: NowPlayingPresentationController
-  @ObservedObject private var artworkCache = ArtworkImageCache.shared
-
-  private struct Request: Hashable {
-    let playbackKey: String?
-    let artworkURL: URL?
-    let nextArtworkURL: URL?
-    let cacheGeneration: Int
-  }
-
-  private var request: Request {
-    Request(
-      playbackKey: player.currentEntry?.nowPlayingPlaybackKey,
-      artworkURL: player.currentEntry?.nowPlayingArtworkURL ?? player.currentEntry?.artworkURL,
-      nextArtworkURL: player.nextEntry?.nowPlayingArtworkURL ?? player.nextEntry?.artworkURL,
-      cacheGeneration: artworkCache.generation
-    )
-  }
-
-  var body: some View {
-    Color.clear
-      .task(id: request) {
-        let request = request
-        guard let playbackKey = request.playbackKey else { return }
-        let artwork = await artworkCache.image(for: request.artworkURL)
-        guard self.request == request else { return }
-        presentation.prepare(
-          playbackKey: playbackKey,
-          artwork: artwork,
-          accent: AlbumArtworkLoader.extractAccent(from: artwork)
-        )
-        if let nextArtworkURL = request.nextArtworkURL,
-          nextArtworkURL != request.artworkURL
-        {
-          _ = await artworkCache.image(for: nextArtworkURL)
-        }
-      }
   }
 }
 

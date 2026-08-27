@@ -25,8 +25,6 @@ struct ContentView: View {
         .frame(width: 0, height: 0)
       NowPlayingActivityObserver()
         .frame(width: 0, height: 0)
-      NowPlayingPreparationObserver()
-        .frame(width: 0, height: 0)
 
       GeometryReader { geometry in
         let contentWidth = max(0, geometry.size.width - 20)
@@ -540,10 +538,7 @@ private struct TitlebarNavigationButton: View {
 }
 
 private struct CompactPlaybackDock: View {
-  @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
-  @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
-  @ObservedObject private var artworkCache = ArtworkImageCache.shared
   @State private var seekPreviewPosition: Double?
 
   var body: some View {
@@ -570,45 +565,6 @@ private struct CompactPlaybackDock: View {
     .onChange(of: player.currentEntry?.id) {
       seekPreviewPosition = nil
     }
-    .task(id: playbackArtworkRequest) {
-      let request = playbackArtworkRequest
-      guard let identity = request.identity else { return }
-      artworkTreatments.promoteDisplayedArtworkToPlayback(ifIdentity: identity)
-      applyArtworkDisplayContext()
-
-      let image = await artworkCache.image(for: request.artworkURL)
-      guard playbackArtworkRequest == request else { return }
-      artworkTreatments.rememberPlaybackArtwork(
-        image,
-        accent: AlbumArtworkLoader.extractAccent(from: image),
-        identity: identity
-      )
-      applyArtworkDisplayContext()
-    }
-  }
-
-  private struct PlaybackArtworkRequest: Hashable {
-    let identity: String?
-    let artworkURL: URL?
-    let cacheGeneration: Int
-  }
-
-  private var playbackArtworkRequest: PlaybackArtworkRequest {
-    PlaybackArtworkRequest(
-      identity: player.currentEntry?.artworkThemeIdentity,
-      artworkURL: player.currentEntry?.artworkURL,
-      cacheGeneration: artworkCache.generation
-    )
-  }
-
-  private func applyArtworkDisplayContext() {
-    artworkTreatments.applyDisplayContext(
-      .resolve(
-        hasEstablishedConnection: session.hasEstablishedConnection,
-        displayedAlbumID: session.path.last?.displayedAlbumID,
-        playbackIdentity: player.currentEntry?.artworkThemeIdentity
-      )
-    )
   }
 
   private var playbackSectionDivider: some View {

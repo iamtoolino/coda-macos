@@ -130,6 +130,68 @@ struct ArtworkAndPresentationTests {
     #expect(entry.nowPlayingArtworkURL == nowPlayingURL)
   }
 
+  @Test("playback artwork preparation is independent of mounted views")
+  func playbackArtworkPreparationIsIndependentOfMountedViews() async throws {
+    let browsingURL = URL(string: "https://example.test/current?size=472")!
+    let nowPlayingURL = URL(string: "https://example.test/current?size=1200")!
+    let nextURL = URL(string: "https://example.test/next?size=1200")!
+    let browsingImage = NSImage(size: NSSize(width: 472, height: 472))
+    let nowPlayingImage = NSImage(size: NSSize(width: 1_200, height: 1_200))
+    let nextImage = NSImage(size: NSSize(width: 1_200, height: 1_200))
+    let session = AppSession(loadCredentials: false)
+    let player = PlayerController(backend: TestPlaybackBackend())
+    let treatments = ArtworkTreatmentSettings()
+    let suiteName = "CodaTests-PlaybackArtwork-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let presentation = NowPlayingPresentationController(defaults: defaults)
+    var requestedURLs: [URL] = []
+    let coordinator = PlaybackArtworkCoordinator(
+      session: session,
+      player: player,
+      treatments: treatments,
+      presentation: presentation,
+      imageLoader: { url in
+        if let url { requestedURLs.append(url) }
+        if url == browsingURL { return browsingImage }
+        if url == nowPlayingURL { return nowPlayingImage }
+        if url == nextURL { return nextImage }
+        return CodaPlaceholderArtwork.image
+      }
+    )
+    let current = QueueEntry(
+      sourceID: "current",
+      url: URL(string: "https://example.test/current-song")!,
+      artworkURL: browsingURL,
+      nowPlayingArtworkURL: nowPlayingURL,
+      title: "Current",
+      albumID: "current-album"
+    )
+    let next = QueueEntry(
+      sourceID: "next",
+      url: URL(string: "https://example.test/next-song")!,
+      artworkURL: nextURL,
+      nowPlayingArtworkURL: nextURL,
+      title: "Next",
+      albumID: "next-album"
+    )
+
+    player.replaceQueue([current, next], startsPlaying: false)
+    for _ in 0..<20 where presentation.preparedTheme?.playbackKey != "album:current-album" {
+      await Task.yield()
+    }
+
+    treatments.applyDisplayContext(.standard(activePlaybackIdentity: "current-album"))
+    #expect(treatments.artwork === browsingImage)
+    #expect(presentation.preparedTheme?.artwork === nowPlayingImage)
+    #expect(Set(requestedURLs).isSuperset(of: [browsingURL, nowPlayingURL, nextURL]))
+
+    player.clear()
+    await Task.yield()
+    #expect(presentation.preparedTheme == nil)
+    withExtendedLifetime(coordinator) {}
+  }
+
   @Test("same album identity can repair stale artwork treatment")
   func sameAlbumIdentityCanRepairStaleArtworkTreatment() {
     let treatments = ArtworkTreatmentSettings()

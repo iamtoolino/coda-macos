@@ -10,6 +10,7 @@ struct CodaPlaybackSpikeApp: App {
   @StateObject private var queueSelection: QueueSelectionModel
   @StateObject private var queueSelectionShortcuts: QueueSelectionShortcutMonitor
   @StateObject private var artworkTreatments: ArtworkTreatmentSettings
+  @StateObject private var playbackArtwork: PlaybackArtworkCoordinator
   @StateObject private var queueHandoff: QueueHandoffCoordinator
   @StateObject private var scrobbler: ScrobbleCoordinator
   @StateObject private var playlistSaver: QueuePlaylistSaveCoordinator
@@ -21,6 +22,8 @@ struct CodaPlaybackSpikeApp: App {
     let session = AppSession(loadCredentials: !isPlaybackTest)
     let player = PlayerController()
     let queueSelection = QueueSelectionModel()
+    let artworkTreatments = ArtworkTreatmentSettings()
+    let nowPlayingPresentation = NowPlayingPresentationController()
     _session = StateObject(wrappedValue: session)
     _player = StateObject(wrappedValue: player)
     _queueSelection = StateObject(wrappedValue: queueSelection)
@@ -30,9 +33,15 @@ struct CodaPlaybackSpikeApp: App {
         player: player,
         session: session
       ))
-    _artworkTreatments = StateObject(wrappedValue: ArtworkTreatmentSettings())
-    _nowPlayingPresentation = StateObject(
-      wrappedValue: NowPlayingPresentationController()
+    _artworkTreatments = StateObject(wrappedValue: artworkTreatments)
+    _nowPlayingPresentation = StateObject(wrappedValue: nowPlayingPresentation)
+    _playbackArtwork = StateObject(
+      wrappedValue: PlaybackArtworkCoordinator(
+        session: session,
+        player: player,
+        treatments: artworkTreatments,
+        presentation: nowPlayingPresentation
+      )
     )
     _playlistSaver = StateObject(
       wrappedValue: QueuePlaylistSaveCoordinator(session: session)

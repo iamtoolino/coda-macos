@@ -1197,7 +1197,6 @@ struct AlbumDetailView: View {
         { session.open(.artist(artistID)) }
       },
       playAction: {
-        artworkTreatments.promoteDisplayedArtworkToPlayback(ifIdentity: page.album.id)
         session.play(
           songs: page.songs,
           canonicalAlbumArtworkID: albumArtworkID,
@@ -1216,7 +1215,6 @@ struct AlbumDetailView: View {
   }
 
   private func play(_ song: RemoteSong, from page: AlbumPage) {
-    artworkTreatments.promoteDisplayedArtworkToPlayback(ifIdentity: page.album.id)
     let index = page.songs.firstIndex(where: { $0.id == song.id }) ?? 0
     session.play(
       songs: page.songs,
@@ -1255,13 +1253,6 @@ struct AlbumDetailView: View {
       accent: artworkLoader.accent,
       identity: album.id
     )
-    if player.currentEntry?.artworkThemeIdentity == album.id {
-      artworkTreatments.rememberPlaybackArtwork(
-        image,
-        accent: artworkLoader.accent,
-        identity: album.id
-      )
-    }
     artworkTreatments.applyDisplayContext(.album(album.id))
   }
 }
