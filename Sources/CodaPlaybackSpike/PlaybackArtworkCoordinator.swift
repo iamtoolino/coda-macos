@@ -49,19 +49,14 @@ final class PlaybackArtworkCoordinator: ObservableObject {
     self.presentation = presentation
     self.imageLoader = imageLoader
 
-    Publishers.CombineLatest3(
-      player.$queue,
-      player.$currentIndex,
+    Publishers.CombineLatest(
+      player.$artworkQueueContext,
       ArtworkImageCache.shared.$generation
     )
-    .map { queue, currentIndex, generation in
-      let current = currentIndex.flatMap { queue.indices.contains($0) ? queue[$0] : nil }
-      let next = currentIndex.flatMap { index in
-        queue.indices.contains(index + 1) ? queue[index + 1] : nil
-      }
+    .map { context, generation in
       return PlaybackArtworkPreparationRequest(
-        current: current,
-        next: next,
+        current: context.current,
+        next: context.next,
         cacheGeneration: generation
       )
     }

@@ -11,6 +11,11 @@ struct CompletedPlayback: Equatable {
   let sourceID: String
 }
 
+struct PlaybackArtworkQueueContext: Equatable, Sendable {
+  let current: QueueEntry?
+  let next: QueueEntry?
+}
+
 @MainActor
 final class PlaybackTimeline: ObservableObject {
   struct Snapshot: Equatable {
@@ -58,6 +63,10 @@ final class PlayerController: ObservableObject {
 
   @Published private(set) var queue: [QueueEntry] = []
   @Published private(set) var currentIndex: Int?
+  @Published private(set) var artworkQueueContext = PlaybackArtworkQueueContext(
+    current: nil,
+    next: nil
+  )
   @Published private(set) var playbackOccurrenceID: UUID?
   @Published private(set) var completedPlayback: CompletedPlayback?
   @Published private(set) var isPlaying = false
@@ -164,6 +173,7 @@ final class PlayerController: ObservableObject {
     }
 
     synchronizeNextItem()
+    publishArtworkQueueContext()
   }
 
   func insert(_ entries: [QueueEntry], before targetID: UUID?) {
@@ -379,6 +389,7 @@ final class PlayerController: ObservableObject {
       autoplay: autoplay
     )
     updateNowPlayingInfo()
+    publishArtworkQueueContext()
   }
 
   private func synchronizeNextItem() {
@@ -400,6 +411,7 @@ final class PlayerController: ObservableObject {
     currentIndex = newCurrentIndex
     synchronizeNextItem()
     updateNowPlayingInfo()
+    publishArtworkQueueContext()
   }
 
   private func handleBackendEvent(_ event: PlaybackBackendEvent) {
@@ -461,6 +473,7 @@ final class PlayerController: ObservableObject {
       status = isPlaying ? "Playing" : "Ready"
       restartTimelinePublicationTask()
       updateNowPlayingInfo()
+      publishArtworkQueueContext()
 
     case .unexpectedlyBecameIdle(let lastPosition, let wasPlaying):
       guard let currentIndex, queue.indices.contains(currentIndex) else { return }
@@ -498,6 +511,7 @@ final class PlayerController: ObservableObject {
       restartTimelinePublicationTask()
       MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
       MPNowPlayingInfoCenter.default().playbackState = .stopped
+      publishArtworkQueueContext()
 
     case .failed(let message):
       isPlaying = false
@@ -524,6 +538,13 @@ final class PlayerController: ObservableObject {
     errorMessage = nil
     MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     MPNowPlayingInfoCenter.default().playbackState = .stopped
+    publishArtworkQueueContext()
+  }
+
+  private func publishArtworkQueueContext() {
+    let context = PlaybackArtworkQueueContext(current: currentEntry, next: nextEntry)
+    guard artworkQueueContext != context else { return }
+    artworkQueueContext = context
   }
 
   private func persistVolume() {
