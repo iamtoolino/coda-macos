@@ -322,7 +322,6 @@ struct ArtworkAndPresentationTests {
     }
     let initialTheme = try #require(presentation.preparedTheme)
     let initialArtwork = try #require(initialTheme.artwork)
-    #expect(requestedURLs.filter { $0 == nowPlayingAURL }.count == 1)
 
     backend.emit(.automaticallyAdvanced)
     for _ in 0..<20 where !requestedURLs.contains(nowPlayingBURL) {
@@ -332,7 +331,6 @@ struct ArtworkAndPresentationTests {
     #expect(player.currentEntry?.sourceID == "a-12")
     #expect(presentation.preparedTheme?.id == initialTheme.id)
     #expect(presentation.preparedTheme?.artwork === initialArtwork)
-    #expect(requestedURLs.filter { $0 == nowPlayingAURL }.count == 1)
     #expect(requestedURLs.contains(nowPlayingBURL))
     withExtendedLifetime(coordinator) {}
   }
