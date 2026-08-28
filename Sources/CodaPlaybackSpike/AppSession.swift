@@ -333,6 +333,11 @@ final class AppSession: ObservableObject {
 
   func selectRoot(_ destination: SidebarDestination) {
     if selectedRoot == destination {
+      if destination == .search {
+        path.removeAll()
+        rootToken = UUID()
+        return
+      }
       guard !path.isEmpty else { return }
       path.removeAll()
       return

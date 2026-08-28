@@ -69,6 +69,20 @@ struct LibraryInteractionTests {
     #expect(session.rootToken != initialToken)
   }
 
+  @Test("selecting Search recreates its canonical empty view")
+  func selectingSearchRecreatesItsRoot() {
+    let session = AppSession(loadCredentials: false)
+
+    session.selectRoot(.search)
+    let searchToken = session.rootToken
+    session.open(.artist("artist-1"))
+
+    session.selectRoot(.search)
+
+    #expect(session.path.isEmpty)
+    #expect(session.rootToken != searchToken)
+  }
+
   @Test("album pages accept a trustworthy server total")
   func albumPageAcceptsTrustworthyServerTotal() {
     #expect(
