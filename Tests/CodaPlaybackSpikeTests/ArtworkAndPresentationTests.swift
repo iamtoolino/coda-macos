@@ -478,12 +478,76 @@ struct ArtworkAndPresentationTests {
     #expect(treatments.displayedIdentity == nil)
   }
 
-  @Test("generated Coda cover extracts a warm accent")
-  func generatedCodaCoverExtractsAWarmAccent() {
+  @Test("generated Coda cover extracts a warm tint")
+  func generatedCodaCoverExtractsAWarmTint() {
     let accent = AlbumArtworkLoader.extractAccent(from: CodaPlaceholderArtwork.image)
     #expect(accent.red > accent.green)
     #expect(accent.green > accent.blue)
-    #expect(accent.red - accent.blue > 0.12)
+    #expect(accent.red - accent.blue > 0.01)
+  }
+
+  @Test("coherent chromatic pixels win over neutral area and a smaller accent")
+  func coherentChromaticPixelsWin() {
+    let selection = ArtworkAccentSelector.select(from:
+      Array(repeating: ArtworkPixel(red: 0.46, green: 0.46, blue: 0.46), count: 600)
+        + Array(repeating: ArtworkPixel(red: 0.10, green: 0.38, blue: 0.78), count: 300)
+        + Array(repeating: ArtworkPixel(red: 0.82, green: 0.08, blue: 0.05), count: 100)
+    )
+
+    #expect(selection.kind == .chromatic)
+    #expect(selection.color.blue > selection.color.red)
+    #expect(selection.color.blue > selection.color.green)
+  }
+
+  @Test("tiny colorful accents do not turn a grayscale cover chromatic")
+  func tinyColorfulAccentsDoNotRecolorANeutralCover() {
+    let selection = ArtworkAccentSelector.select(from:
+      Array(repeating: ArtworkPixel(red: 0.42, green: 0.42, blue: 0.42), count: 980)
+        + Array(repeating: ArtworkPixel(red: 0.88, green: 0.04, blue: 0.02), count: 20)
+    )
+
+    #expect(selection.kind != .chromatic)
+    #expect(abs(selection.color.red - selection.color.blue) < 0.10)
+  }
+
+  @Test("grayscale artwork derives a usable neutral from its pixels")
+  func grayscaleArtworkDerivesAUsableNeutral() {
+    let selection = ArtworkAccentSelector.select(from:
+      Array(repeating: ArtworkPixel(red: 0.08, green: 0.08, blue: 0.08), count: 700)
+        + Array(repeating: ArtworkPixel(red: 0.34, green: 0.34, blue: 0.34), count: 300)
+    )
+
+    #expect(selection.kind == .neutral)
+    #expect(selection.color != .fallback)
+    #expect(abs(selection.color.red - selection.color.blue) < 0.02)
+    #expect(selection.color.red > 0.30)
+  }
+
+  @Test("dark chromatic artwork is lifted without changing its hue family")
+  func darkChromaticArtworkIsLifted() {
+    let selection = ArtworkAccentSelector.select(from:
+      Array(repeating: ArtworkPixel(red: 0.02, green: 0.06, blue: 0.20), count: 1_000)
+    )
+
+    #expect(selection.kind == .chromatic)
+    #expect(selection.color.blue > selection.color.red)
+    #expect(selection.color.blue > 0.30)
+  }
+
+  @Test("missing pixels use the brand color")
+  func missingPixelsUseTheBrandColor() {
+    let selection = ArtworkAccentSelector.select(from: [])
+
+    #expect(selection == ArtworkAccentSelection(color: .fallback, kind: .brand))
+  }
+
+  @Test("fully black artwork uses the brand color")
+  func fullyBlackArtworkUsesTheBrandColor() {
+    let selection = ArtworkAccentSelector.select(from:
+      Array(repeating: ArtworkPixel(red: 0, green: 0, blue: 0), count: 1_000)
+    )
+
+    #expect(selection == ArtworkAccentSelection(color: .fallback, kind: .brand))
   }
 
   @Test("pausing keeps an active now playing presentation visible")

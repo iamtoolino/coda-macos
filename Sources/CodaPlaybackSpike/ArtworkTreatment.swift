@@ -9,7 +9,6 @@ struct ArtworkColor: Equatable {
 
   static let fallback = ArtworkColor(red: 43.0 / 255.0, green: 122.0 / 255.0, blue: 130.0 / 255.0)
   static let brandAction = ArtworkColor(red: 0.82, green: 0.58, blue: 0.20)
-  static let monochromeFallback = ArtworkColor(red: 0.56, green: 0.58, blue: 0.60)
   var color: Color { Color(red: red, green: green, blue: blue) }
 
   var contrastingColor: Color {
@@ -293,11 +292,12 @@ final class AlbumArtworkLoader: ObservableObject {
   }
 
   static func extractAccent(from image: NSImage) -> ArtworkColor {
-    let size = NSSize(width: 32, height: 32)
+    let dimension = 32
+    let size = NSSize(width: dimension, height: dimension)
     guard let bitmap = NSBitmapImageRep(
       bitmapDataPlanes: nil,
-      pixelsWide: Int(size.width),
-      pixelsHigh: Int(size.height),
+      pixelsWide: dimension,
+      pixelsHigh: dimension,
       bitsPerSample: 8,
       samplesPerPixel: 4,
       hasAlpha: true,
@@ -313,50 +313,22 @@ final class AlbumArtworkLoader: ObservableObject {
     image.draw(in: NSRect(origin: .zero, size: size), from: .zero, operation: .copy, fraction: 1)
     NSGraphicsContext.restoreGraphicsState()
 
-    struct Bucket {
-      var score = 0.0
-      var red = 0.0
-      var green = 0.0
-      var blue = 0.0
-      var weight = 0.0
-    }
-    var buckets = Array(repeating: Bucket(), count: 18)
-
-    for y in 0..<Int(size.height) {
-      for x in 0..<Int(size.width) {
-        guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
-        let r = Double(color.redComponent)
-        let g = Double(color.greenComponent)
-        let b = Double(color.blueComponent)
-        let maximum = max(r, g, b)
-        let minimum = min(r, g, b)
-        let brightness = maximum
-        let saturation = maximum == 0 ? 0 : (maximum - minimum) / maximum
-        guard brightness > 0.12, brightness < 0.94, saturation > 0.16 else { continue }
-
-        let hue = Double(color.hueComponent)
-        let bucketIndex = min(Int(hue * Double(buckets.count)), buckets.count - 1)
-        let middleBrightness = 1 - abs(brightness - 0.58)
-        let weight = saturation * saturation * (0.45 + middleBrightness)
-        buckets[bucketIndex].score += weight
-        buckets[bucketIndex].red += r * weight
-        buckets[bucketIndex].green += g * weight
-        buckets[bucketIndex].blue += b * weight
-        buckets[bucketIndex].weight += weight
+    var pixels: [ArtworkPixel] = []
+    pixels.reserveCapacity(dimension * dimension)
+    for y in 0..<dimension {
+      for x in 0..<dimension {
+        guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+        pixels.append(
+          ArtworkPixel(
+            red: Double(color.redComponent),
+            green: Double(color.greenComponent),
+            blue: Double(color.blueComponent),
+            alpha: Double(color.alphaComponent)
+          )
+        )
       }
     }
-
-    guard let winner = buckets.max(by: { $0.score < $1.score }), winner.weight > 0 else {
-      // A successfully loaded image without a useful saturated color is most
-      // likely monochrome. Keep its treatment neutral instead of introducing
-      // the generic cyan used while artwork is unavailable.
-      return .monochromeFallback
-    }
-    let r = winner.red / winner.weight
-    let g = winner.green / winner.weight
-    let b = winner.blue / winner.weight
-    let lift = max(0, 0.50 - max(r, g, b))
-    return ArtworkColor(red: min(r + lift, 1), green: min(g + lift, 1), blue: min(b + lift, 1))
+    return ArtworkAccentSelector.select(from: pixels).color
   }
 }
 
