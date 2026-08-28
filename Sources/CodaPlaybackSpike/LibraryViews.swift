@@ -200,11 +200,14 @@ struct SearchView: View {
       await performSearch(for: query)
     }
     .task(id: resetToken) {
-      await Task.yield()
-      searchFieldIsFocused = true
+      await focusSearchField()
     }
     .onAppear {
       searchFieldIsFocused = true
+    }
+    .onChange(of: session.path) { previousPath, path in
+      guard !previousPath.isEmpty, path.isEmpty else { return }
+      Task { await focusSearchField() }
     }
     .onExitCommand {
       if query.isEmpty {
@@ -252,6 +255,13 @@ struct SearchView: View {
 
   private var normalizedQuery: String {
     query.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  @MainActor
+  private func focusSearchField() async {
+    searchFieldIsFocused = true
+    await Task.yield()
+    NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
   }
 
   @MainActor
