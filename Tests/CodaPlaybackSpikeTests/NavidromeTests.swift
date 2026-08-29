@@ -140,6 +140,29 @@ struct NavidromeTests {
     #expect(song.technicalSummary == "FLAC · 24-bit · 96 kHz · 2350 kbps")
   }
 
+  @Test("song presentation prefers the explicit album artist")
+  func songPresentationPrefersExplicitAlbumArtist() throws {
+    let data = Data(
+      #"{"id":"track-1","title":"Track","artist":"ZILF • Guest One • Guest Two","displayAlbumArtist":"ZILF"}"#.utf8
+    )
+    let song = try JSONDecoder().decode(RemoteSong.self, from: data)
+    let streamURL = try #require(URL(string: "https://music.example.test/stream"))
+    let entry = QueueEntry.remoteSong(
+      song,
+      streamURL: streamURL,
+      artworkURL: nil,
+      nowPlayingArtworkURL: nil
+    )
+
+    #expect(song.artist == "ZILF • Guest One • Guest Two")
+    #expect(song.artistName == "ZILF")
+    #expect(entry.artist == "ZILF")
+    #expect(
+      RemoteSong(id: "legacy", title: "Legacy", artist: "Legacy Artist").artistName
+        == "Legacy Artist"
+    )
+  }
+
   @Test("invalid URL rejection")
   func invalidUrlRejection() throws {
     #expect(throws: (any Error).self) {

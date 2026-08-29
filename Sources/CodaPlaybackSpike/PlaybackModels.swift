@@ -181,6 +181,7 @@ struct RemoteSong: Decodable, Identifiable, Hashable, Sendable {
   let title: String
   var album: String? = nil
   var artist: String? = nil
+  var displayAlbumArtist: String? = nil
   var albumId: String? = nil
   var artistId: String? = nil
   var coverArt: String? = nil
@@ -196,7 +197,7 @@ struct RemoteSong: Decodable, Identifiable, Hashable, Sendable {
   var samplingRate: Int? = nil
 
   var albumName: String { album ?? "" }
-  var artistName: String { artist ?? "" }
+  var artistName: String { displayAlbumArtist?.nonEmptyValue ?? artist ?? "" }
   var albumArtworkID: String? {
     if let albumId, !albumId.isEmpty { return albumId }
     return coverArt
