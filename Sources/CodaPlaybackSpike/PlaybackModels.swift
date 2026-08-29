@@ -176,6 +176,15 @@ struct QueueEntry: Identifiable, Hashable, Sendable {
   }
 }
 
+func albumGroupingIdentity(albumID: String?, artist: String, album: String) -> String {
+  if let albumID = albumID?.trimmingCharacters(in: .whitespacesAndNewlines), !albumID.isEmpty {
+    return "album:\(albumID)"
+  }
+  let normalizedArtist = artist.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+  let normalizedAlbum = album.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+  return "metadata:\(normalizedArtist)|\(normalizedAlbum)"
+}
+
 struct RemoteSong: Decodable, Identifiable, Hashable, Sendable {
   let id: String
   let title: String

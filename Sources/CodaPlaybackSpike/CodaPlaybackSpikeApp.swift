@@ -18,7 +18,6 @@ struct CodaPlaybackSpikeApp: App {
 
   init() {
     let isPlaybackTest = CommandLine.arguments.contains("--mpv-local-transition-test")
-      || CommandLine.arguments.contains("--mpv-stream-test")
     let session = AppSession(loadCredentials: !isPlaybackTest)
     let player = PlayerController()
     let queueSelection = QueueSelectionModel()
@@ -233,14 +232,6 @@ private final class CodaAppDelegate: NSObject, NSApplicationDelegate {
     if CommandLine.arguments.contains("--mpv-local-transition-test") {
       Task {
         let success = await PlaybackDiagnostics.runMPVLocalTransitionTest()
-        exit(success ? EXIT_SUCCESS : EXIT_FAILURE)
-      }
-      return
-    }
-
-    if CommandLine.arguments.contains("--mpv-stream-test") {
-      Task {
-        let success = await PlaybackDiagnostics.runMPVStreamTest()
         exit(success ? EXIT_SUCCESS : EXIT_FAILURE)
       }
       return

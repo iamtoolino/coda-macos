@@ -2144,8 +2144,11 @@ func queueGroups(_ entries: [QueueEntry]) -> [QueueGroup] {
 
   for (index, entry) in entries.enumerated() {
     let key = entry.queueGroupID.map { "group:\($0.uuidString)" }
-      ?? entry.albumID.map { "album:\($0)" }
-      ?? "metadata:\(entry.artist.lowercased())|\(entry.album.lowercased())"
+      ?? albumGroupingIdentity(
+        albumID: entry.albumID,
+        artist: entry.artist,
+        album: entry.album
+      )
     if !currentEntries.isEmpty, key != currentKey {
       appendCurrentGroup()
       currentEntries = []

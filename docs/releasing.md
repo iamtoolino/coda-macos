@@ -29,6 +29,7 @@ separately reviewed migration because it changes Coda's Keychain and Local Netwo
 5. Run the candidate checks:
 
    ```sh
+   ./scripts/build-libmpv.sh
    swift test
    ./scripts/build-app.sh release
    ```

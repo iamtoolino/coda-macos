@@ -466,7 +466,11 @@ final class AppSession: ObservableObject {
     var currentAlbumKey: String?
     var currentGroupID = UUID()
     return try songs.map { song in
-      let albumKey = song.albumId ?? "\(song.artistName.lowercased())|\(song.albumName.lowercased())"
+      let albumKey = albumGroupingIdentity(
+        albumID: song.albumId,
+        artist: song.artistName,
+        album: song.albumName
+      )
       if currentAlbumKey != albumKey {
         currentAlbumKey = albumKey
         currentGroupID = UUID()

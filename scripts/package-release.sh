@@ -77,6 +77,7 @@ if [[ -z "$signing_identity" ]]; then
   exit 1
 fi
 
+"$root/scripts/build-libmpv.sh"
 swift test --package-path "$root"
 CODA_SIGNING_IDENTITY="$signing_identity_sha1" "$root/scripts/build-app.sh" release
 

@@ -2101,7 +2101,11 @@ private func playlistGroups(_ songs: [RemoteSong]) -> [PlaylistGroup] {
   var currentKey = ""
 
   for (index, song) in songs.enumerated() {
-    let key = song.albumId ?? "\(song.artistName.lowercased())|\(song.albumName.lowercased())"
+    let key = albumGroupingIdentity(
+      albumID: song.albumId,
+      artist: song.artistName,
+      album: song.albumName
+    )
     if !current.isEmpty, key != currentKey {
       result.append(PlaylistGroup(id: "\(current[0].index):\(currentKey)", songs: current))
       current = []

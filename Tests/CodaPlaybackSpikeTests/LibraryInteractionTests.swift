@@ -423,6 +423,27 @@ struct LibraryInteractionTests {
         == [[first.id], [other.id], [second.id]])
   }
 
+  @Test("empty album IDs fall back to album metadata for grouping")
+  func emptyAlbumIDsFallBackToAlbumMetadataForGrouping() {
+    let first = QueueEntry(
+      sourceID: "first", url: URL(string: "https://example.test/first")!,
+      title: "First", artist: "Artist A", album: "Album A", albumID: "")
+    let second = QueueEntry(
+      sourceID: "second", url: URL(string: "https://example.test/second")!,
+      title: "Second", artist: "Artist A", album: "Album A", albumID: "  ")
+    let other = QueueEntry(
+      sourceID: "other", url: URL(string: "https://example.test/other")!,
+      title: "Other", artist: "Artist B", album: "Album B", albumID: "")
+
+    #expect(
+      albumGroupingIdentity(albumID: nil, artist: " Artist A ", album: "Album A")
+        == albumGroupingIdentity(albumID: "", artist: "artist a", album: " Album A "))
+    #expect(
+      albumGroupingIdentity(albumID: "server-id", artist: "Artist A", album: "Album A")
+        != albumGroupingIdentity(albumID: nil, artist: "Artist A", album: "Album A"))
+    #expect(queueGroups([first, second, other]).map(\.entryIDs) == [[first.id, second.id], [other.id]])
+  }
+
   @Test("album chronology uses full release date")
   func albumChronologyUsesFullReleaseDate() {
     let later = RemoteAlbum(

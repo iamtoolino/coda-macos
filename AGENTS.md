@@ -106,7 +106,7 @@
 - Match verification effort to the risk and scope of the change, and report checks that were not run.
 - For documentation-only changes, run `git diff --check` and verify referenced commands and paths. A full build is not required unless build scripts or generated bundle behavior changed.
 - For normal code changes, use `scripts/build-app.sh` and run `swift test` unless the change clearly cannot affect compilation or behavior.
-- Use `--mpv-local-transition-test` or `--mpv-stream-test` only when the affected playback path warrants it and the required local media, server, and credentials are available. Do not silently substitute live tests for deterministic checks.
+- Use `--mpv-local-transition-test` only when the affected playback path warrants it. Do not silently substitute live tests for deterministic checks.
 - Automated tests do not validate visual quality. For visual changes, also describe the states and window sizes that need human inspection.
 
 ## Scope discipline
