@@ -12,7 +12,10 @@ enum PlaybackDiagnostics {
       return false
     }
 
-    let player = PlayerController()
+    let player = PlayerController(
+      backend: PlaybackBackendFactory.make(),
+      volumeDefaults: nil
+    )
     guard player.playbackEngineName.contains("mpv") else {
       print("FAILED: mpv was not selected; active engine is \(player.playbackEngineName).")
       return false

@@ -163,6 +163,23 @@ struct PlaybackTests {
     #expect(!restoredPlayer.isMuted)
   }
 
+  @Test("nonpersistent players do not alter saved volume")
+  func nonpersistentPlayersDoNotAlterSavedVolume() throws {
+    let suiteName = "Coda.Tests.NonpersistentVolume.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(0.73, forKey: "playback-volume")
+
+    let diagnosticPlayer = PlayerController(
+      backend: TestPlaybackBackend(),
+      volumeDefaults: nil
+    )
+    diagnosticPlayer.setVolume(0)
+
+    let restoredPlayer = PlayerController(backend: TestPlaybackBackend(), volumeDefaults: defaults)
+    #expect(abs(restoredPlayer.volume - 0.73) < 0.000_001)
+  }
+
   @Test("playback clock does not invalidate stable player state")
   func playbackClockDoesNotInvalidateStablePlayerState() {
     let backend = TestPlaybackBackend()
