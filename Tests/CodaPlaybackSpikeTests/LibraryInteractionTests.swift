@@ -346,23 +346,124 @@ struct LibraryInteractionTests {
       ))
   }
 
-  @Test("queue follows playback only while the previous track remains visible")
-  func queuePlaybackFollowPolicy() {
+  @Test("queue track-based reveal keeps fitting albums together")
+  func queueTrackBasedRevealForFittingAlbum() {
     #expect(
-      shouldAutomaticallyRevealCurrentTrack(
-        previousWasVisible: true,
-        currentIsVisible: false
-      ))
+      queueTrackBasedRevealAction(
+        trackCount: 16,
+        currentOffset: 0,
+        discHeaderOffsets: [],
+        isAutomatic: true,
+        automaticWithinSameAlbum: false,
+        previousTrackIsVisible: true,
+        albumTracksAreFullyVisible: false,
+        currentTrackIsVisible: true,
+        targetIsBelow: true
+      ) == .bottom)
     #expect(
-      !shouldAutomaticallyRevealCurrentTrack(
-        previousWasVisible: false,
-        currentIsVisible: false
-      ))
+      queueTrackBasedRevealAction(
+        trackCount: 16,
+        currentOffset: 5,
+        discHeaderOffsets: [],
+        isAutomatic: true,
+        automaticWithinSameAlbum: false,
+        previousTrackIsVisible: true,
+        albumTracksAreFullyVisible: true,
+        currentTrackIsVisible: true,
+        targetIsBelow: true
+      ) == nil)
     #expect(
-      !shouldAutomaticallyRevealCurrentTrack(
-        previousWasVisible: true,
-        currentIsVisible: true
-      ))
+      queueTrackBasedRevealAction(
+        trackCount: 16,
+        currentOffset: 5,
+        discHeaderOffsets: [],
+        isAutomatic: true,
+        automaticWithinSameAlbum: true,
+        previousTrackIsVisible: true,
+        albumTracksAreFullyVisible: false,
+        currentTrackIsVisible: true,
+        targetIsBelow: false
+      ) == nil)
+    #expect(
+      queueTrackBasedRevealAction(
+        trackCount: 16,
+        currentOffset: 0,
+        discHeaderOffsets: [],
+        isAutomatic: true,
+        automaticWithinSameAlbum: false,
+        previousTrackIsVisible: false,
+        albumTracksAreFullyVisible: false,
+        currentTrackIsVisible: false,
+        targetIsBelow: true
+      ) == nil)
+  }
+
+  @Test("queue track-based reveal progresses through oversized albums")
+  func queueTrackBasedRevealForOversizedAlbum() {
+    #expect(
+      queueTrackBasedRevealAction(
+        trackCount: 69,
+        currentOffset: 0,
+        discHeaderOffsets: [],
+        isAutomatic: false,
+        automaticWithinSameAlbum: false,
+        previousTrackIsVisible: true,
+        albumTracksAreFullyVisible: false,
+        currentTrackIsVisible: true,
+        targetIsBelow: true
+      ) == .top)
+    #expect(
+      queueTrackBasedRevealAction(
+        trackCount: 69,
+        currentOffset: 12,
+        discHeaderOffsets: [],
+        isAutomatic: true,
+        automaticWithinSameAlbum: false,
+        previousTrackIsVisible: true,
+        albumTracksAreFullyVisible: false,
+        currentTrackIsVisible: false,
+        targetIsBelow: true
+      ) == .top)
+    #expect(
+      queueTrackBasedRevealAction(
+        trackCount: 69,
+        currentOffset: 20,
+        discHeaderOffsets: [],
+        isAutomatic: true,
+        automaticWithinSameAlbum: true,
+        previousTrackIsVisible: true,
+        albumTracksAreFullyVisible: false,
+        currentTrackIsVisible: true,
+        targetIsBelow: true
+      ) == nil)
+    let middle = queueTrackBasedRevealAction(
+      trackCount: 69,
+      currentOffset: 34,
+      discHeaderOffsets: [],
+      isAutomatic: true,
+      automaticWithinSameAlbum: true,
+      previousTrackIsVisible: true,
+      albumTracksAreFullyVisible: false,
+      currentTrackIsVisible: false,
+      targetIsBelow: true
+    )
+    guard case .position(let middleAnchor) = middle else {
+      Issue.record("Expected an album-relative position")
+      return
+    }
+    #expect(middleAnchor > 0 && middleAnchor < 1)
+    #expect(
+      queueTrackBasedRevealAction(
+        trackCount: 69,
+        currentOffset: 68,
+        discHeaderOffsets: [],
+        isAutomatic: true,
+        automaticWithinSameAlbum: true,
+        previousTrackIsVisible: true,
+        albumTracksAreFullyVisible: false,
+        currentTrackIsVisible: false,
+        targetIsBelow: true
+      ) == .position(1))
   }
 
   @Test("queue drop targeting ignores stale offscreen row geometry")

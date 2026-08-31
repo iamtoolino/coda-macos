@@ -1212,6 +1212,10 @@ private struct QueueDropGeometryMeasurement: Equatable {
   let frame: CGRect
 }
 
+private struct QueueAlbumScrollTarget: Hashable {
+  let id: UUID
+}
+
 private struct QueuePanel: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
@@ -1286,7 +1290,7 @@ private struct QueuePanel: View {
                     dragStateAction: updateDragState,
                     visibilityAction: updateEntryVisibility
                   )
-                  .id(group.id)
+                  .id(QueueAlbumScrollTarget(id: group.id))
                 }
               }
               .padding(12)
@@ -1336,7 +1340,7 @@ private struct QueuePanel: View {
             await Task.yield()
             groups = queueGroups(player.queue)
             await Task.yield()
-            scrollToPlayingTrack(proxy, animated: false)
+            revealCurrentPlayback(proxy, animated: false)
           }
         }
       }
@@ -1350,7 +1354,7 @@ private struct QueuePanel: View {
           groups = queueGroups(player.queue)
           await Task.yield()
           guard request == player.queueTopScrollRequest else { return }
-          proxy.scrollTo(firstEntryID, anchor: .top)
+          proxy.scrollTo(QueueAlbumScrollTarget(id: firstEntryID), anchor: .top)
         }
       }
       .onChange(of: player.queueCurrentScrollRequest) { _, request in
@@ -1361,19 +1365,17 @@ private struct QueuePanel: View {
           groups = queueGroups(player.queue)
           await Task.yield()
           guard request == player.queueCurrentScrollRequest else { return }
-          scrollToPlayingTrack(proxy, animated: false)
+          revealCurrentPlayback(proxy, animated: false)
         }
       }
       .onChange(of: player.currentEntry?.id) { oldEntryID, newEntryID in
-        followCurrentTrack(from: oldEntryID, to: newEntryID, proxy: proxy)
+        guard newEntryID != nil else { return }
+        revealCurrentPlayback(proxy, from: oldEntryID)
       }
       .task {
         groups = queueGroups(player.queue)
         await Task.yield()
-        if player.currentEntry != nil, !shouldShowReturnToPlaying {
-          return
-        }
-        scrollToPlayingTrack(proxy, animated: false)
+        revealCurrentPlayback(proxy, animated: false)
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
       .coordinateSpace(.named(queueDropCoordinateSpace))
@@ -1415,7 +1417,7 @@ private struct QueuePanel: View {
         HStack(spacing: 7) {
           if shouldShowReturnToPlaying {
             Button("Return to Playing Track", systemImage: "scope") {
-              scrollToPlayingTrack(proxy)
+              revealCurrentPlayback(proxy)
             }
             .labelStyle(.iconOnly)
             .buttonStyle(.plain)
@@ -1643,46 +1645,72 @@ private struct QueuePanel: View {
     }
   }
 
-  private func followCurrentTrack(
-    from oldEntryID: UUID?,
-    to newEntryID: UUID?,
-    proxy: ScrollViewProxy
+  private func revealCurrentPlayback(
+    _ proxy: ScrollViewProxy,
+    from oldEntryID: UUID? = nil,
+    animated: Bool = true
   ) {
-    guard let oldEntryID, let newEntryID,
-      shouldAutomaticallyRevealCurrentTrack(
-        previousWasVisible: visibleEntryIDs.contains(oldEntryID),
-        currentIsVisible: visibleEntryIDs.contains(newEntryID)
-      )
-    else { return }
-
-    withAnimation(.easeInOut(duration: 0.28)) {
-      proxy.scrollTo(newEntryID, anchor: .center)
-    }
-  }
-
-  private func scrollToPlayingTrack(_ proxy: ScrollViewProxy, animated: Bool = true) {
     guard let currentID = player.currentEntry?.id,
       let currentGroup = groups.first(where: { $0.entryIDs.contains(currentID) })
     else { return }
-    let revealGroup = { proxy.scrollTo(currentGroup.id, anchor: .center) }
-    if animated {
-      withAnimation(.easeInOut(duration: 0.25), revealGroup)
-    } else {
-      revealGroup()
+
+    let targetIsBelow = queueRevealTargetIsBelow(
+      oldEntryID: oldEntryID,
+      currentEntryID: currentID
+    )
+    let oldGroupID = oldEntryID.flatMap { oldID in
+      groups.first(where: { $0.entryIDs.contains(oldID) })?.id
     }
-    Task { @MainActor in
-      // A far-away row inside LazyVStack is not addressable until its album
-      // group has entered the layout. Center the exact row on the next pass.
-      await Task.yield()
-      guard player.currentEntry?.id == currentID else { return }
-      let revealTrack = { proxy.scrollTo(currentID, anchor: .center) }
-      if animated {
-        withAnimation(.easeInOut(duration: 0.25), revealTrack)
-      } else {
-        revealTrack()
+    let currentOffset = currentGroup.entryIDs.firstIndex(of: currentID) ?? 0
+    let discHeaderOffsets = currentGroup.entries.indices.filter {
+      currentGroup.beginsDiscSection(at: $0)
+    }
+    guard let action = queueTrackBasedRevealAction(
+      trackCount: currentGroup.entries.count,
+      currentOffset: currentOffset,
+      discHeaderOffsets: discHeaderOffsets,
+      isAutomatic: oldEntryID != nil,
+      automaticWithinSameAlbum: oldEntryID != nil && oldGroupID == currentGroup.id,
+      previousTrackIsVisible: oldEntryID.map(visibleEntryIDs.contains) ?? true,
+      albumTracksAreFullyVisible: currentGroup.entryIDs.allSatisfy(visibleEntryIDs.contains),
+      currentTrackIsVisible: visibleEntryIDs.contains(currentID),
+      targetIsBelow: targetIsBelow
+    ) else { return }
+
+    let scroll = {
+      let target = QueueAlbumScrollTarget(id: currentGroup.id)
+      switch action {
+      case .top:
+        proxy.scrollTo(target, anchor: .top)
+      case .bottom:
+        proxy.scrollTo(target, anchor: .bottom)
+      case .position(let anchorY):
+        proxy.scrollTo(target, anchor: UnitPoint(x: 0.5, y: anchorY))
       }
     }
+    if animated {
+      withAnimation(.easeInOut(duration: 0.28), scroll)
+    } else {
+      scroll()
+    }
   }
+
+  private func queueRevealTargetIsBelow(
+    oldEntryID: UUID?,
+    currentEntryID: UUID
+  ) -> Bool {
+    let queueIDs = player.queue.map(\.id)
+    guard let currentIndex = queueIDs.firstIndex(of: currentEntryID) else { return false }
+    if let oldEntryID,
+      let oldIndex = queueIDs.firstIndex(of: oldEntryID)
+    {
+      return currentIndex >= oldIndex
+    }
+    let visibleIndices = visibleEntryIDs.compactMap { queueIDs.firstIndex(of: $0) }
+    guard let firstVisible = visibleIndices.min() else { return currentIndex > 0 }
+    return currentIndex >= firstVisible
+  }
+
 }
 
 func visibleQueueDropMeasurements(
@@ -1699,11 +1727,48 @@ func visibleQueueDropMeasurements(
   .sorted { $0.1.midY < $1.1.midY }
 }
 
-func shouldAutomaticallyRevealCurrentTrack(
-  previousWasVisible: Bool,
-  currentIsVisible: Bool
-) -> Bool {
-  previousWasVisible && !currentIsVisible
+enum QueueTrackBasedRevealAction: Equatable {
+  case top
+  case bottom
+  case position(CGFloat)
+}
+
+func queueTrackBasedRevealAction(
+  trackCount: Int,
+  currentOffset: Int,
+  discHeaderOffsets: [Int],
+  isAutomatic: Bool,
+  automaticWithinSameAlbum: Bool,
+  previousTrackIsVisible: Bool,
+  albumTracksAreFullyVisible: Bool,
+  currentTrackIsVisible: Bool,
+  targetIsBelow: Bool
+) -> QueueTrackBasedRevealAction? {
+  let fittingTrackLimit = 16
+  if isAutomatic, !previousTrackIsVisible { return nil }
+
+  if trackCount <= fittingTrackLimit {
+    guard !albumTracksAreFullyVisible else { return nil }
+    if automaticWithinSameAlbum, currentTrackIsVisible { return nil }
+    return targetIsBelow ? .bottom : .top
+  }
+
+  if currentOffset == 0 || (isAutomatic && !automaticWithinSameAlbum) {
+    return .top
+  }
+  if isAutomatic, currentTrackIsVisible { return nil }
+
+  let albumHeaderRows: CGFloat = 2
+  let visibleRows = albumHeaderRows + CGFloat(fittingTrackLimit)
+  let forwardContextRows: CGFloat = 5
+  let discHeadersBeforeCurrent = discHeaderOffsets.filter { $0 <= currentOffset }.count
+  let totalRows = albumHeaderRows + CGFloat(trackCount + discHeaderOffsets.count)
+  let currentBottom =
+    albumHeaderRows + CGFloat(currentOffset + 1 + discHeadersBeforeCurrent)
+  let scrollableRows = max(1, totalRows - visibleRows)
+  let desiredOffset = currentBottom + forwardContextRows - visibleRows
+  let anchorY = min(1, max(0, desiredOffset / scrollableRows))
+  return .position(anchorY)
 }
 
 private struct QueueAlbumBlock: View {
