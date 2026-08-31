@@ -634,14 +634,14 @@ struct AppArtworkBackground: View {
 }
 
 struct NowPlayingArtworkBackground: View {
-  let theme: NowPlayingPreparedTheme?
+  let theme: NowPlayingPreparedTheme
 
   var body: some View {
     GeometryReader { geometry in
       ZStack {
         Color(red: 0.035, green: 0.043, blue: 0.050)
 
-        if let artwork = theme?.artwork {
+        if let artwork = theme.artwork {
           Image(nsImage: artwork)
             .resizable()
             .scaledToFill()
@@ -651,11 +651,9 @@ struct NowPlayingArtworkBackground: View {
             .saturation(ArtworkBackgroundStyle.artworkSaturation)
             .opacity(ArtworkBackgroundStyle.artworkOpacity)
             .clipped()
-            .id(ObjectIdentifier(artwork))
-            .transition(.opacity)
         }
 
-        let accent = theme?.accent.color ?? ArtworkColor.fallback.color
+        let accent = theme.accent.color
         RadialGradient(
           colors: [accent.opacity(ArtworkBackgroundStyle.accentOpacity), .clear],
           center: UnitPoint(x: 0.34, y: 0.38),
@@ -691,13 +689,8 @@ struct NowPlayingArtworkBackground: View {
         )
       }
       .clipped()
-      .animation(.easeInOut(duration: 0.85), value: artworkIdentity)
     }
     .allowsHitTesting(false)
-  }
-
-  private var artworkIdentity: ObjectIdentifier? {
-    theme?.artwork.map(ObjectIdentifier.init)
   }
 }
 
