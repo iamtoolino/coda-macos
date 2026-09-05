@@ -544,7 +544,7 @@ struct CollectionPlaybackControls: View {
   }
 }
 
-private struct PlayAlbumQueueIcon: View {
+struct PlayAlbumQueueIcon: View {
   var body: some View {
     HStack(spacing: 2.5) {
       Image(systemName: "play.fill")

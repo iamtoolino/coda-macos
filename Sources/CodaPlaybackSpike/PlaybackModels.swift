@@ -201,6 +201,8 @@ struct RemoteSong: Decodable, Identifiable, Hashable, Sendable {
   var year: Int? = nil
   var suffix: String? = nil
   var contentType: String? = nil
+  var type: String? = nil
+  var mediaType: String? = nil
   var bitRate: Int? = nil
   var bitDepth: Int? = nil
   var samplingRate: Int? = nil
@@ -328,6 +330,14 @@ struct RemotePlayQueue: Decodable, Hashable, Sendable {
     ([changed ?? "", changedBy ?? "", current ?? "", String(position ?? 0)] + songs.map(\.id))
       .joined(separator: "|")
   }
+}
+
+struct RemoteBookmark: Decodable, Hashable, Sendable {
+  var position: Int? = nil
+  var comment: String? = nil
+  var created: String? = nil
+  var changed: String? = nil
+  var entry: RemoteSong? = nil
 }
 
 struct ItemDate: Decodable, Hashable, Sendable {

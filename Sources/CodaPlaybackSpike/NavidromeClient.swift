@@ -107,6 +107,37 @@ struct NavidromeConfiguration: Sendable {
     return request
   }
 
+  func bookmarkMutationRequest(
+    endpoint: String,
+    songID: String,
+    positionMilliseconds: Int? = nil,
+    comment: String? = nil,
+    salt: String = Self.makeSalt()
+  ) throws -> URLRequest {
+    let trimmedID = songID.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedID.isEmpty else {
+      throw NavidromeError.invalidConfiguration("The bookmark song ID is empty.")
+    }
+    var parameters = [URLQueryItem(name: "id", value: trimmedID)]
+    if let positionMilliseconds {
+      parameters.append(
+        URLQueryItem(name: "position", value: String(max(0, positionMilliseconds))))
+    }
+    if let comment {
+      parameters.append(URLQueryItem(name: "comment", value: comment))
+    }
+    var formComponents = URLComponents()
+    formComponents.queryItems = authenticationItems(salt: salt) + parameters
+
+    var request = URLRequest(url: try restEndpointURL(endpoint))
+    request.httpMethod = "POST"
+    request.httpBody = Data((formComponents.percentEncodedQuery ?? "").utf8)
+    request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+    request.timeoutInterval = 30
+    request.cachePolicy = .reloadIgnoringLocalCacheData
+    return request
+  }
+
   func originalStreamURL(songID: String, salt: String = Self.makeSalt()) throws -> URL {
     let trimmedID = songID.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedID.isEmpty else {
@@ -443,6 +474,28 @@ struct NavidromeClient: Sendable {
     _ = try await checkedResponse(request)
   }
 
+  func bookmarks() async throws -> [RemoteBookmark] {
+    try await checkedResponse(endpoint: "getBookmarks").bookmarks?.bookmark ?? []
+  }
+
+  func createBookmark(songID: String, positionMilliseconds: Int, comment: String) async throws {
+    let request = try configuration.bookmarkMutationRequest(
+      endpoint: "createBookmark",
+      songID: songID,
+      positionMilliseconds: positionMilliseconds,
+      comment: comment
+    )
+    _ = try await checkedResponse(request)
+  }
+
+  func deleteBookmark(songID: String) async throws {
+    let request = try configuration.bookmarkMutationRequest(
+      endpoint: "deleteBookmark",
+      songID: songID
+    )
+    _ = try await checkedResponse(request)
+  }
+
   func setRating(id: String, rating: Int) async throws {
     let request = URLRequest(url: try configuration.ratingURL(id: id, rating: rating))
     _ = try await checkedResponse(request)
@@ -618,6 +671,7 @@ private struct SubsonicResponse: Decodable {
   var playlists: PlaylistListResponse?
   var playlist: RemotePlaylist?
   var playQueue: RemotePlayQueue?
+  var bookmarks: BookmarkListResponse?
   var searchResult3: SongSearchResult?
 }
 
@@ -697,6 +751,10 @@ private struct AlbumDetailResponse: Decodable {
 
 private struct PlaylistListResponse: Decodable {
   var playlist: [RemotePlaylist]?
+}
+
+private struct BookmarkListResponse: Decodable {
+  var bookmark: [RemoteBookmark]?
 }
 
 private struct SongSearchResult: Decodable {

@@ -12,6 +12,7 @@ struct CodaPlaybackSpikeApp: App {
   @StateObject private var artworkTreatments: ArtworkTreatmentSettings
   @StateObject private var playbackArtwork: PlaybackArtworkCoordinator
   @StateObject private var queueHandoff: QueueHandoffCoordinator
+  @StateObject private var albumResume: AlbumResumeCoordinator
   @StateObject private var scrobbler: ScrobbleCoordinator
   @StateObject private var playlistSaver: QueuePlaylistSaveCoordinator
   @StateObject private var nowPlayingPresentation: NowPlayingPresentationController
@@ -47,6 +48,9 @@ struct CodaPlaybackSpikeApp: App {
     )
     let queueHandoff = QueueHandoffCoordinator(session: session, player: player)
     _queueHandoff = StateObject(wrappedValue: queueHandoff)
+    _albumResume = StateObject(
+      wrappedValue: AlbumResumeCoordinator(session: session, player: player)
+    )
     _scrobbler = StateObject(
       wrappedValue: ScrobbleCoordinator(session: session, player: player)
     )
@@ -62,6 +66,7 @@ struct CodaPlaybackSpikeApp: App {
         .environmentObject(queueSelection)
         .environmentObject(artworkTreatments)
         .environmentObject(queueHandoff)
+        .environmentObject(albumResume)
         .environmentObject(playlistSaver)
         .environmentObject(nowPlayingPresentation)
     }

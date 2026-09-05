@@ -116,6 +116,141 @@ struct NavidromeTests {
     #expect(query["s"] == "abc123")
   }
 
+  @Test("bookmark mutation requests use form bodies")
+  func bookmarkMutationRequestsUseFormBodies() throws {
+    let config = try NavidromeConfiguration(
+      server: "https://music.example.test/navidrome",
+      username: "listener",
+      password: "secret"
+    )
+    let request = try config.bookmarkMutationRequest(
+      endpoint: "createBookmark",
+      songID: " track/1 ",
+      positionMilliseconds: 0,
+      comment: #"{"protocol":"album-resume-bookmark"}"#,
+      salt: "abc123"
+    )
+    let items = try formItems(in: request)
+
+    #expect(request.httpMethod == "POST")
+    #expect(request.url?.path == "/navidrome/rest/createBookmark.view")
+    #expect(items.first { $0.name == "id" }?.value == "track/1")
+    #expect(items.first { $0.name == "position" }?.value == "0")
+    #expect(
+      items.first { $0.name == "comment" }?.value
+        == #"{"protocol":"album-resume-bookmark"}"#)
+  }
+
+  @Test("album resume comments are portable and recognizable")
+  func albumResumeCommentsArePortableAndRecognizable() throws {
+    let writer = AlbumResumeWriter(
+      client: "Coda on su",
+      platform: "macOS",
+      appVersion: "2.1.1"
+    )
+    let comment = try #require(
+      albumResumeComment(resumeSongID: "resume-track", writer: writer))
+    let marker = try #require(albumResumeMarker(from: comment))
+
+    #expect(Data(comment.utf8).count <= 255)
+    #expect(marker.resumeSongID == "resume-track")
+    let payload = try #require(JSONSerialization.jsonObject(with: Data(comment.utf8)) as? [String: Any])
+    let diagnostics = try #require(payload["writer"] as? [String: String])
+    #expect(diagnostics == ["client": "Coda on su", "platform": "macOS", "appVersion": "2.1.1"])
+    #expect(albumResumeMarker(from: "ordinary bookmark") == nil)
+    #expect(
+      albumResumeMarker(
+        from: #"{"protocol":"album-resume-bookmark","protocolVersion":2,"resumeSongId":"x"}"#
+      ) == nil
+    )
+  }
+
+  @Test("album resume readers ignore diagnostic metadata")
+  func albumResumeIgnoresWriterMetadata() {
+    for writer in ["null", "{}", #"{"client":"Android"}"#, #"{"platform":42}"#, "false", #""diagnostic""#] {
+      let comment = #"{"protocol":"album-resume-bookmark","protocolVersion":1,"resumeSongId":"next","writer":\#(writer)}"#
+      #expect(albumResumeMarker(from: comment)?.resumeSongID == "next")
+    }
+  }
+
+  @Test("album resume completion uses a stable first-track anchor")
+  func albumResumeCompletionUsesStableAnchor() throws {
+    let first = RemoteSong(
+      id: "track-1", title: "One", album: "Album", artist: "Artist", albumId: "album-1",
+      track: 1)
+    let second = RemoteSong(
+      id: "track-2", title: "Two", album: "Album", artist: "Artist", albumId: "album-1",
+      track: 2)
+    let page = AlbumPage(
+      album: RemoteAlbum(id: "album-1", name: "Album", artist: "Artist"),
+      songs: [first, second]
+    )
+
+    #expect(
+      albumResumeCompletionAction(
+        completedSongID: first.id,
+        album: page
+      ) == .upsert(anchorSongID: first.id, resumeSongID: second.id)
+    )
+
+    #expect(
+      albumResumeCompletionAction(
+        completedSongID: second.id,
+        album: page
+      ) == .delete(anchorSongID: first.id)
+    )
+  }
+
+  @Test("album resume accepts music songs and rejects non-music media")
+  func albumResumeRequiresAlbumMusic() {
+    let music = RemoteSong(
+      id: "music", title: "Music", albumId: "album", type: "music", mediaType: "song")
+    let legacyMusic = RemoteSong(id: "legacy", title: "Legacy", albumId: "album")
+    let podcast = RemoteSong(
+      id: "podcast", title: "Podcast", albumId: "album", type: "podcast", mediaType: "song")
+    let audiobook = RemoteSong(
+      id: "book", title: "Book", albumId: "album", type: "audiobook", mediaType: "song")
+    let albumObject = RemoteSong(
+      id: "album-object", title: "Album", albumId: "album", type: "music", mediaType: "album")
+    let ungrouped = RemoteSong(id: "ungrouped", title: "Ungrouped", type: "music")
+
+    #expect(isEligibleAlbumResumeSong(music))
+    #expect(isEligibleAlbumResumeSong(legacyMusic))
+    #expect(!isEligibleAlbumResumeSong(podcast))
+    #expect(!isEligibleAlbumResumeSong(audiobook))
+    #expect(!isEligibleAlbumResumeSong(albumObject))
+    #expect(!isEligibleAlbumResumeSong(ungrouped))
+  }
+
+  @Test("album resume cards are newest-first and ignore foreign bookmarks")
+  func albumResumeCardsAreNewestFirst() throws {
+    let oldAnchor = RemoteSong(
+      id: "old-anchor", title: "One", album: "Old Album", artist: "Artist",
+      albumId: "old-album")
+    let newAnchor = RemoteSong(
+      id: "new-anchor", title: "One", album: "New Album", artist: "Artist",
+      albumId: "new-album")
+    let old = RemoteBookmark(
+      comment: try #require(albumResumeComment(resumeSongID: "old-resume", writer: nil)),
+      changed: "2026-08-01T10:00:00Z",
+      entry: oldAnchor
+    )
+    let newer = RemoteBookmark(
+      comment: try #require(albumResumeComment(resumeSongID: "new-resume", writer: nil)),
+      changed: "2026-09-01T10:00:00Z",
+      entry: newAnchor
+    )
+    let foreign = RemoteBookmark(
+      comment: "podcast position",
+      changed: "2026-10-01T10:00:00Z",
+      entry: oldAnchor
+    )
+
+    let items = albumResumeItems(from: [old, foreign, newer])
+    #expect(items.map(\.album.id) == ["new-album", "old-album"])
+    #expect(items.map(\.resumeSongID) == ["new-resume", "old-resume"])
+  }
+
   @Test("scrobble retry schedule")
   func scrobbleRetrySchedule() {
     #expect(scrobbleRetryDelays() == [1_000, 2_000, 4_000, 8_000, 16_000])

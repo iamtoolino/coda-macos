@@ -14,6 +14,7 @@ private struct HomeData {
 struct HomeView: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var queueHandoff: QueueHandoffCoordinator
+  @EnvironmentObject private var albumResume: AlbumResumeCoordinator
   let resetToken: UUID?
 
   @State private var data: HomeData?
@@ -59,6 +60,10 @@ struct HomeView: View {
           }
         }
 
+        if !albumResume.items.isEmpty {
+          ContinueAlbumShelf(items: albumResume.items)
+        }
+
         if let playlists = data?.playlists, !playlists.isEmpty {
           VStack(alignment: .leading, spacing: 4) {
             SectionHeading(title: "Playlists")
@@ -85,6 +90,7 @@ struct HomeView: View {
       CodaRefreshAction {
         Task { await load() }
         Task { await queueHandoff.refreshRemoteQueue() }
+        Task { await albumResume.refresh() }
       }
     )
     .task(id: resetToken) {
@@ -1021,6 +1027,7 @@ private struct ArtistContainedImage: View {
 }
 
 struct AlbumDetailView: View {
+  @EnvironmentObject private var albumResume: AlbumResumeCoordinator
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
@@ -1037,6 +1044,7 @@ struct AlbumDetailView: View {
   var body: some View {
     Group {
       if let page {
+        let remainingIDs = remainingSongIDs(in: page)
         GeometryReader { geometry in
           ScrollView {
             ZStack(alignment: .topLeading) {
@@ -1086,9 +1094,18 @@ struct AlbumDetailView: View {
                       }
                     }
                     .help("Drag Disc \(section.number) to the queue")
+                    .background {
+                      if let firstSong = section.songs.first,
+                        remainingIDs.contains(firstSong.id), firstSong.id != resumeSongID {
+                        continuationBackground()
+                      }
+                    }
                   }
 
                   ForEach(section.songs) { song in
+                    if song.id == resumeSongID {
+                      continueMarker(song: song, page: page)
+                    }
                     SongRow(
                       song: song,
                       isPlaying: player.currentEntry?.sourceID == song.id,
@@ -1105,6 +1122,11 @@ struct AlbumDetailView: View {
                       play(song, from: page)
                     }
                     .frame(maxWidth: 840, alignment: .leading)
+                    .background {
+                      if remainingIDs.contains(song.id) {
+                        continuationBackground(isEnd: song.id == page.songs.last?.id)
+                      }
+                    }
                   }
                 }
               }
@@ -1168,6 +1190,81 @@ struct AlbumDetailView: View {
         window.title != "Coda Status"
       else { return }
       applyLoadedArtwork()
+    }
+  }
+
+  private var resumeSongID: String? {
+    // The current album already has playback controls, including while paused.
+    guard player.currentEntry?.albumID != albumID else { return nil }
+    return albumResume.items.first { $0.album.id == albumID }?.resumeSongID
+  }
+
+  private func remainingSongIDs(in page: AlbumPage) -> Set<String> {
+    guard let index = page.songs.firstIndex(where: { $0.id == resumeSongID }) else { return [] }
+    return Set(page.songs[index...].map(\.id))
+  }
+
+  private func continuationBackground(isStart: Bool = false, isEnd: Bool = false) -> some View {
+    UnevenRoundedRectangle(
+      topLeadingRadius: isStart ? 8 : 0,
+      bottomLeadingRadius: isEnd ? 8 : 0,
+      bottomTrailingRadius: isEnd ? 8 : 0,
+      topTrailingRadius: isStart ? 8 : 0
+    )
+    .fill(artworkTreatments.accent.color.opacity(0.10))
+    .padding(.horizontal, 12)
+    .allowsHitTesting(false)
+  }
+
+  private func continueMarker(song: RemoteSong, page: AlbumPage) -> some View {
+    HStack(spacing: 8) {
+      Label("RESUME", systemImage: "bookmark.fill")
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(artworkTreatments.accent.color)
+      Spacer()
+      Button {
+        continueAlbum(from: song, page: page, appending: false)
+      } label: {
+        PlayAlbumQueueIcon()
+          .frame(width: 18, height: 18)
+          .frame(width: 34, height: 30)
+          .contentShape(Rectangle())
+      }
+      .help("Play remaining tracks from \(song.title)")
+      .accessibilityLabel("Play remaining tracks")
+      Button {
+        continueAlbum(from: song, page: page, appending: true)
+      } label: {
+        Image(systemName: "text.badge.plus")
+          .frame(width: 34, height: 30)
+          .contentShape(Rectangle())
+      }
+      .help("Append remaining tracks from \(song.title)")
+      .accessibilityLabel("Append remaining tracks")
+    }
+    .buttonStyle(.plain)
+    .foregroundStyle(.secondary)
+    .padding(.horizontal, 22)
+    .padding(.top, 5)
+    .frame(maxWidth: 840, alignment: .leading)
+    .background(continuationBackground(isStart: true))
+  }
+
+  private func continueAlbum(from song: RemoteSong, page: AlbumPage, appending: Bool) {
+    guard let index = page.songs.firstIndex(where: { $0.id == song.id }) else { return }
+    let remainingSongs = Array(page.songs[index...])
+    if appending {
+      session.append(
+        songs: remainingSongs,
+        canonicalAlbumArtworkID: page.album.artworkID,
+        to: player
+      )
+    } else {
+      session.play(
+        songs: remainingSongs,
+        canonicalAlbumArtworkID: page.album.artworkID,
+        with: player
+      )
     }
   }
 
@@ -1471,6 +1568,20 @@ private struct AlbumShelf: View {
       SectionHeading(title: title, action: onMore)
       PagedHorizontalShelf(items: albums, itemWidth: 154) { album in
         AlbumCard(album: album)
+          .frame(width: 154)
+      }
+    }
+  }
+}
+
+private struct ContinueAlbumShelf: View {
+  let items: [AlbumResumeItem]
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      SectionHeading(title: "Continue Listening")
+      PagedHorizontalShelf(items: items, itemWidth: 154) { item in
+        AlbumCard(album: item.album)
           .frame(width: 154)
       }
     }
