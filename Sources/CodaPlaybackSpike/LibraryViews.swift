@@ -1538,23 +1538,31 @@ private struct SectionHeading: View {
   var action: (() -> Void)?
 
   var body: some View {
-    Button {
-      action?()
-    } label: {
-      HStack {
-        Text(title)
-          .font(.title2.bold())
-        Spacer()
-        if action != nil {
-          Image(systemName: "chevron.right")
-            .foregroundStyle(.secondary)
+    Group {
+      if let action {
+        Button(action: action) {
+          HStack {
+            heading
+            Spacer()
+            Image(systemName: "chevron.right")
+              .foregroundStyle(.secondary)
+          }
+          .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+      } else {
+        heading
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .accessibilityAddTraits(.isHeader)
       }
-      .contentShape(Rectangle())
     }
-    .buttonStyle(.plain)
-    .disabled(action == nil)
     .padding(.horizontal, 22)
+  }
+
+  private var heading: some View {
+    Text(title)
+      .font(.title2.bold())
+      .foregroundStyle(.primary)
   }
 }
 
