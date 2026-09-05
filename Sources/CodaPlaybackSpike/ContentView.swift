@@ -288,14 +288,20 @@ private struct CompactQueuePeek: View {
   @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var pointerIsInside = false
+  @State private var edgeIsDropTargeted = false
+  @State private var queueIsDropTargeted = false
   @EnvironmentObject private var queueSelection: QueueSelectionModel
 
   let queueWidth: CGFloat
 
+  private var isInteracting: Bool {
+    pointerIsInside || edgeIsDropTargeted || queueIsDropTargeted
+  }
+
   var body: some View {
     ZStack(alignment: .trailing) {
       if queueSelection.isCompactQueuePresented {
-        QueuePanel()
+        QueuePanel(onDropTargetChanged: { queueIsDropTargeted = $0 })
           .frame(width: queueWidth)
           .frame(maxHeight: .infinity)
           .floatingPanel(
@@ -317,17 +323,22 @@ private struct CompactQueuePeek: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Show queue")
         .help("Show queue")
+        .onDrop(of: [.codaQueueDropItem], isTargeted: $edgeIsDropTargeted) { _ in
+          // The edge reveals the queue; only the queue itself accepts the drop.
+          false
+        }
+        .onDisappear { edgeIsDropTargeted = false }
       }
     }
     .frame(width: queueSelection.isCompactQueuePresented ? queueWidth + 10 : 20)
     .frame(maxHeight: .infinity)
     .contentShape(Rectangle())
     .onHover { pointerIsInside = $0 }
-    .task(id: pointerIsInside) {
+    .task(id: isInteracting) {
       do {
-        try await Task.sleep(for: .milliseconds(pointerIsInside ? 120 : 300))
+        try await Task.sleep(for: .milliseconds(isInteracting ? 120 : 300))
         guard !Task.isCancelled else { return }
-        queueSelection.isCompactQueuePresented = pointerIsInside
+        queueSelection.isCompactQueuePresented = isInteracting
       } catch {}
     }
     .onDisappear { queueSelection.isCompactQueuePresented = false }
@@ -1281,6 +1292,7 @@ private struct QueuePanel: View {
   @EnvironmentObject private var queueSelection: QueueSelectionModel
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
+  var onDropTargetChanged: ((Bool) -> Void)? = nil
   @State private var groups: [QueueGroup] = []
   @State private var visibleEntryIDs: Set<UUID> = []
   @State private var groupFrames: [UUID: CGRect] = [:]
@@ -1510,6 +1522,10 @@ private struct QueuePanel: View {
         handleDrop(items, at: dropSession.location)
       }
       .onDropSessionUpdated(updateDropSession)
+      .onChange(of: isDropTargeted) { _, targeted in
+        onDropTargetChanged?(targeted)
+      }
+      .onDisappear { onDropTargetChanged?(false) }
       .dropConfiguration { _ in
         DropConfiguration(operation: activeReorderItem == nil ? .copy : .move)
       }
