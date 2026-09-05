@@ -72,9 +72,7 @@ struct ContentView: View {
           .padding(10)
 
           ZStack {
-            if let preparedTheme = nowPlayingPresentation.preparedTheme {
-              ArtworkBackgroundTransition(theme: preparedTheme.artworkBackgroundTheme)
-            }
+            NowPlayingArtworkBackground()
             Color.clear
               .contentShape(Rectangle())
               .onTapGesture { nowPlayingPresentation.dismiss() }

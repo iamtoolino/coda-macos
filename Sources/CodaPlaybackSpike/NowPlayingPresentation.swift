@@ -537,6 +537,7 @@ struct NowPlayingPresentationView: View {
             if let albumID = entry.albumID {
               NowPlayingAlbumRating(
                 albumID: albumID,
+                isLoaded: album?.id == albumID,
                 fallbackRating: album?.id == albumID ? album?.userRating : nil,
                 accent: presentationAccent
               )
@@ -578,7 +579,7 @@ struct NowPlayingPresentationView: View {
           album = nil
           guard let albumID = entry.albumID, let client = session.client else { return }
           let loadedAlbum = try? await client.album(id: albumID).album
-          guard player.currentEntry?.albumID == albumID else { return }
+          guard !Task.isCancelled, player.currentEntry?.albumID == albumID else { return }
           album = loadedAlbum
         }
       }
@@ -665,13 +666,30 @@ struct NowPlayingPresentationView: View {
 
 private struct NowPlayingAlbumRating: View {
   @EnvironmentObject private var session: AppSession
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   let albumID: String
+  let isLoaded: Bool
   let fallbackRating: Int?
   let accent: Color
 
   @State private var hoveredRating: Int?
-  @State private var revealedRating = 0
-  @State private var ratingHighlightTrigger = 0
+  @State private var presentedRating = 0
+  @State private var starsVisible = false
+  @State private var animatesFillChanges = false
+
+  private struct RatingPresentationRequest: Hashable {
+    let albumID: String
+    let sessionID: UUID?
+    let loadedRating: Int?
+  }
+
+  private var presentationRequest: RatingPresentationRequest {
+    RatingPresentationRequest(
+      albumID: albumID,
+      sessionID: session.activeSessionID,
+      loadedRating: isLoaded ? max(0, min(rating ?? 0, 5)) : nil
+    )
+  }
 
   private var rating: Int? {
     session.rating(forAlbumID: albumID, fallback: fallbackRating)
@@ -686,7 +704,7 @@ private struct NowPlayingAlbumRating: View {
       HStack(spacing: 8) {
         ForEach(1...5, id: \.self) { value in
           Button {
-            ratingHighlightTrigger &+= 1
+            guard isLoaded && starsVisible else { return }
             Task {
               await session.updateAlbumRating(
                 value,
@@ -695,16 +713,19 @@ private struct NowPlayingAlbumRating: View {
               )
             }
           } label: {
-            Image(systemName: value <= displayedRating ? "star.fill" : "star")
-              .font(.system(size: 22, weight: .medium))
-              .foregroundStyle(accent)
-              .contentShape(Rectangle())
-              .contentTransition(.symbolEffect(.replace))
-              .scaleEffect(value <= displayedRating ? 1 : 0.94)
-              .animation(
-                .easeOut(duration: 0.18).delay(Double(value - 1) * 0.045),
-                value: revealedRating
-              )
+            ZStack {
+              Image(systemName: "star.fill")
+                .animation(
+                  animatesFillChanges && !reduceMotion && hoveredRating == nil
+                    ? .easeInOut(duration: 0.18) : nil
+                ) { content in
+                  content.opacity(value <= displayedRating ? 1 : 0)
+                }
+              Image(systemName: "star")
+            }
+            .font(.system(size: 22, weight: .medium))
+            .foregroundStyle(accent)
+            .contentShape(Rectangle())
           }
           .buttonStyle(.plain)
           .disabled(session.isUpdatingAlbumRating)
@@ -716,43 +737,38 @@ private struct NowPlayingAlbumRating: View {
         }
       }
       .opacity(session.isUpdatingAlbumRating ? 0.78 : 1)
-      .animation(.easeInOut(duration: 0.30), value: albumID)
       .animation(.easeInOut(duration: 0.18), value: session.isUpdatingAlbumRating)
-      .ratingPromptEffect(
-        trigger: ratingHighlightTrigger,
-        accent: accent
-      )
       .onHover { isHovering in
         if !isHovering { hoveredRating = nil }
       }
+      .opacity(starsVisible ? 1 : 0)
+      .animation(nil, value: starsVisible)
+      .allowsHitTesting(isLoaded && starsVisible)
+      .accessibilityHidden(!isLoaded || !starsVisible)
     }
-    .onChange(of: albumID) {
+    .task(id: presentationRequest) {
       hoveredRating = nil
-      setRevealedRating(0, animated: false)
-    }
-    .onChange(of: rating) { _, newRating in
-      setRevealedRating(newRating ?? 0, animated: newRating != nil)
-    }
-    .onAppear {
-      setRevealedRating(rating ?? 0, animated: false)
+      if let loadedRating = presentationRequest.loadedRating {
+        animatesFillChanges = starsVisible
+        presentedRating = loadedRating
+        starsVisible = true
+        return
+      }
+
+      // Briefly retain the outgoing rating. New data cancels this timeout;
+      // a slow or failed request must not leave another album's rating on screen.
+      do {
+        try await Task.sleep(for: .milliseconds(500))
+      } catch {
+        return
+      }
+      guard !Task.isCancelled else { return }
+      starsVisible = false
     }
   }
 
   private var displayedRating: Int {
-    hoveredRating ?? revealedRating
-  }
-
-  private func setRevealedRating(_ rating: Int, animated: Bool) {
-    let clampedRating = max(0, min(rating, 5))
-    if animated {
-      revealedRating = clampedRating
-    } else {
-      var transaction = Transaction()
-      transaction.disablesAnimations = true
-      withTransaction(transaction) {
-        revealedRating = clampedRating
-      }
-    }
+    hoveredRating ?? presentedRating
   }
 }
 

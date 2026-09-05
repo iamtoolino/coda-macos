@@ -594,6 +594,16 @@ struct AppArtworkBackground: View {
   }
 }
 
+struct NowPlayingArtworkBackground: View {
+  @EnvironmentObject private var presentation: NowPlayingPresentationController
+
+  var body: some View {
+    if let theme = presentation.preparedTheme {
+      ArtworkBackgroundTransition(theme: theme.artworkBackgroundTheme)
+    }
+  }
+}
+
 private struct ArtworkBackgroundLayer: View {
   let theme: ArtworkBackgroundTheme
 
