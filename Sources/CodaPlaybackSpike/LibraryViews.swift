@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 private let floatingPlaybackDockScrollClearance: CGFloat = 78
+private let trackHighlightHorizontalInset: CGFloat = 12
 
 private struct HomeData {
   let newest: [RemoteAlbum]
@@ -1111,6 +1112,8 @@ struct AlbumDetailView: View {
                       isPlaying: player.currentEntry?.sourceID == song.id,
                       horizontalPadding: 22,
                       isSelected: selectedSongIDs.contains(song.id),
+                      roundsSelectionBottom: remainingIDs.contains(song.id)
+                        && song.id == page.songs.last?.id,
                       dragSongIDs: selectedSongIDs.contains(song.id)
                         ? selectedSongIDs : [song.id],
                       canonicalAlbumArtworkID: page.album.artworkID,
@@ -1212,7 +1215,7 @@ struct AlbumDetailView: View {
       topTrailingRadius: isStart ? 8 : 0
     )
     .fill(artworkTreatments.accent.color.opacity(0.10))
-    .padding(.horizontal, 12)
+    .padding(.horizontal, trackHighlightHorizontalInset)
     .allowsHitTesting(false)
   }
 
@@ -1929,6 +1932,7 @@ private struct SongRow: View {
   let isPlaying: Bool
   var horizontalPadding: CGFloat = 22
   var isSelected = false
+  var roundsSelectionBottom = false
   var dragSongIDs: [String] = []
   var canonicalAlbumArtworkID: String? = nil
   var selectionAction: ((TrackSelectionModifiers) -> Void)?
@@ -2012,8 +2016,14 @@ private struct SongRow: View {
     .padding(.vertical, 7)
     .background {
       if isSelected {
-        Rectangle()
-          .fill(Color.primary.opacity(0.075))
+        UnevenRoundedRectangle(
+          topLeadingRadius: 0,
+          bottomLeadingRadius: roundsSelectionBottom ? 8 : 0,
+          bottomTrailingRadius: roundsSelectionBottom ? 8 : 0,
+          topTrailingRadius: 0
+        )
+        .fill(Color.primary.opacity(0.075))
+        .padding(.horizontal, trackHighlightHorizontalInset)
       }
     }
   }
