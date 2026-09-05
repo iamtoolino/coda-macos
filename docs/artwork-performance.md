@@ -19,8 +19,8 @@ Navidrome's default image-cache limit is `100MB`.
 
 ## Docker Compose
 
-Add `ND_IMAGECACHESIZE` to the Navidrome service's environment and recreate or restart the
-container:
+Add `ND_IMAGECACHESIZE` to the Navidrome service's environment, then recreate the container
+to apply the change. Restarting an existing container does not update its environment:
 
 ```yaml
 services:
