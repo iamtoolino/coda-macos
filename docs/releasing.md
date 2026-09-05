@@ -46,6 +46,9 @@ judge reliably:
 - Confirm gapless queue transitions and queue restoration.
 - Exercise selection, reordering, removal, and saving the queue as a playlist.
 - Browse Home, Search, Artists, Albums, Playlists, album detail, and Now Playing.
+- Enter Search with a mouse click and Command-F, including from Now Playing and
+  while already in Search. Type without clicking the field; it should receive input.
+  Returning from a search result should refocus the retained query.
 - In Now Playing, switch between albums with different colors and ratings without moving the
   pointer over the background. The background should update with the cover; only changed star
   fills should fade. If rating metadata takes more than 500 ms, stars hide until it arrives while

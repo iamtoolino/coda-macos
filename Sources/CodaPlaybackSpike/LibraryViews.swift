@@ -129,6 +129,7 @@ struct HomeView: View {
 struct SearchView: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
+  @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   let resetToken: UUID?
 
   @FocusState private var searchFieldIsFocused: Bool
@@ -199,15 +200,15 @@ struct SearchView: View {
     .task(id: query) {
       await performSearch(for: query)
     }
-    .task(id: resetToken) {
+    .task(id: SearchFocusRequest(
+      resetToken: resetToken,
+      isAtRoot: session.path.isEmpty,
+      browsingIsInteractive: nowPlayingPresentation.phase.browsingIsInteractive
+    )) {
+      guard session.path.isEmpty,
+        nowPlayingPresentation.phase.browsingIsInteractive
+      else { return }
       await focusSearchField()
-    }
-    .onAppear {
-      searchFieldIsFocused = true
-    }
-    .onChange(of: session.path) { previousPath, path in
-      guard !previousPath.isEmpty, path.isEmpty else { return }
-      Task { await focusSearchField() }
     }
     .onExitCommand {
       if query.isEmpty {
@@ -259,9 +260,20 @@ struct SearchView: View {
 
   @MainActor
   private func focusSearchField() async {
+    // Let the field mount before requesting focus. A newer navigation request
+    // cancels this task, so an outgoing Search view cannot reclaim focus.
+    await Task.yield()
+    guard !Task.isCancelled else { return }
     searchFieldIsFocused = true
     await Task.yield()
+    guard !Task.isCancelled else { return }
     NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+  }
+
+  private struct SearchFocusRequest: Equatable {
+    let resetToken: UUID?
+    let isAtRoot: Bool
+    let browsingIsInteractive: Bool
   }
 
   @MainActor
