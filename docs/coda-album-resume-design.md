@@ -28,7 +28,8 @@ primitives.
   Play replaces the queue and starts playback. Append preserves existing playback and stays
   paused if the queue was empty. Neither action automatically opens NPS or leaves album detail.
   The existing album-header buttons still operate on the entire album.
-  The marker is not movable and these actions do not edit the saved bookmark.
+  Dragging the Resume label inserts all remaining tracks at the chosen queue position.
+  The saved marker is not movable; dragging, Play, and Append do not edit the bookmark.
   Receiving bookmark updates alone never navigates to Home or dismisses NPS.
 - Ordinary album Play still starts track 1. Saved-queue handoff and all other playback/navigation
   behavior remain unchanged.

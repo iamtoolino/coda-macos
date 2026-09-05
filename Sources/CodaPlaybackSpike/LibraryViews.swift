@@ -1220,10 +1220,25 @@ struct AlbumDetailView: View {
   }
 
   private func continueMarker(song: RemoteSong, page: AlbumPage) -> some View {
-    HStack(spacing: 8) {
+    let remainingIDs = page.songs.drop(while: { $0.id != song.id }).map(\.id)
+    return HStack(spacing: 8) {
       Label("RESUME", systemImage: "bookmark.fill")
         .font(.caption2.weight(.semibold))
         .foregroundStyle(artworkTreatments.accent.color)
+        .frame(minHeight: 30)
+        .contentShape(Rectangle())
+        .draggable(
+          QueueDropItem.library(
+            .songs(remainingIDs, canonicalAlbumArtworkID: page.album.artworkID)
+          )
+        ) {
+          LibraryDragPreview(
+            title: page.album.name,
+            detail: "\(remainingIDs.count) remaining tracks"
+          )
+        }
+        .dragConfiguration(.codaInternal())
+        .help("Drag remaining tracks from \(song.title) to the queue")
       Spacer()
       Button {
         continueAlbum(from: song, page: page, appending: false)
