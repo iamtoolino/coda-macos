@@ -314,6 +314,28 @@ struct LibraryInteractionTests {
     #expect(!codaQueueIsVisible(windowWidth: 1_440, hasEstablishedConnection: false))
   }
 
+  @Test("compact queue presentation enables select-all only while visible")
+  func compactQueueSelectAllVisibility() {
+    func routes(compactVisible: Bool, connected: Bool = true, textEditing: Bool = false) -> Bool {
+      shouldRouteQueueSelectAllShortcut(
+        modifiers: .command,
+        charactersIgnoringModifiers: "a",
+        appIsActive: true,
+        mainPlaybackWindowIsKey: true,
+        queueIsVisible: codaQueueIsVisible(
+          windowWidth: 700,
+          hasEstablishedConnection: connected,
+          compactQueueIsPresented: compactVisible
+        ),
+        isTextEditing: textEditing
+      )
+    }
+    #expect(routes(compactVisible: true))
+    #expect(!routes(compactVisible: false))
+    #expect(!routes(compactVisible: true, connected: false))
+    #expect(!routes(compactVisible: true, textEditing: true))
+  }
+
   @Test("queue Escape clears only a visible main-window selection")
   func queueEscapeClearsOnlyAVisibleMainWindowSelection() {
     let route = {

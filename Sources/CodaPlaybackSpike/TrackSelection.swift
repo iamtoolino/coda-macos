@@ -21,6 +21,7 @@ struct OrderedQueueSelection<ID: Hashable> {
 
 @MainActor
 final class QueueSelectionModel: ObservableObject {
+  @Published var isCompactQueuePresented = false
   @Published private(set) var selectedEntryIDs: [UUID]?
   private var anchorEntryIDs: [UUID] = []
 
@@ -89,7 +90,8 @@ final class QueueSelectionShortcutMonitor: ObservableObject {
         && keyWindow.sheetParent == nil
       let queueIsVisible = codaQueueIsVisible(
         windowWidth: keyWindow.contentView?.bounds.width ?? 0,
-        hasEstablishedConnection: session.hasEstablishedConnection
+        hasEstablishedConnection: session.hasEstablishedConnection,
+        compactQueueIsPresented: selection.isCompactQueuePresented
       )
       let appIsActive = NSApp.isActive
       let isTextEditing = keyWindow.firstResponder is NSTextView

@@ -288,13 +288,13 @@ private struct CompactQueuePeek: View {
   @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var pointerIsInside = false
-  @State private var isPresented = false
+  @EnvironmentObject private var queueSelection: QueueSelectionModel
 
   let queueWidth: CGFloat
 
   var body: some View {
     ZStack(alignment: .trailing) {
-      if isPresented {
+      if queueSelection.isCompactQueuePresented {
         QueuePanel()
           .frame(width: queueWidth)
           .frame(maxHeight: .infinity)
@@ -307,7 +307,7 @@ private struct CompactQueuePeek: View {
           .transition(reduceMotion ? .opacity : .move(edge: .trailing))
       } else {
         Button {
-          isPresented = true
+          queueSelection.isCompactQueuePresented = true
         } label: {
           Color.clear
             .frame(width: 20)
@@ -319,7 +319,7 @@ private struct CompactQueuePeek: View {
         .help("Show queue")
       }
     }
-    .frame(width: isPresented ? queueWidth + 10 : 20)
+    .frame(width: queueSelection.isCompactQueuePresented ? queueWidth + 10 : 20)
     .frame(maxHeight: .infinity)
     .contentShape(Rectangle())
     .onHover { pointerIsInside = $0 }
@@ -327,22 +327,25 @@ private struct CompactQueuePeek: View {
       do {
         try await Task.sleep(for: .milliseconds(pointerIsInside ? 120 : 300))
         guard !Task.isCancelled else { return }
-        isPresented = pointerIsInside
+        queueSelection.isCompactQueuePresented = pointerIsInside
       } catch {}
     }
-    .onExitCommand { isPresented = false }
-    .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.20), value: isPresented)
+    .onDisappear { queueSelection.isCompactQueuePresented = false }
+    .onExitCommand { queueSelection.isCompactQueuePresented = false }
+    .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.20), value: queueSelection.isCompactQueuePresented)
   }
 }
 
 func codaQueueIsVisible(
   windowWidth: CGFloat,
-  hasEstablishedConnection: Bool
+  hasEstablishedConnection: Bool,
+  compactQueueIsPresented: Bool = false
 ) -> Bool {
   let contentWidth = max(0, windowWidth - 20)
   let queueWidth = codaQueueWidth(windowWidth: windowWidth)
   return hasEstablishedConnection
-    && contentWidth - queueWidth - 10 >= PlaybackDockMetrics.minimumMainContentWidth
+    && (compactQueueIsPresented
+      || contentWidth - queueWidth - 10 >= PlaybackDockMetrics.minimumMainContentWidth)
 }
 
 func codaQueueWidth(windowWidth: CGFloat) -> CGFloat {
