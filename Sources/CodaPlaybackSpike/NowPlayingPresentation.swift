@@ -27,6 +27,10 @@ struct NowPlayingPreparedTheme: Identifiable {
   let playbackKey: String
   let artwork: NSImage?
   let accent: ArtworkColor
+
+  var artworkBackgroundTheme: ArtworkBackgroundTheme {
+    ArtworkBackgroundTheme(id: id, artwork: artwork, accent: accent)
+  }
 }
 
 enum NowPlayingAutomaticPresentationTiming {
@@ -533,7 +537,7 @@ struct NowPlayingPresentationView: View {
             if let albumID = entry.albumID {
               NowPlayingAlbumRating(
                 albumID: albumID,
-                fallbackRating: album?.userRating,
+                fallbackRating: album?.id == albumID ? album?.userRating : nil,
                 accent: presentationAccent
               )
               .animation(.easeInOut(duration: 0.85), value: preparedThemeID)
@@ -666,6 +670,7 @@ private struct NowPlayingAlbumRating: View {
   let accent: Color
 
   @State private var hoveredRating: Int?
+  @State private var revealedRating = 0
   @State private var ratingHighlightTrigger = 0
 
   private var rating: Int? {
@@ -694,7 +699,12 @@ private struct NowPlayingAlbumRating: View {
               .font(.system(size: 22, weight: .medium))
               .foregroundStyle(accent)
               .contentShape(Rectangle())
-              .contentTransition(.opacity)
+              .contentTransition(.symbolEffect(.replace))
+              .scaleEffect(value <= displayedRating ? 1 : 0.94)
+              .animation(
+                .easeOut(duration: 0.18).delay(Double(value - 1) * 0.045),
+                value: revealedRating
+              )
           }
           .buttonStyle(.plain)
           .disabled(session.isUpdatingAlbumRating)
@@ -708,7 +718,6 @@ private struct NowPlayingAlbumRating: View {
       .opacity(session.isUpdatingAlbumRating ? 0.78 : 1)
       .animation(.easeInOut(duration: 0.30), value: albumID)
       .animation(.easeInOut(duration: 0.18), value: session.isUpdatingAlbumRating)
-      .animation(.easeInOut(duration: 0.16), value: rating)
       .ratingPromptEffect(
         trigger: ratingHighlightTrigger,
         accent: accent
@@ -719,11 +728,31 @@ private struct NowPlayingAlbumRating: View {
     }
     .onChange(of: albumID) {
       hoveredRating = nil
+      setRevealedRating(0, animated: false)
+    }
+    .onChange(of: rating) { _, newRating in
+      setRevealedRating(newRating ?? 0, animated: newRating != nil)
+    }
+    .onAppear {
+      setRevealedRating(rating ?? 0, animated: false)
     }
   }
 
   private var displayedRating: Int {
-    hoveredRating ?? max(0, min(rating ?? 0, 5))
+    hoveredRating ?? revealedRating
+  }
+
+  private func setRevealedRating(_ rating: Int, animated: Bool) {
+    let clampedRating = max(0, min(rating, 5))
+    if animated {
+      revealedRating = clampedRating
+    } else {
+      var transaction = Transaction()
+      transaction.disablesAnimations = true
+      withTransaction(transaction) {
+        revealedRating = clampedRating
+      }
+    }
   }
 }
 

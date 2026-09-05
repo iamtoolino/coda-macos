@@ -73,9 +73,7 @@ struct ContentView: View {
 
           ZStack {
             if let preparedTheme = nowPlayingPresentation.preparedTheme {
-              NowPlayingArtworkBackground(theme: preparedTheme)
-                .id(preparedTheme.id)
-                .transition(.opacity)
+              ArtworkBackgroundTransition(theme: preparedTheme.artworkBackgroundTheme)
             }
             Color.clear
               .contentShape(Rectangle())
@@ -98,10 +96,6 @@ struct ContentView: View {
           .animation(
             .easeInOut(duration: NowPlayingPresentationMotion.duration),
             value: nowPlayingPresentation.isPresented
-          )
-          .animation(
-            .easeInOut(duration: 0.85),
-            value: nowPlayingPresentation.preparedTheme?.id
           )
 
           HStack(alignment: .top, spacing: 10) {

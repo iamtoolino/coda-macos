@@ -48,13 +48,28 @@ private struct StoredArtworkTheme {
   let identity: String
 }
 
+struct ArtworkBackgroundTheme: Identifiable {
+  let id: UUID
+  let artwork: NSImage?
+  let accent: ArtworkColor
+
+  init(id: UUID = UUID(), artwork: NSImage?, accent: ArtworkColor) {
+    self.id = id
+    self.artwork = artwork
+    self.accent = accent
+  }
+}
+
 @MainActor
 final class ArtworkTreatmentSettings: ObservableObject {
   private static let showsRatingLabelsKey = "shows-album-rating-labels"
 
   @Published var accent: ArtworkColor = .fallback
   @Published var artwork: NSImage?
-  @Published private(set) var artworkRevision = UUID()
+  @Published private(set) var backgroundTheme = ArtworkBackgroundTheme(
+    artwork: nil,
+    accent: .fallback
+  )
   @Published var showsAlbumRatingLabels: Bool {
     didSet { UserDefaults.standard.set(showsAlbumRatingLabels, forKey: Self.showsRatingLabelsKey) }
   }
@@ -95,7 +110,7 @@ final class ArtworkTreatmentSettings: ObservableObject {
       artwork = image
       self.accent = accent
       displayedArtworkIdentity = identity
-      artworkRevision = UUID()
+      backgroundTheme = ArtworkBackgroundTheme(artwork: image, accent: accent)
     }
   }
 
@@ -573,68 +588,14 @@ struct AppArtworkBackground: View {
   @EnvironmentObject private var settings: ArtworkTreatmentSettings
 
   var body: some View {
-    GeometryReader { geometry in
-      ZStack {
-        Color(red: 0.035, green: 0.043, blue: 0.050)
-
-        if let artwork = settings.artwork {
-          Image(nsImage: artwork)
-            .resizable()
-            .scaledToFill()
-            .frame(width: geometry.size.width, height: geometry.size.height)
-            .scaleEffect(ArtworkBackgroundStyle.artworkScale)
-            .blur(radius: ArtworkBackgroundStyle.artworkBlur)
-            .saturation(ArtworkBackgroundStyle.artworkSaturation)
-            .opacity(ArtworkBackgroundStyle.artworkOpacity)
-            .clipped()
-            .id(settings.artworkRevision)
-            .transition(.opacity)
-        }
-
-        RadialGradient(
-          colors: [settings.accent.color.opacity(ArtworkBackgroundStyle.accentOpacity), .clear],
-          center: UnitPoint(x: 0.34, y: 0.38),
-          startRadius: 24,
-          endRadius: max(geometry.size.width, geometry.size.height) * 0.72
-        )
-
-        RadialGradient(
-          colors: [
-            settings.accent.color.opacity(ArtworkBackgroundStyle.glowOpacity),
-            settings.accent.color.opacity(0.08),
-            .clear,
-          ],
-          center: UnitPoint(x: 0.34, y: 0.27),
-          startRadius: 8,
-          endRadius: max(geometry.size.width, geometry.size.height) * 0.48
-        )
-        RadialGradient(
-          colors: [.clear, Color.black.opacity(0.48)],
-          center: UnitPoint(x: 0.50, y: 0.43),
-          startRadius: min(geometry.size.width, geometry.size.height) * 0.24,
-          endRadius: max(geometry.size.width, geometry.size.height) * 0.78
-        )
-
-        LinearGradient(
-          colors: [
-            Color.black.opacity(0.18),
-            Color(red: 0.025, green: 0.032, blue: 0.038).opacity(0.48),
-            Color.black.opacity(0.72),
-          ],
-          startPoint: .topLeading,
-          endPoint: .bottomTrailing
-        )
-      }
-      .clipped()
-      .animation(.easeInOut(duration: 0.85), value: settings.artworkRevision)
-    }
+    ArtworkBackgroundTransition(theme: settings.backgroundTheme)
     .ignoresSafeArea()
     .allowsHitTesting(false)
   }
 }
 
-struct NowPlayingArtworkBackground: View {
-  let theme: NowPlayingPreparedTheme
+private struct ArtworkBackgroundLayer: View {
+  let theme: ArtworkBackgroundTheme
 
   var body: some View {
     GeometryReader { geometry in
@@ -691,6 +652,60 @@ struct NowPlayingArtworkBackground: View {
       .clipped()
     }
     .allowsHitTesting(false)
+  }
+}
+
+struct ArtworkBackgroundTransition: View {
+  let theme: ArtworkBackgroundTheme
+
+  @State private var displayedTheme: ArtworkBackgroundTheme
+  @State private var outgoingTheme: ArtworkBackgroundTheme?
+  @State private var incomingOpacity = 1.0
+  @State private var transitionTask: Task<Void, Never>?
+
+  init(theme: ArtworkBackgroundTheme) {
+    self.theme = theme
+    _displayedTheme = State(initialValue: theme)
+  }
+
+  var body: some View {
+    ZStack {
+      if let outgoingTheme {
+        ArtworkBackgroundLayer(theme: outgoingTheme)
+      }
+      ArtworkBackgroundLayer(theme: displayedTheme)
+        .opacity(incomingOpacity)
+    }
+    .onChange(of: theme.id) { _, _ in
+      transition(to: theme)
+    }
+    .onDisappear {
+      transitionTask?.cancel()
+      transitionTask = nil
+    }
+  }
+
+  private func transition(to newTheme: ArtworkBackgroundTheme) {
+    guard displayedTheme.id != newTheme.id else { return }
+    transitionTask?.cancel()
+    var transaction = Transaction()
+    transaction.disablesAnimations = true
+    withTransaction(transaction) {
+      outgoingTheme = displayedTheme
+      displayedTheme = newTheme
+      incomingOpacity = 0
+    }
+    transitionTask = Task { @MainActor in
+      await Task.yield()
+      guard !Task.isCancelled else { return }
+      withAnimation(.easeInOut(duration: 0.85)) {
+        incomingOpacity = 1
+      }
+      try? await Task.sleep(for: .seconds(0.85))
+      guard !Task.isCancelled else { return }
+      outgoingTheme = nil
+      transitionTask = nil
+    }
   }
 }
 
