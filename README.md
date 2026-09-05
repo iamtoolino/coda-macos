@@ -20,7 +20,7 @@ Coda is an independent community project and is not affiliated with or endorsed 
 - Artwork-led native macOS design with album-derived colors and Liquid Glass controls.
 - Album-first browsing with chronological discographies, multidisc releases, ratings, and search.
 - A visible, editable queue with drag-and-drop insertion, reordering, removal, and queue handoff.
-  In narrow windows, hover over or click the right-edge handle to reveal the queue over the content;
+  In narrow windows, hover over or click the right edge to reveal the queue over the content;
   it closes shortly after the pointer leaves, or with Escape.
 - Original-format playback with gapless transitions, seeking, scrobbling, and saved queue restoration.
 - Native media keys, macOS Now Playing integration, and a dedicated immersive Now Playing view.

@@ -309,9 +309,7 @@ private struct CompactQueuePeek: View {
         Button {
           isPresented = true
         } label: {
-          Capsule()
-            .fill(.secondary.opacity(0.6))
-            .frame(width: 3, height: 40)
+          Color.clear
             .frame(width: 20)
             .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
