@@ -174,6 +174,12 @@ struct ContentView: View {
             alignment: .topLeading
           )
           .padding(10)
+
+          if session.hasEstablishedConnection && !queueIsVisible {
+            CompactQueuePeek(queueWidth: queueWidth)
+              .padding(.vertical, 10)
+              .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+          }
         }
       }
     }
@@ -274,6 +280,60 @@ struct ContentView: View {
         playbackIdentity: player.currentEntry?.artworkThemeIdentity
       )
     )
+  }
+}
+
+private struct CompactQueuePeek: View {
+  @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
+  @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var pointerIsInside = false
+  @State private var isPresented = false
+
+  let queueWidth: CGFloat
+
+  var body: some View {
+    ZStack(alignment: .trailing) {
+      if isPresented {
+        QueuePanel()
+          .frame(width: queueWidth)
+          .frame(maxHeight: .infinity)
+          .floatingPanel(
+            material: true,
+            materialAccent: nowPlayingPresentation
+              .resolvedAccent(artworkTreatments.accent).color
+          )
+          .padding(.trailing, 10)
+          .transition(reduceMotion ? .opacity : .move(edge: .trailing))
+      } else {
+        Button {
+          isPresented = true
+        } label: {
+          Capsule()
+            .fill(.secondary.opacity(0.6))
+            .frame(width: 3, height: 40)
+            .frame(width: 20)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Show queue")
+        .help("Show queue")
+      }
+    }
+    .frame(width: isPresented ? queueWidth + 10 : 20)
+    .frame(maxHeight: .infinity)
+    .contentShape(Rectangle())
+    .onHover { pointerIsInside = $0 }
+    .task(id: pointerIsInside) {
+      do {
+        try await Task.sleep(for: .milliseconds(pointerIsInside ? 120 : 300))
+        guard !Task.isCancelled else { return }
+        isPresented = pointerIsInside
+      } catch {}
+    }
+    .onExitCommand { isPresented = false }
+    .animation(.easeOut(duration: reduceMotion ? 0.12 : 0.20), value: isPresented)
   }
 }
 
