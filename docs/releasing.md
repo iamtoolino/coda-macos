@@ -26,6 +26,8 @@ separately reviewed migration because it changes Coda's Keychain and Local Netwo
 2. Review the commits and user-facing changes since the previous tag.
 3. Update `CFBundleShortVersionString` in `Support/Info.plist`.
 4. Draft release notes and a short manual verification checklist.
+   GitHub displays the release title separately, so do not repeat `Coda X.Y.Z` as a heading
+   in the notes body. Start with `## What's new` (or `## Fixes` for a fixes-only release).
 5. Run the candidate checks:
 
    ```sh
