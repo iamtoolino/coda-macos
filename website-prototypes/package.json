@@ -1,8 +1,0 @@
-{
-  "name": "coda-homepage-studies",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "check": "node validate.mjs"
-  }
-}
