@@ -3,7 +3,7 @@ import {readFileSync, existsSync, readdirSync, statSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {resolve, dirname} from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {studies, scenes, views} from './dist/data.js';
+import {studies, scenes, views, sceneAsset} from './dist/data.js';
 import {renderLayout} from './dist/layouts.js';
 
 const project = dirname(fileURLToPath(import.meta.url));
@@ -27,7 +27,15 @@ for (const study of studies) {
   documents.push(markup);
 }
 
-const assetReferences = new Set(scenes.map(scene => `assets/${scene.file}`).concat(views.map(view => `assets/${view.file}`)));
+for (const id of [2, 3]) for (let scene = 0; scene < scenes.length; scene++) {
+  const markup = renderLayout(id, scene);
+  assert.equal((markup.match(/data-scene-frame/g) || []).length, 3, 'Every preferred layout has three synchronized frames');
+  assert.ok(!markup.includes('data-scene-caption'), 'No album captions on the preferred layouts');
+  assert.ok(!markup.includes('01 — 04'), 'No scene counter');
+  for (const view of ['nps', 'home', 'album']) assert.ok(markup.includes(sceneAsset(scene, view)));
+  documents.push(markup);
+}
+const assetReferences = new Set(scenes.flatMap((scene, index) => ['nps', 'home', 'album'].map(view => `assets/${sceneAsset(index, view)}`)).concat(views.map(view => `assets/${view.file}`)));
 for (const markup of documents) {
   for (const match of markup.matchAll(/(?:src|href)="([^"]+)"/g)) {
     const ref = match[1];

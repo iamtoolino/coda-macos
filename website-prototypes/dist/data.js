@@ -20,6 +20,13 @@ export const views = [
   {id: 'home', file: 'home.png', label: 'Browse', kind: 'library'},
   {id: 'album', file: 'album.png', label: 'Album', kind: 'library'},
 ];
+export function sceneAsset(index, view = 'nps') {
+  return view === 'nps' ? scenes[index].file : `${scenes[index].id}-${view}.png`;
+}
+export function themedCapture(index, view) {
+  const scene = scenes[index];
+  return `<div class="app-capture matched" data-scene-frame data-scene-view="${view}"><img src="assets/${sceneAsset(index, view)}" alt="Coda ${view === 'home' ? 'Home' : 'Album'} view with the ${scene.album} color theme." width="2060" height="1606" loading="lazy" decoding="async"></div>`;
+}
 export function sceneImage(index = 0, extra = '') {
   const scene = scenes[index];
   return `<div class="app-capture nps ${extra}" data-scene-frame><img src="assets/${scene.file}" alt="Coda Now Playing: ${scene.album} by ${scene.artist}, with the listening queue visible." width="1836" height="1572" decoding="async"></div>`;

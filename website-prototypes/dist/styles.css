@@ -40,6 +40,12 @@ h2 { font-size: clamp(30px, 4vw, 48px); font-weight: 450; line-height: 1.12; let
 .app-capture img { position: absolute; max-width: none; height: auto; }
 .app-capture.nps > img { width: 113.8958%; left: -6.9479%; top: -5.7122%; }
 .app-capture.library > img { width: 110.9684%; left: -5.5336%; top: -5.0465%; }
+.app-capture.matched { aspect-ratio: 1836 / 1382; border-radius: 3.1% / 4.1%; }
+.app-capture.matched > img { width: 112.2004%; left: -6.1002%; top: -5.4993%; }
+.quiet-preview-controls { display: flex; justify-content: flex-end; padding-top: 12px; }
+.cinema-collection { width: calc(100% - 96px); padding-top: 80px; }
+.cinema-collection .section-heading h2 { margin: 16px 0; }
+.cinema-collection .section-heading .intro-copy { font-size: 16px; }
 .scene-controls { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 20px 2px; font-size: 12px; }
 .scene-caption { line-height: 1.6; color: #c2c0c9; }
 .scene-caption span { color: #84828c; }
@@ -252,6 +258,7 @@ figcaption { color: #aaa7b2; font-size: 14px; line-height: 1.6; margin-top: 20px
   .cinema-aside { display: none; }
   .cinema-browse { display: block; width: calc(100% - 40px); padding-top: 65px; }
   .cinema-browse > .app-capture { margin-top: 30px; }
+  .cinema-collection { width: calc(100% - 40px); padding-top: 60px; }
   .selector-copy h1 { font-size: 50px; margin-top: 15px; }
   .selector-copy h1 br:last-child { display: none; }
   .sleeve-selector { margin-top: 25px; grid-template-columns: repeat(4, 61px); gap: 12px; }

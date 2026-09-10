@@ -7,7 +7,7 @@ Eight local, dependency-free website prototypes for comparing the homepage direc
 From the repository root:
 
 ```sh
-python3 -m http.server 4173 --bind 127.0.0.1 --directory website-prototypes/dist
+python3 website-prototypes/serve.py
 ```
 
 Open `http://127.0.0.1:4173/`. A direct study URL is `http://127.0.0.1:4173/concept.html?v=5`.
@@ -31,10 +31,11 @@ node website-prototypes/validate.mjs
 
 ## Media and behavior
 
-- The four new Now Playing images were supplied by the user for these homepage studies. Home and Album are reused from the repository's existing screenshots. The app icon is the existing Coda SVG.
+- The four Now Playing images and eight matching Home / Album captures were supplied by the user for these homepage studies. Directions 2 and 3 use the matching sets; other directions retain the repository's earlier Home and Album images. The app icon is the existing Coda SVG.
 - Original image pixels are unchanged. CSS clips exterior black padding; sleeve buttons and contact-sheet details use explicitly cropped views of the same captures.
 - These are still-image transitions, not a screen recording, playable web client, or demonstration of exact native transition behavior.
-- Automatic scenes change about every 7.35 seconds, including an 850 ms crossfade. Scene selection pauses the loop. Loops pause offscreen or in a hidden tab. Reduced-motion preferences default to a static scene.
+- Directions 2 and 3 start with a randomly selected theme, and coordinate Now Playing, Home, Album, and the page color. The first automatic change starts after 3.5 seconds; subsequent scenes hold for 6.5 seconds, with 850 ms crossfades. All images for the next theme decode before any view changes. Scene selection pauses the loop. Loops continue while any coordinated screenshot is visible, and pause when all are offscreen or the tab is hidden. Reduced-motion preferences default to a static scene with an explicit Play preview control.
+- The preferred directions omit scene counters and artist/album captions outside the app. Direction 3 now includes both Home and Album views below its opening composition. The overview remains deterministic and still for fair comparisons.
 - The optional walkthrough uses three stills of the Press Start album and ends on Now Playing. It does not loop or pretend to be a continuous recording.
 - Overview and comparison thumbnails are live, noninteractive page renders, held still at the same desktop width. Full-size studies are responsive; open them individually to inspect a phone-width layout.
 - No analytics, external fonts, server access, authentication, audio, or third-party runtime dependencies are included. Download and installation links open the public GitHub repository.
