@@ -5,6 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Coda — An album-first Navidrome player for Mac</title>
   <meta name="description" content="A native Mac player for Navidrome and OpenSubsonic. Albums, artwork, and your listening queue, with original-quality gapless playback.">
+  <script>
+    (() => {
+      const sceneIds = ['sigh', 'satriani', 'shadow', 'pizza'];
+      const index = Math.floor(Math.random() * sceneIds.length);
+      document.documentElement.dataset.initialScene = String(index);
+      document.documentElement.classList.add('scene-pending');
+      for (const suffix of ['', '-home', '-album']) {
+        const preload = document.createElement('link');
+        preload.rel = 'preload';
+        preload.as = 'image';
+        preload.href = `assets/${sceneIds[index]}${suffix}.png`;
+        document.head.append(preload);
+      }
+      const initialStyle = document.createElement('style');
+      initialStyle.textContent = `
+        .scene-pending [data-scene-view="nps"] { background-image: url("assets/${sceneIds[index]}.png"); background-position: center; background-size: 113.8958% auto; background-repeat: no-repeat; }
+        .scene-pending [data-scene-view="home"] { background-image: url("assets/${sceneIds[index]}-home.png"); background-position: center; background-size: 112.2004% auto; background-repeat: no-repeat; }
+        .scene-pending [data-scene-view="album"] { background-image: url("assets/${sceneIds[index]}-album.png"); background-position: center; background-size: 112.2004% auto; background-repeat: no-repeat; }
+      `;
+      document.head.append(initialStyle);
+    })();
+  </script>
   <link rel="icon" href="assets/CodaAppIcon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="site.css">
   <script type="module" src="site.mjs"></script>
@@ -24,7 +46,7 @@
         <p class="requirements">macOS 26+ · Apple silicon · Your own music server</p>
       </div>
       <div class="cinema-screen">
-        <div class="app-capture nps" data-scene-view="nps"><img src="assets/sigh.png" alt="Coda Now Playing with Goh-Ka artwork and the listening queue." width="1836" height="1572" decoding="async"></div>
+        <div class="app-capture nps" data-scene-view="nps"><noscript><img src="assets/sigh.png" alt="Coda Now Playing with Goh-Ka artwork and the listening queue." width="1836" height="1572"></noscript></div>
         <div class="preview-controls"><button class="motion-button" type="button" data-motion hidden>Pause preview</button></div>
       </div>
     </section>
@@ -35,8 +57,8 @@
         <p class="intro-copy">Original-quality, gapless playback. Navidrome and OpenSubsonic.</p>
       </div>
       <div class="two-up">
-        <figure><div class="app-capture matched" data-scene-view="home"><img src="assets/sigh-home.png" alt="Coda Home with album artwork, artists, and a turquoise theme." width="2060" height="1606" loading="lazy" decoding="async"></div><figcaption>Your collection, close by.</figcaption></figure>
-        <figure><div class="app-capture matched" data-scene-view="album"><img src="assets/sigh-album.png" alt="Coda album view for Goh-Ka, with the track list and queue." width="2060" height="1606" loading="lazy" decoding="async"></div><figcaption>An album, and whatever comes next.</figcaption></figure>
+        <figure><div class="app-capture matched" data-scene-view="home"><noscript><img src="assets/sigh-home.png" alt="Coda Home with album artwork, artists, and a turquoise theme." width="2060" height="1606"></noscript></div><figcaption>Your collection, close by.</figcaption></figure>
+        <figure><div class="app-capture matched" data-scene-view="album"><noscript><img src="assets/sigh-album.png" alt="Coda album view for Goh-Ka, with the track list and queue." width="2060" height="1606"></noscript></div><figcaption>An album, and whatever comes next.</figcaption></figure>
       </div>
       <div class="preview-controls"><button class="motion-button" type="button" data-motion hidden>Pause preview</button></div>
     </section>

@@ -3,7 +3,8 @@ import {scenes, initialScene, sceneAsset} from './scenes.mjs';
 const frames = [...document.querySelectorAll('[data-scene-view]')];
 const controls = [...document.querySelectorAll('[data-motion]')];
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-let index = initialScene();
+const bootstrapIndex = Number(document.documentElement.dataset.initialScene);
+let index = Number.isInteger(bootstrapIndex) && scenes[bootstrapIndex] ? bootstrapIndex : initialScene();
 let paused = false;
 let visible = true;
 let ready = false;
@@ -44,8 +45,8 @@ async function showScene(nextIndex, animate = true) {
       await image.decode();
       return {frame, image};
     }));
-  } catch { return; } // Keep the complete current theme if an image cannot load.
-  if (ticket !== request) return;
+  } catch { return false; } // Keep the complete current theme if an image cannot load.
+  if (ticket !== request) return false;
   index = nextIndex;
   document.body.style.setProperty('--scene-rgb', scenes[index].color);
   document.body.style.setProperty('--scene-light', scenes[index].light);
@@ -61,6 +62,7 @@ async function showScene(nextIndex, animate = true) {
     } else image.style.opacity = '1';
     previous.forEach(old => old.remove());
   }));
+  return true;
 }
 
 controls.forEach(button => button.addEventListener('click', () => {
@@ -79,7 +81,10 @@ frames.forEach(frame => observer.observe(frame));
 document.addEventListener('visibilitychange', schedule);
 
 // Each visit starts automatically. Reduced motion uses instant swaps, not an opt-in loop.
-await showScene(index, false);
-ready = true;
-updateControls();
-schedule();
+ready = await showScene(index, false);
+if (!ready && index !== 0) ready = await showScene(0, false);
+document.documentElement.classList.remove('scene-pending');
+if (ready) {
+  updateControls();
+  schedule();
+}
