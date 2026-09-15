@@ -550,6 +550,61 @@ struct ArtworkAndPresentationTests {
     #expect(selection == ArtworkAccentSelection(color: .fallback, kind: .brand))
   }
 
+  @Test("repeated disconnected presentation updates do not publish changes")
+  func disconnectedPresentationUpdatesAreStable() {
+    let presentation = NowPlayingPresentationController()
+    var changeCount = 0
+    let observation = presentation.objectWillChange.sink { changeCount += 1 }
+    for _ in 0..<3 {
+      presentation.updateContext(
+        window: nil, isApplicationActive: true, hasEstablishedConnection: false,
+        playbackKey: nil, isPlaying: false)
+    }
+    #expect(changeCount == 0)
+    withExtendedLifetime(observation) {}
+  }
+
+  @Test("handoff reveal holds Now Playing until the matching Home layout is ready")
+  func handoffRevealWaitsForMatchingLayout() throws {
+    let presentation = NowPlayingPresentationController()
+    #expect(!presentation.beginHandoffReveal())
+    presentation.prepare(playbackKey: "album:handoff", artwork: nil, accent: .fallback)
+    presentation.updateContext(
+      window: nil, isApplicationActive: true, hasEstablishedConnection: true,
+      playbackKey: "album:handoff", isPlaying: true)
+    presentation.present()
+    #expect(!presentation.beginHandoffReveal())
+    presentation.updateContext(
+      window: nil, isApplicationActive: true, hasEstablishedConnection: true,
+      playbackKey: "album:handoff", isPlaying: false)
+    #expect(presentation.beginHandoffReveal())
+    let oldRequest = try #require(presentation.handoffRevealRequest)
+    #expect(presentation.isPresented)
+    #expect(presentation.beginHandoffReveal())
+    let currentRequest = try #require(presentation.handoffRevealRequest)
+    presentation.completeHandoffReveal(oldRequest)
+    #expect(presentation.isPresented)
+    presentation.completeHandoffReveal(currentRequest)
+    #expect(!presentation.isPresented)
+    #expect(presentation.handoffRevealRequest == nil)
+  }
+
+  @Test("cancelled handoff reveal cannot dismiss Now Playing")
+  func cancelledHandoffRevealDoesNotDismiss() throws {
+    let presentation = NowPlayingPresentationController()
+    presentation.prepare(playbackKey: "album:handoff", artwork: nil, accent: .fallback)
+    presentation.updateContext(
+      window: nil, isApplicationActive: true, hasEstablishedConnection: true,
+      playbackKey: "album:handoff", isPlaying: false)
+    presentation.present()
+    #expect(presentation.beginHandoffReveal())
+    let request = try #require(presentation.handoffRevealRequest)
+    presentation.cancelHandoffReveal()
+    presentation.completeHandoffReveal(request)
+    #expect(presentation.isPresented)
+    presentation.dismiss()
+  }
+
   @Test("pausing keeps an active now playing presentation visible")
   func pausingKeepsAnActiveNowPlayingPresentationVisible() {
     let presentation = NowPlayingPresentationController()

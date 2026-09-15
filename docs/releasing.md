@@ -46,6 +46,9 @@ judge reliably:
 - Sign in, reconnect, and sign out.
 - Start playback, seek, pause, resume, skip, and allow a track to finish naturally.
 - Confirm gapless queue transitions and queue restoration.
+- While paused in Now Playing, receive a new remote queue with Home previously scrolled down
+  (also test album detail opened from Home). Home should be positioned at the handoff card before
+  Now Playing fades away, without visible scrolling. Ordinary Home navigation retains its position.
 - Exercise selection, reordering, removal, and saving the queue as a playlist.
 - Browse Home, Search, Artists, Albums, Playlists, album detail, and Now Playing.
 - Enter Search with a mouse click and Command-F, including from Now Playing and

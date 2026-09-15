@@ -16,7 +16,9 @@ struct ContentView: View {
   @EnvironmentObject private var playlistSaver: QueuePlaylistSaveCoordinator
   @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   @StateObject private var volumePresentation = PlaybackVolumePresentationState()
-  @State private var isRevealingContinueOffer = false
+  private var isRevealingContinueOffer: Bool {
+    nowPlayingPresentation.handoffRevealRequest != nil
+  }
 
   var body: some View {
     ZStack {
@@ -229,13 +231,13 @@ struct ContentView: View {
       applyArtworkDisplayContext()
     }
     .onChange(of: session.path) {
-      if !isRevealingContinueOffer {
+      if !isRevealingContinueOffer || session.selectedRoot != .home || !session.path.isEmpty {
         nowPlayingPresentation.dismiss()
       }
       applyArtworkDisplayContext()
     }
     .onChange(of: session.selectedRoot) {
-      if !isRevealingContinueOffer {
+      if !isRevealingContinueOffer || session.selectedRoot != .home || !session.path.isEmpty {
         nowPlayingPresentation.dismiss()
       }
       applyArtworkDisplayContext()
@@ -259,16 +261,15 @@ struct ContentView: View {
   }
 
   private func revealContinueOfferIfNeeded() {
-    guard queueHandoff.continueQueue != nil, nowPlayingPresentation.isPresented else { return }
-
-    isRevealingContinueOffer = true
-    session.selectRoot(.home)
-    Task { @MainActor in
-      // Let Home and its Continue card render behind NPS before fading NPS away.
-      await Task.yield()
-      isRevealingContinueOffer = false
-      guard nowPlayingPresentation.isPresented else { return }
-      nowPlayingPresentation.dismiss()
+    guard queueHandoff.continueQueue != nil else {
+      nowPlayingPresentation.cancelHandoffReveal()
+      return
+    }
+    guard !player.isPlaying, nowPlayingPresentation.beginHandoffReveal() else { return }
+    var transaction = Transaction()
+    transaction.disablesAnimations = true
+    withTransaction(transaction) {
+      session.selectRoot(.home)
     }
   }
 

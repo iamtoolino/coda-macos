@@ -49,6 +49,7 @@ final class NowPlayingPresentationController: ObservableObject {
   private static let experimentalAutomaticallyPresentsKey =
     "automatically-shows-now-playing"
 
+  @Published private(set) var handoffRevealRequest: UUID?
   @Published private(set) var isPresented = false
   @Published private(set) var phase = NowPlayingPresentationPhase.hidden
   @Published private(set) var preparedTheme: NowPlayingPreparedTheme?
@@ -134,6 +135,7 @@ final class NowPlayingPresentationController: ObservableObject {
     self.hasEstablishedConnection = hasEstablishedConnection
     self.playbackKey = playbackKey
     self.isPlaying = isPlaying
+    if isPlaying { cancelHandoffReveal() }
 
     if playbackKey == nil, preparedTheme != nil {
       self.preparedTheme = nil
@@ -214,7 +216,25 @@ final class NowPlayingPresentationController: ObservableObject {
     settlePhase(forPresentedState: true)
   }
 
+  @discardableResult
+  func beginHandoffReveal() -> Bool {
+    guard isPresented, !isPlaying else { return false }
+    handoffRevealRequest = UUID()
+    return true
+  }
+
+  func completeHandoffReveal(_ request: UUID) {
+    guard handoffRevealRequest == request else { return }
+    dismiss()
+  }
+
+  func cancelHandoffReveal() {
+    guard handoffRevealRequest != nil else { return }
+    handoffRevealRequest = nil
+  }
+
   func dismiss(restartsTimer: Bool = true) {
+    cancelHandoffReveal()
     cancelAutomaticPresentation()
     presentationRetryTask?.cancel()
     presentationRetryTask = nil

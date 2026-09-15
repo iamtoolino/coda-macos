@@ -16,74 +16,112 @@ struct HomeView: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var queueHandoff: QueueHandoffCoordinator
   @EnvironmentObject private var albumResume: AlbumResumeCoordinator
+  @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   let resetToken: UUID?
+
+  @State private var handoffFrame: CGRect = .zero
+  @State private var viewportHeight: CGFloat = 0
+  private let handoffTarget = "home-top"
+
+  private var revealRequest: UUID? {
+    guard session.selectedRoot == .home, session.path.isEmpty,
+      queueHandoff.continueQueue != nil else { return nil }
+    return nowPlayingPresentation.handoffRevealRequest
+  }
+
+  private var readyRevealRequest: UUID? {
+    guard handoffFrame.height > 0, handoffFrame.minY >= -1,
+      handoffFrame.maxY <= viewportHeight + 1 else { return nil }
+    return revealRequest
+  }
 
   @State private var data: HomeData?
   @State private var isLoading = false
   @State private var errorMessage: String?
 
   var body: some View {
-    ScrollView {
-      LazyVStack(alignment: .leading, spacing: 26) {
-        if isLoading, data == nil {
-          LibraryLoadingView(label: "Loading Home…")
-        } else if let errorMessage, data == nil {
-          LibraryErrorView(title: "Could Not Load Home", message: errorMessage) {
-            Task { await load() }
+    ScrollViewReader { proxy in
+      ScrollView {
+        LazyVStack(alignment: .leading, spacing: 26) {
+          if let queue = queueHandoff.continueQueue {
+            ContinuePlayingCard(queue: queue, action: queueHandoff.continuePlaying)
+              .onGeometryChange(for: CGRect.self) { geometry in
+                geometry.frame(in: .named("home-viewport"))
+              } action: { handoffFrame = $0 }
+              .onDisappear { handoffFrame = .zero }
           }
-        }
 
-        if let queue = queueHandoff.continueQueue {
-          ContinuePlayingCard(queue: queue, action: queueHandoff.continuePlaying)
-        }
-
-        if let artists = data?.recentArtists, !artists.isEmpty {
-          ArtistShelf(title: "Recently Added Artists", artists: artists) {
-            session.open(.artistsCollection(.recentlyAdded))
-          }
-        }
-
-        if let albums = data?.newest {
-          AlbumShelf(title: "Recently Added Albums", albums: albums) {
-            session.open(.albumCollection(.recentlyAdded))
-          }
-        }
-
-        if let albums = data?.recentReleases, !albums.isEmpty {
-          AlbumShelf(title: "Recent Releases", albums: albums) {
-            session.open(.albumCollection(.recentReleases))
-          }
-        }
-
-        if let albums = data?.recentlyPlayed, !albums.isEmpty {
-          AlbumShelf(title: "Recently Played", albums: albums) {
-            session.open(.albumCollection(.recentlyPlayed))
-          }
-        }
-
-        if !albumResume.items.isEmpty {
-          ContinueAlbumShelf(items: albumResume.items)
-        }
-
-        if let playlists = data?.playlists, !playlists.isEmpty {
-          VStack(alignment: .leading, spacing: 4) {
-            SectionHeading(title: "Playlists")
-            ForEach(playlists) { playlist in
-              PlaylistHomeRow(playlist: playlist)
+          if isLoading, data == nil {
+            LibraryLoadingView(label: "Loading Home…")
+          } else if let errorMessage, data == nil {
+            LibraryErrorView(title: "Could Not Load Home", message: errorMessage) {
+              Task { await load() }
             }
           }
-        }
 
-        if let errorMessage, data != nil {
-          Label(errorMessage, systemImage: "exclamationmark.triangle")
-            .font(.caption)
-            .foregroundStyle(.red)
-            .padding(.horizontal, 22)
+          if let artists = data?.recentArtists, !artists.isEmpty {
+            ArtistShelf(title: "Recently Added Artists", artists: artists) {
+              session.open(.artistsCollection(.recentlyAdded))
+            }
+          }
+
+          if let albums = data?.newest {
+            AlbumShelf(title: "Recently Added Albums", albums: albums) {
+              session.open(.albumCollection(.recentlyAdded))
+            }
+          }
+
+          if let albums = data?.recentReleases, !albums.isEmpty {
+            AlbumShelf(title: "Recent Releases", albums: albums) {
+              session.open(.albumCollection(.recentReleases))
+            }
+          }
+
+          if let albums = data?.recentlyPlayed, !albums.isEmpty {
+            AlbumShelf(title: "Recently Played", albums: albums) {
+              session.open(.albumCollection(.recentlyPlayed))
+            }
+          }
+
+          if !albumResume.items.isEmpty {
+            ContinueAlbumShelf(items: albumResume.items)
+          }
+
+          if let playlists = data?.playlists, !playlists.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+              SectionHeading(title: "Playlists")
+              ForEach(playlists) { playlist in
+                PlaylistHomeRow(playlist: playlist)
+              }
+            }
+          }
+
+          if let errorMessage, data != nil {
+            Label(errorMessage, systemImage: "exclamationmark.triangle")
+              .font(.caption)
+              .foregroundStyle(.red)
+              .padding(.horizontal, 22)
+          }
+        }
+        .padding(.vertical, 20)
+        .padding(.bottom, floatingPlaybackDockScrollClearance)
+        .background(NativeScrollIndicators())
+        .id(handoffTarget)
+      }
+      .coordinateSpace(name: "home-viewport")
+      .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
+      .task(id: revealRequest) {
+        guard revealRequest != nil else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+          proxy.scrollTo(handoffTarget, anchor: .top)
         }
       }
-      .padding(.vertical, 20)
-      .padding(.bottom, floatingPlaybackDockScrollClearance)
-      .background(NativeScrollIndicators())
+      .task(id: readyRevealRequest) {
+        guard let request = readyRevealRequest else { return }
+        nowPlayingPresentation.completeHandoffReveal(request)
+      }
     }
     .navigationTitle("Home")
     .focusedSceneValue(
