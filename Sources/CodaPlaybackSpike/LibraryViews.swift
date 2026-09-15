@@ -1283,8 +1283,8 @@ struct AlbumDetailView: View {
           .frame(width: 34, height: 30)
           .contentShape(Rectangle())
       }
-      .help("Play remaining tracks from \(song.title)")
-      .accessibilityLabel("Play remaining tracks")
+      .help("Play album from \(song.title)")
+      .accessibilityLabel("Resume album playback")
       Button {
         continueAlbum(from: song, page: page, appending: true)
       } label: {
@@ -1305,16 +1305,16 @@ struct AlbumDetailView: View {
 
   private func continueAlbum(from song: RemoteSong, page: AlbumPage, appending: Bool) {
     guard let index = page.songs.firstIndex(where: { $0.id == song.id }) else { return }
-    let remainingSongs = Array(page.songs[index...])
     if appending {
       session.append(
-        songs: remainingSongs,
+        songs: Array(page.songs[index...]),
         canonicalAlbumArtworkID: page.album.artworkID,
         to: player
       )
     } else {
       session.play(
-        songs: remainingSongs,
+        songs: page.songs,
+        startAt: index,
         canonicalAlbumArtworkID: page.album.artworkID,
         with: player
       )

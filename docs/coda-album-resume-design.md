@@ -24,8 +24,9 @@ primitives.
   including intervening disc headings. A Resume header uses the same Play and Append icons as
   the album header, with explicit tooltips and accessibility labels. The group is also visible
   when the album is opened elsewhere.
-  Both actions use the saved track and all remaining tracks in canonical album order.
-  Play replaces the queue and starts playback. Append preserves existing playback and stays
+  Play replaces the queue with the entire album in canonical order and starts at the saved track,
+  keeping earlier tracks available for backward navigation. Append adds only the saved track
+  and remaining tracks. Append preserves existing playback and stays
   paused if the queue was empty. Neither action automatically opens NPS or leaves album detail.
   The existing album-header buttons still operate on the entire album.
   Dragging the Resume label inserts all remaining tracks at the chosen queue position.
