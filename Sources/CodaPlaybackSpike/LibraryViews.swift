@@ -19,8 +19,7 @@ struct HomeView: View {
   @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   let resetToken: UUID?
 
-  @State private var handoffFrame: CGRect = .zero
-  @State private var viewportHeight: CGFloat = 0
+  @State private var isScrolledToTop = false
   private let handoffTarget = "home-top"
 
   private var revealRequest: UUID? {
@@ -30,8 +29,7 @@ struct HomeView: View {
   }
 
   private var readyRevealRequest: UUID? {
-    guard handoffFrame.height > 0, handoffFrame.minY >= -1,
-      handoffFrame.maxY <= viewportHeight + 1 else { return nil }
+    guard isScrolledToTop else { return nil }
     return revealRequest
   }
 
@@ -45,10 +43,6 @@ struct HomeView: View {
         LazyVStack(alignment: .leading, spacing: 26) {
           if let queue = queueHandoff.continueQueue {
             ContinuePlayingCard(queue: queue, action: queueHandoff.continuePlaying)
-              .onGeometryChange(for: CGRect.self) { geometry in
-                geometry.frame(in: .named("home-viewport"))
-              } action: { handoffFrame = $0 }
-              .onDisappear { handoffFrame = .zero }
           }
 
           if isLoading, data == nil {
@@ -108,8 +102,11 @@ struct HomeView: View {
         .background(NativeScrollIndicators())
         .id(handoffTarget)
       }
-      .coordinateSpace(name: "home-viewport")
-      .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
+      .onScrollGeometryChange(for: Bool.self) { geometry in
+        geometry.contentOffset.y <= -geometry.contentInsets.top + 1
+      } action: { _, isAtTop in
+        isScrolledToTop = isAtTop
+      }
       .task(id: revealRequest) {
         guard revealRequest != nil else { return }
         var transaction = Transaction()
