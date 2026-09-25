@@ -1315,6 +1315,7 @@ struct AlbumDetailView: View {
       session.play(
         songs: page.songs,
         startAt: index,
+        scrollQueueToCurrent: true,
         canonicalAlbumArtworkID: page.album.artworkID,
         with: player
       )
