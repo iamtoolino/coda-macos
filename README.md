@@ -64,6 +64,33 @@ Run the automated tests with:
 swift test
 ```
 
+### Selecting artist-credit test albums
+
+With Python 3.9 or newer, use the read-only metadata selector:
+
+```sh
+python3 scripts/find-artist-test-cases.py --album "Album title" --discover 2
+python3 -m unittest discover -s scripts -p 'test_artist_test_cases.py'
+```
+
+Repeat `--album` for each title substring. All matching editions are retained. The script prompts
+for the server base URL, username and hidden password, or reads `NAVIDROME_URL`, `NAVIDROME_USER`
+and `NAVIDROME_PASSWORD` from the environment. HTTP is supported for trusted LANs; use HTTPS
+outside them. Redirects and environment proxies are disabled; enter the final server base URL.
+
+It pages through album summaries and fetches tracks only for selected albums. `--discover N`
+adds up to N candidates in each album-level category: compilations, multiple album artists,
+and explicitly non-compilation single-artist albums. It does not scan every album's tracks for
+guests. The default scan limit is 20,000 albums (`--max-albums` overrides it).
+
+The private JSON report under `.build/artist-test-cases/` preserves display credits, artist IDs
+and arrays, and compilation flags (including absence). It flags varying track credits and
+possible shared recordings across selected albums. Matching titles alone are candidates, not
+proof of identical recordings. Missing queries and ambiguous editions remain visible in
+`requestedMatches`. These are server-interpreted fields, not a dump of the files' original tags.
+Reports contain personal library metadata: keep them untracked. Credentials, server URLs,
+file paths and artwork are excluded. No playback, tag edits, ratings or server scans are triggered.
+
 ## Privacy
 
 Coda contains no analytics, advertising, or tracking SDK. It communicates only with the server
