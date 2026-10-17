@@ -257,16 +257,6 @@ struct NavidromeTests {
     #expect(scrobbleRetryDelays(maxAttempts: 1).isEmpty)
   }
 
-  @Test("artist search excludes participation-only artists")
-  func artistSearchExcludesParticipationOnlyArtists() {
-    let results = [
-      RemoteArtist(id: "album-artist", name: "Avantasia", albumCount: 8),
-      RemoteArtist(id: "performer", name: "Avantasia, Jorn", albumCount: 0),
-      RemoteArtist(id: "legacy", name: "Legacy Server Artist"),
-    ].filter(\.isAlbumArtistSearchResult)
-    #expect(results.map(\.id) == ["album-artist", "legacy"])
-  }
-
   @Test("source metadata formatting")
   func sourceMetadataFormatting() {
     let song = RemoteSong(
@@ -275,10 +265,10 @@ struct NavidromeTests {
     #expect(song.technicalSummary == "FLAC · 24-bit · 96 kHz · 2350 kbps")
   }
 
-  @Test("song presentation prefers the explicit album artist")
-  func songPresentationPrefersExplicitAlbumArtist() throws {
+  @Test("song presentation preserves track credit separately from album credit")
+  func songPresentationPreservesTrackCredit() throws {
     let data = Data(
-      #"{"id":"track-1","title":"Track","artist":"ZILF • Guest One • Guest Two","displayAlbumArtist":"ZILF"}"#.utf8
+      #"{"id":"track-1","title":"Track","artist":"Legacy Artist","displayArtist":"Band feat. Guest","displayAlbumArtist":"Band","artists":[{"id":"band","name":"Band"},{"id":"guest","name":"Guest"}]}"#.utf8
     )
     let song = try JSONDecoder().decode(RemoteSong.self, from: data)
     let streamURL = try #require(URL(string: "https://music.example.test/stream"))
@@ -289,9 +279,11 @@ struct NavidromeTests {
       nowPlayingArtworkURL: nil
     )
 
-    #expect(song.artist == "ZILF • Guest One • Guest Two")
-    #expect(song.artistName == "ZILF")
-    #expect(entry.artist == "ZILF")
+    #expect(song.artist == "Legacy Artist")
+    #expect(song.artistName == "Band feat. Guest")
+    #expect(entry.artist == "Band feat. Guest")
+    #expect(entry.albumArtistName == "Band")
+    #expect(entry.artistCredit.artists.map(\.id) == ["band", "guest"])
     #expect(
       RemoteSong(id: "legacy", title: "Legacy", artist: "Legacy Artist").artistName
         == "Legacy Artist"

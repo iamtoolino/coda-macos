@@ -1145,6 +1145,7 @@ struct AlbumDetailView: View {
                     SongRow(
                       song: song,
                       isPlaying: player.currentEntry?.sourceID == song.id,
+                      isCompilation: page.album.isCompilation == true,
                       horizontalPadding: 22,
                       isSelected: selectedSongIDs.contains(song.id),
                       roundsSelectionBottom: remainingIDs.contains(song.id)
@@ -1351,7 +1352,7 @@ struct AlbumDetailView: View {
       image: artworkLoader.image,
       fallbackURL: artworkURL,
       title: page.album.name,
-      artist: page.album.artistName,
+      artistCredit: page.album.artistCredit,
       metadata: albumMetadata(page),
       rating: session.rating(for: page.album),
       ratingIsUpdating: session.isUpdatingAlbumRating,
@@ -1366,9 +1367,7 @@ struct AlbumDetailView: View {
           )
         }
       },
-      artistAction: page.album.artistId.map { artistID in
-        { session.open(.artist(artistID)) }
-      },
+      artistAction: { session.open(.artist($0)) },
       playAction: {
         session.play(
           songs: page.songs,
@@ -1436,6 +1435,8 @@ struct PlaylistDetailView: View {
   let playlistID: String
 
   @State private var playlist: RemotePlaylist?
+  @State private var albumMetadata: [String: RemoteAlbum] = [:]
+  @State private var albumMetadataGeneration = UUID()
   @State private var errorMessage: String?
   @State private var selectedSongIndices: [Int] = []
   @State private var selectionAnchorSongIndex: Int?
@@ -1482,11 +1483,13 @@ struct PlaylistDetailView: View {
 
                 ForEach(playlistGroups(playlist.songs)) { group in
                   VStack(alignment: .leading, spacing: 5) {
-                    PlaylistAlbumHeader(group: group)
+                    PlaylistAlbumHeader(group: group, album: albumMetadata[group.albumID ?? ""])
                     ForEach(group.songs, id: \.index) { indexed in
                       SongRow(
                         song: indexed.song,
                         isPlaying: player.currentEntry?.sourceID == indexed.song.id,
+                        isCompilation: albumMetadata[group.albumID ?? ""]?.isCompilation
+                          ?? indexed.song.isCompilation ?? false,
                         isSelected: selectedSongIndices.contains(indexed.index),
                         dragSongIDs: selectedSongIndices.contains(indexed.index)
                           ? selectedSongIndices.compactMap { index in
@@ -1509,6 +1512,10 @@ struct PlaylistDetailView: View {
                         )
                       }
                     }
+                  }
+                  .task(id: [group.albumID ?? "", albumMetadataGeneration.uuidString,
+                             session.activeSessionID?.uuidString ?? ""]) {
+                    await loadAlbumMetadata(group.albumID)
                   }
                 }
               }
@@ -1576,11 +1583,32 @@ struct PlaylistDetailView: View {
   }
 
   @MainActor
+  private func loadAlbumMetadata(_ albumID: String?) async {
+    guard let albumID, albumMetadata[albumID] == nil,
+      let request = session.sessionRequestContext()
+    else { return }
+    let requestedPlaylistID = playlistID
+    let generation = albumMetadataGeneration
+    do {
+      let album = try await request.client.album(id: albumID).album
+      guard !Task.isCancelled, playlistID == requestedPlaylistID,
+        generation == albumMetadataGeneration,
+        session.isCurrent(request)
+      else { return }
+      albumMetadata[albumID] = album
+    } catch {
+      // Optional album context must not hide playable playlist tracks.
+    }
+  }
+
+  @MainActor
   private func load() async {
     guard let client = session.client else { return }
     errorMessage = nil
     do {
       playlist = try await client.playlist(id: playlistID)
+      albumMetadata = [:]
+      albumMetadataGeneration = UUID()
     } catch {
       errorMessage = error.localizedDescription
     }
@@ -1981,6 +2009,7 @@ private struct SongRow: View {
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   let song: RemoteSong
   let isPlaying: Bool
+  var isCompilation = false
   var horizontalPadding: CGFloat = 22
   var isSelected = false
   var roundsSelectionBottom = false
@@ -2014,7 +2043,7 @@ private struct SongRow: View {
         )
       ) {
         LibraryDragPreview(
-          title: dragSongIDs.count > 1 ? "\(dragSongIDs.count) tracks" : song.title,
+          title: dragSongIDs.count > 1 ? "\(dragSongIDs.count) tracks" : rowTitle,
           detail: dragSongIDs.count > 1 ? "" : formatDuration(song.duration ?? 0)
         )
       }
@@ -2054,7 +2083,7 @@ private struct SongRow: View {
       .font(.caption)
       .foregroundStyle(isPlaying ? artworkTreatments.accent.color : Color.secondary)
       .frame(width: 34, alignment: .trailing)
-      Text(song.title)
+      Text(rowTitle)
         .foregroundStyle(isPlaying ? artworkTreatments.accent.color : Color.primary)
         .lineLimit(1)
       Spacer()
@@ -2077,6 +2106,10 @@ private struct SongRow: View {
         .padding(.horizontal, trackHighlightHorizontalInset)
       }
     }
+  }
+
+  private var rowTitle: String {
+    trackRowTitle(title: song.title, artist: song.artistName, isCompilation: isCompilation)
   }
 }
 
@@ -2201,6 +2234,7 @@ private struct SearchSongRow: View {
 private struct PlaylistAlbumHeader: View {
   @EnvironmentObject private var session: AppSession
   let group: PlaylistGroup
+  let album: RemoteAlbum?
 
   var body: some View {
     HStack(spacing: 12) {
@@ -2212,7 +2246,7 @@ private struct PlaylistAlbumHeader: View {
       VStack(alignment: .leading, spacing: 2) {
         Text(group.albumTitle)
           .font(.headline)
-        Text(group.artist)
+        Text(album?.artistName ?? group.artist)
           .foregroundStyle(.secondary)
         Text(group.detail)
           .font(.caption.monospacedDigit())
@@ -2277,9 +2311,10 @@ private struct IndexedSong: Identifiable {
 private struct PlaylistGroup: Identifiable {
   let id: String
   let songs: [IndexedSong]
+  var albumID: String? { songs.first?.song.albumId }
 
   var albumTitle: String { songs.first?.song.albumName.nonEmptyValue ?? "Unknown Album" }
-  var artist: String { songs.first?.song.artistName.nonEmptyValue ?? "Unknown Artist" }
+  var artist: String { songs.first?.song.albumArtistName.nonEmptyValue ?? "Unknown Artist" }
   var detail: String {
     let year = songs.first?.song.year.map(String.init)
     let duration = formatCollectionDuration(songs.compactMap { $0.song.duration }.reduce(0, +))
@@ -2295,7 +2330,7 @@ private func playlistGroups(_ songs: [RemoteSong]) -> [PlaylistGroup] {
   for (index, song) in songs.enumerated() {
     let key = albumGroupingIdentity(
       albumID: song.albumId,
-      artist: song.artistName,
+      artist: song.albumArtistName,
       album: song.albumName
     )
     if !current.isEmpty, key != currentKey {

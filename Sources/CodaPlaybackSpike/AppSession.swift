@@ -468,7 +468,7 @@ final class AppSession: ObservableObject {
     return try songs.map { song in
       let albumKey = albumGroupingIdentity(
         albumID: song.albumId,
-        artist: song.artistName,
+        artist: song.albumArtistName,
         album: song.albumName
       )
       if currentAlbumKey != albumKey {

@@ -387,6 +387,7 @@ struct NavidromeClient: Sendable {
     )
     let songs = (detail.song ?? []).map { source in
       var song = source
+      song = song.applyingAlbum(detail.summary)
       song.discSubtitle = discSubtitles[max(1, song.discNumber ?? 1)]
       return song
     }.sorted {
@@ -544,7 +545,7 @@ struct NavidromeClient: Sendable {
     )
     let result = response.searchResult3
     return LibrarySearchResults(
-      artists: (result?.artist ?? []).filter(\.isAlbumArtistSearchResult),
+      artists: result?.artist ?? [],
       albums: result?.album ?? [],
       songs: result?.song ?? []
     )
@@ -716,6 +717,9 @@ private struct AlbumDetailResponse: Decodable {
   let id: String
   let name: String
   var artist: String?
+  var displayArtist: String?
+  var artists: [RemoteArtistReference]?
+  var isCompilation: Bool?
   var artistId: String?
   var coverArt: String?
   var songCount: Int?
@@ -734,6 +738,9 @@ private struct AlbumDetailResponse: Decodable {
       id: id,
       name: name,
       artist: artist,
+      displayArtist: displayArtist,
+      artists: artists,
+      isCompilation: isCompilation,
       artistId: artistId,
       coverArt: coverArt,
       songCount: songCount,

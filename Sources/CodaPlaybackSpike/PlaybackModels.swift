@@ -138,6 +138,13 @@ struct QueueEntry: Identifiable, Hashable, Sendable {
   let discSubtitle: String?
   let durationSeconds: Int
   let formatDescription: String
+  let albumArtist: String?
+  let artists: [RemoteArtistReference]
+  let albumArtists: [RemoteArtistReference]
+  let isCompilation: Bool?
+
+  var albumArtistName: String { albumArtist?.nonEmptyValue ?? artist }
+  var artistCredit: ArtistCredit { ArtistCredit(name: artist, artists: artists) }
 
   init(
     id: UUID = UUID(),
@@ -155,7 +162,11 @@ struct QueueEntry: Identifiable, Hashable, Sendable {
     discNumber: Int? = nil,
     discSubtitle: String? = nil,
     durationSeconds: Int = 0,
-    formatDescription: String = ""
+    formatDescription: String = "",
+    albumArtist: String? = nil,
+    artists: [RemoteArtistReference] = [],
+    albumArtists: [RemoteArtistReference] = [],
+    isCompilation: Bool? = nil
   ) {
     self.id = id
     self.sourceID = sourceID
@@ -173,6 +184,10 @@ struct QueueEntry: Identifiable, Hashable, Sendable {
     self.discSubtitle = discSubtitle
     self.durationSeconds = durationSeconds
     self.formatDescription = formatDescription
+    self.albumArtist = albumArtist
+    self.artists = artists
+    self.albumArtists = albumArtists
+    self.isCompilation = isCompilation
   }
 }
 
@@ -190,7 +205,11 @@ struct RemoteSong: Decodable, Identifiable, Hashable, Sendable {
   let title: String
   var album: String? = nil
   var artist: String? = nil
+  var displayArtist: String? = nil
+  var artists: [RemoteArtistReference]? = nil
   var displayAlbumArtist: String? = nil
+  var albumArtists: [RemoteArtistReference]? = nil
+  var isCompilation: Bool? = nil
   var albumId: String? = nil
   var artistId: String? = nil
   var coverArt: String? = nil
@@ -208,7 +227,19 @@ struct RemoteSong: Decodable, Identifiable, Hashable, Sendable {
   var samplingRate: Int? = nil
 
   var albumName: String { album ?? "" }
-  var artistName: String { displayAlbumArtist?.nonEmptyValue ?? artist ?? "" }
+  var artistName: String { displayArtist?.nonEmptyValue ?? artist ?? "" }
+  var albumArtistName: String { displayAlbumArtist?.nonEmptyValue ?? artistName }
+  var artistCredit: ArtistCredit {
+    ArtistCredit(name: artistName, artists: artists ?? [], legacyArtistID: artistId)
+  }
+
+  func applyingAlbum(_ album: RemoteAlbum) -> RemoteSong {
+    var song = self
+    song.displayAlbumArtist = album.artistName.nonEmptyValue ?? displayAlbumArtist
+    song.albumArtists = album.artists ?? albumArtists
+    song.isCompilation = album.isCompilation ?? isCompilation
+    return song
+  }
   var albumArtworkID: String? {
     if let albumId, !albumId.isEmpty { return albumId }
     return coverArt
@@ -237,6 +268,9 @@ struct RemoteAlbum: Decodable, Identifiable, Hashable, Sendable {
   let id: String
   let name: String
   var artist: String? = nil
+  var displayArtist: String? = nil
+  var artists: [RemoteArtistReference]? = nil
+  var isCompilation: Bool? = nil
   var artistId: String? = nil
   var coverArt: String? = nil
   var songCount: Int? = nil
@@ -249,7 +283,10 @@ struct RemoteAlbum: Decodable, Identifiable, Hashable, Sendable {
   var userRating: Int? = nil
   var discTitles: [RemoteDiscTitle]? = nil
 
-  var artistName: String { artist ?? "" }
+  var artistName: String { displayArtist?.nonEmptyValue ?? artist ?? "" }
+  var artistCredit: ArtistCredit {
+    ArtistCredit(name: artistName, artists: artists ?? [], legacyArtistID: artistId)
+  }
   var artworkID: String { coverArt ?? id }
 
   var releaseYear: Int? {
@@ -278,15 +315,6 @@ struct RemoteArtist: Decodable, Identifiable, Hashable, Sendable {
   var coverArt: String? = nil
   var artistImageUrl: String? = nil
   var genre: String? = nil
-
-  var isAlbumArtistSearchResult: Bool {
-    guard let albumCount else {
-      // Some Subsonic-compatible servers omit this optional field. Preserve
-      // those results instead of assuming they are participation-only artists.
-      return true
-    }
-    return albumCount > 0
-  }
 }
 
 struct RemotePlaylist: Decodable, Identifiable, Hashable, Sendable {
@@ -487,7 +515,11 @@ extension QueueEntry {
       discNumber: song.discNumber,
       discSubtitle: song.discSubtitle,
       durationSeconds: song.duration ?? 0,
-      formatDescription: song.technicalSummary
+      formatDescription: song.technicalSummary,
+      albumArtist: song.albumArtistName,
+      artists: song.artistCredit.artists,
+      albumArtists: song.albumArtists ?? [],
+      isCompilation: song.isCompilation
     )
   }
 }

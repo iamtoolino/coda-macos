@@ -505,28 +505,12 @@ struct NowPlayingPresentationView: View {
                 .onTapGesture { presentation.dismiss() }
 
               if !entry.artist.isEmpty {
-                if let artistID = album?.artistId {
-                  Text(entry.artist)
-                    .font(.title3.weight(.medium))
-                    .foregroundStyle(presentationAccent)
-                    .animation(.easeInOut(duration: 0.85), value: preparedThemeID)
-                    .lineLimit(1)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                      showArtist(artistID)
-                    }
-                    .accessibilityAddTraits(.isLink)
-                    .accessibilityAction {
-                      showArtist(artistID)
-                    }
-                    .help("Show \(entry.artist)")
-                } else {
-                  Text(entry.artist)
-                    .font(.title3.weight(.medium))
-                    .foregroundStyle(presentationAccent)
-                    .animation(.easeInOut(duration: 0.85), value: preparedThemeID)
-                    .lineLimit(1)
-                }
+                ArtistCreditView(credit: entry.artistCredit, openArtist: showArtist)
+                  .font(.title3.weight(.medium))
+                  .foregroundStyle(presentationAccent)
+                  .tint(presentationAccent)
+                  .animation(.easeInOut(duration: 0.85), value: preparedThemeID)
+                  .lineLimit(1)
               }
 
               if !entry.album.isEmpty {

@@ -140,13 +140,15 @@ private func albumResumeBuckets(from bookmarks: [RemoteBookmark]) -> [AlbumResum
     let album = RemoteAlbum(
       id: albumID,
       name: song.albumName,
-      artist: song.artistName.nonEmptyValue,
+      artist: song.albumArtistName.nonEmptyValue,
+      artists: song.albumArtists,
+      isCompilation: song.isCompilation,
       coverArt: song.albumArtworkID,
       year: song.year
     )
     let identity = albumGroupingIdentity(
       albumID: albumID,
-      artist: song.artistName,
+      artist: song.albumArtistName,
       album: song.albumName
     )
     return (

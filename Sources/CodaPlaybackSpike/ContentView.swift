@@ -1993,7 +1993,7 @@ private struct QueueAlbumHeader: View {
             Text(group.albumTitle)
               .font(.subheadline.weight(.semibold))
               .lineLimit(1)
-            Text(group.artist)
+            Text(album?.artistName ?? group.artist)
               .font(.caption)
               .foregroundStyle(.secondary)
               .lineLimit(1)
@@ -2019,7 +2019,10 @@ private struct QueueAlbumHeader: View {
         albumID: albumID,
         album: album,
         removalTitle: "Remove Album from Queue",
-        deleteAction: deleteAction
+        deleteAction: deleteAction,
+        artistCredit: album?.artistCredit ?? ArtistCredit(
+          name: group.artist, artists: group.entries.first?.albumArtists ?? []
+        )
       )
     }
   }
@@ -2041,6 +2044,7 @@ private struct QueueItemContextMenu: View {
   let album: RemoteAlbum?
   let removalTitle: String
   let deleteAction: () -> Void
+  var artistCredit: ArtistCredit? = nil
 
   var body: some View {
     if let albumID {
@@ -2048,9 +2052,11 @@ private struct QueueItemContextMenu: View {
         session.open(.album(albumID))
       }
 
-      if let artistID = album?.artistId {
-        Button("Show Artist", systemImage: "person") {
-          session.open(.artist(artistID))
+      if let credit = artistCredit ?? album?.artistCredit {
+        ForEach(credit.artists) { artist in
+          Button("Show \(artist.name)", systemImage: "person") {
+            session.open(.artist(artist.id))
+          }
         }
       }
 
@@ -2152,7 +2158,11 @@ private struct QueueTrackRow: View {
       )
       .frame(width: 24, alignment: .trailing)
 
-      Text(entry.title)
+      Text(trackRowTitle(
+        title: entry.title,
+        artist: entry.artist,
+        isCompilation: album?.isCompilation ?? entry.isCompilation ?? false
+      ))
         .font(.callout)
         .lineLimit(1)
         .foregroundStyle(
@@ -2210,7 +2220,8 @@ private struct QueueTrackRow: View {
         albumID: entry.albumID?.nonEmpty,
         album: album,
         removalTitle: "Remove Track from Queue",
-        deleteAction: removeAction
+        deleteAction: removeAction,
+        artistCredit: entry.artistCredit
       )
     }
   }
@@ -2223,7 +2234,7 @@ struct QueueGroup: Identifiable {
 
   var entryIDs: [UUID] { entries.map(\.id) }
   var albumTitle: String { entries.first?.album.nonEmpty ?? "Unknown Album" }
-  var artist: String { entries.first?.artist.nonEmpty ?? "Unknown Artist" }
+  var artist: String { entries.first?.albumArtistName.nonEmpty ?? "Unknown Artist" }
 
   var showsDiscHeadings: Bool {
     Set(entries.map(normalizedDiscNumber)).count > 1
@@ -2287,7 +2298,7 @@ func queueGroups(_ entries: [QueueEntry]) -> [QueueGroup] {
     let key = entry.queueGroupID.map { "group:\($0.uuidString)" }
       ?? albumGroupingIdentity(
         albumID: entry.albumID,
-        artist: entry.artist,
+        artist: entry.albumArtistName,
         album: entry.album
       )
     if !currentEntries.isEmpty, key != currentKey {

@@ -355,13 +355,13 @@ struct AlbumMockupHero: View {
   let image: NSImage?
   let fallbackURL: URL?
   let title: String
-  let artist: String
+  let artistCredit: ArtistCredit
   let metadata: String
   let rating: Int?
   let ratingIsUpdating: Bool
   let ratingHighlightTrigger: Int
   let ratingAction: (Int) -> Void
-  let artistAction: (() -> Void)?
+  let artistAction: (String) -> Void
   let playAction: () -> Void
   let queueAction: () -> Void
   let queueDragItem: LibraryQueueDragItem
@@ -397,16 +397,10 @@ struct AlbumMockupHero: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .layoutPriority(1)
 
-      if let artistAction {
-        Button(artist, action: artistAction)
-          .buttonStyle(.plain)
-          .font(.title3)
-          .foregroundStyle(settings.accent.color)
-      } else {
-        Text(artist)
-          .font(.title3)
-          .foregroundStyle(settings.accent.color)
-      }
+      ArtistCreditView(credit: artistCredit, openArtist: artistAction)
+        .font(.title3)
+        .foregroundStyle(settings.accent.color)
+        .tint(settings.accent.color)
 
       Text(metadata)
         .foregroundStyle(.secondary)
