@@ -71,6 +71,9 @@ Run the automated tests with:
 swift test
 ```
 
+The planned, platform-independent ReplayGain behaviour is specified in
+[docs/replaygain.md](docs/replaygain.md).
+
 ### Selecting artist-credit test albums
 
 With Python 3.11 or newer and `naviclient` installed in the active environment, use the
