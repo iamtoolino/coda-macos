@@ -110,6 +110,8 @@ struct ArtistCreditView: View {
         components.host = "show"
         components.queryItems = [URLQueryItem(name: "id", value: id)]
         part.link = components.url
+      } else if !credit.artists.isEmpty {
+        part.foregroundColor = Color.secondary
       }
       text.append(part)
     }
