@@ -87,6 +87,12 @@ CodaMPV *coda_mpv_create(void) {
     {"ao", "coreaudio"},
     {"gapless-audio", "weak"},
     {"prefetch-playlist", "yes"},
+    // Coda resolves API ReplayGain once per occurrence; mpv applies the constant gain.
+    {"replaygain", "no"},
+    {"replaygain-fallback", "0"},
+    {"replaygain-preamp", "0"},
+    {"volume-gain-min", "-150"},
+    {"volume-gain-max", "150"},
     {"network-timeout", "10"},
   };
   for (size_t index = 0; index < sizeof(options) / sizeof(options[0]); index++)
@@ -191,12 +197,23 @@ bool coda_mpv_next_event(CodaMPV *engine, CodaMPVEvent *output) {
   }
 }
 
+static void load_with_gain(CodaMPV *engine, const char *url, const char *mode,
+                           double position, double gain_db) {
+  char options[160];
+  // Per-file options are applied inside mpv before audio initialization, including prefetch.
+  snprintf(options, sizeof(options), "start=%.9f,volume-gain=%.9f", position, gain_db);
+  const char *load[] = {"loadfile", url, mode, "-1", options, NULL};
+  playlist_command(engine, load);
+}
+
 CodaMPVPlaylistState coda_mpv_load(
   CodaMPV *engine,
   const char *current_url,
   const char *next_url,
   double position,
-  bool autoplay
+  bool autoplay,
+  double current_gain_db,
+  double next_gain_db
 ) {
   if (!engine || !current_url)
     return (CodaMPVPlaylistState){.current_entry_id = -1, .next_entry_id = -1};
@@ -205,37 +222,20 @@ CodaMPVPlaylistState coda_mpv_load(
   // with the previous item's state. The per-file `start` option is mpv's
   // native initial-seek path and completes before playback begins.
   set_flag_synchronously(engine, "pause", !autoplay);
-  if (position > 0) {
-    char start[80];
-    snprintf(start, sizeof(start), "start=%.9f", position);
-    const char *load[] = {
-      "loadfile",
-      current_url,
-      "replace",
-      "-1",
-      start,
-      NULL
-    };
-    playlist_command(engine, load);
-  } else {
-    const char *load[] = {"loadfile", current_url, "replace", NULL};
-    playlist_command(engine, load);
-  }
+  load_with_gain(engine, current_url, "replace", position, current_gain_db);
   if (next_url) {
-    const char *append[] = {"loadfile", next_url, "append", NULL};
-    playlist_command(engine, append);
+    load_with_gain(engine, next_url, "append", 0, next_gain_db);
   }
   return playlist_state(engine);
 }
 
-CodaMPVPlaylistState coda_mpv_update_next(CodaMPV *engine, const char *next_url) {
+CodaMPVPlaylistState coda_mpv_update_next(CodaMPV *engine, const char *next_url, double gain_db) {
   if (!engine)
     return (CodaMPVPlaylistState){.current_entry_id = -1, .next_entry_id = -1};
   const char *clear[] = {"playlist-clear", NULL};
   playlist_command(engine, clear);
   if (next_url) {
-    const char *insert[] = {"loadfile", next_url, "insert-next", NULL};
-    playlist_command(engine, insert);
+    load_with_gain(engine, next_url, "insert-next", 0, gain_db);
   }
   return playlist_state(engine);
 }
@@ -265,4 +265,9 @@ void coda_mpv_set_volume(CodaMPV *engine, double volume) {
 void coda_mpv_set_muted(CodaMPV *engine, bool muted) {
   if (engine)
     set_flag(engine, "mute", muted);
+}
+
+void coda_mpv_set_replay_gain(CodaMPV *engine, double gain_db) {
+  if (engine)
+    mpv_set_property(engine->handle, "volume-gain", MPV_FORMAT_DOUBLE, &gain_db);
 }

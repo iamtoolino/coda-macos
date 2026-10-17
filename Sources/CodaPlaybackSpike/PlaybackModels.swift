@@ -142,6 +142,7 @@ struct QueueEntry: Identifiable, Hashable, Sendable {
   let artists: [RemoteArtistReference]
   let albumArtists: [RemoteArtistReference]
   let isCompilation: Bool?
+  let replayGain: ReplayGainMetadata?
 
   var albumArtistName: String { albumArtist?.nonEmptyValue ?? artist }
   var artistCredit: ArtistCredit { ArtistCredit(name: artist, artists: artists) }
@@ -166,7 +167,8 @@ struct QueueEntry: Identifiable, Hashable, Sendable {
     albumArtist: String? = nil,
     artists: [RemoteArtistReference] = [],
     albumArtists: [RemoteArtistReference] = [],
-    isCompilation: Bool? = nil
+    isCompilation: Bool? = nil,
+    replayGain: ReplayGainMetadata? = nil
   ) {
     self.id = id
     self.sourceID = sourceID
@@ -188,6 +190,7 @@ struct QueueEntry: Identifiable, Hashable, Sendable {
     self.artists = artists
     self.albumArtists = albumArtists
     self.isCompilation = isCompilation
+    self.replayGain = replayGain
   }
 }
 
@@ -225,6 +228,7 @@ struct RemoteSong: Decodable, Identifiable, Hashable, Sendable {
   var bitRate: Int? = nil
   var bitDepth: Int? = nil
   var samplingRate: Int? = nil
+  @LossyReplayGain var replayGain: ReplayGainMetadata? = nil
 
   var albumName: String { album ?? "" }
   var artistName: String { displayArtist?.nonEmptyValue ?? artist ?? "" }
@@ -524,7 +528,8 @@ extension QueueEntry {
       albumArtist: song.albumArtistName,
       artists: song.artistCredit.artists,
       albumArtists: song.albumArtists ?? [],
-      isCompilation: song.isCompilation
+      isCompilation: song.isCompilation,
+      replayGain: song.replayGain
     )
   }
 }

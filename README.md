@@ -30,6 +30,9 @@ Coda is an independent community project and is not affiliated with or endorsed 
   In narrow windows, hover over, click, or drag music to the right edge to reveal the queue over the content;
   it closes shortly after the pointer leaves, or with Escape.
 - Original-format playback with gapless transitions, seeking, scrobbling, and saved queue restoration.
+- Optional ReplayGain under Playback → ReplayGain. It automatically uses album gain for
+  consecutive songs from the same album and track gain for isolated songs. It defaults to Off
+  and remembers your choice; tracks without usable gain metadata play 9 dB quieter when enabled.
 - Native media keys, macOS Now Playing integration, and a dedicated immersive Now Playing view.
 
 ## Requirements
@@ -71,7 +74,7 @@ Run the automated tests with:
 swift test
 ```
 
-The planned, platform-independent ReplayGain behaviour is specified in
+The platform-independent ReplayGain behaviour is specified in
 [docs/replaygain.md](docs/replaygain.md).
 
 ### Selecting artist-credit test albums

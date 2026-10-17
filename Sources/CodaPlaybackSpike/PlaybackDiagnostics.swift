@@ -29,6 +29,7 @@ enum PlaybackDiagnostics {
       )
     }
     player.setVolume(0)
+    player.setReplayGainEnabled(true)
     for attempt in 1...10 {
       player.replaceQueue(rapidSelectionEntries, startsPlaying: false)
       player.play(index: 1)
@@ -52,7 +53,9 @@ enum PlaybackDiagnostics {
 
     let entries = urls.enumerated().map { index, url in
       QueueEntry(
-        sourceID: "local-\(index)", url: url, title: url.deletingPathExtension().lastPathComponent)
+        sourceID: "local-\(index)", url: url, title: url.deletingPathExtension().lastPathComponent,
+        albumID: "synthetic-transition-album",
+        replayGain: ReplayGainMetadata(trackGain: -3, albumGain: -6, trackPeak: 1, albumPeak: 1))
     }
     player.replaceQueue(entries, startsPlaying: true)
     for _ in 0..<500 {
@@ -93,6 +96,10 @@ enum PlaybackDiagnostics {
       print("FAILED: mpv did not restore a paused local item at its saved position.")
       return false
     }
+
+    // Explicit preference changes must update the loaded item without disturbing restore/seek.
+    player.setReplayGainEnabled(false)
+    player.setReplayGainEnabled(true)
 
     player.play()
 

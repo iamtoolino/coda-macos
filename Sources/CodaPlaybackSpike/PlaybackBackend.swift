@@ -17,14 +17,6 @@ enum PlaybackBackendEvent: Sendable {
   case failed(String)
 }
 
-func mpvExpectedNextCommands(_ next: URL?) -> [[String]] {
-  var commands = [["playlist-clear"]]
-  if let next {
-    commands.append(["loadfile", next.absoluteString, "insert-next"])
-  }
-  return commands
-}
-
 enum MPVFileStartOutcome: Equatable {
   case ignored
   case startedCurrent
@@ -75,9 +67,10 @@ protocol PlaybackBackend: AnyObject {
   var hasLoadedItem: Bool { get }
   var eventHandler: ((PlaybackBackendEvent) -> Void)? { get set }
 
-  func load(current: URL, next: URL?, position: Double, autoplay: Bool)
-  func updateNext(_ next: URL?)
-  func promoteAutomaticallyAdvancedItem(following: URL?)
+  func load(current: PlaybackBackendItem, next: PlaybackBackendItem?, position: Double, autoplay: Bool)
+  func updateNext(_ next: PlaybackBackendItem?)
+  func promoteAutomaticallyAdvancedItem(following: PlaybackBackendItem?)
+  func setReplayGain(_ gainDb: Double)
   func play()
   func pause()
   func seek(to seconds: Double)
@@ -141,7 +134,7 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
     coda_mpv_destroy(engine)
   }
 
-  func load(current: URL, next: URL?, position: Double, autoplay: Bool) {
+  func load(current: PlaybackBackendItem, next: PlaybackBackendItem?, position: Double, autoplay: Bool) {
     hasLoadedItem = true
     hasExpectedNext = next != nil
     isLoadingItem = true
@@ -149,13 +142,15 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
     snapshot = PlaybackBackendSnapshot(position: max(0, position), isPlaying: autoplay)
     eventHandler?(.snapshot(snapshot))
 
-    let playlistState = current.absoluteString.withCString { currentURL in
+    let playlistState = current.url.absoluteString.withCString { currentURL in
       if let next {
-        return next.absoluteString.withCString { nextURL in
-          coda_mpv_load(engine, currentURL, nextURL, max(0, position), autoplay)
+        return next.url.absoluteString.withCString { nextURL in
+          coda_mpv_load(engine, currentURL, nextURL, max(0, position), autoplay,
+                        current.replayGainDb, next.replayGainDb)
         }
       } else {
-        return coda_mpv_load(engine, currentURL, nil, max(0, position), autoplay)
+        return coda_mpv_load(engine, currentURL, nil, max(0, position), autoplay,
+                             current.replayGainDb, 0)
       }
     }
     playlistAdvanceTracker.reset(
@@ -164,9 +159,9 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
     )
   }
 
-  func updateNext(_ next: URL?) {
-    let playlistState = withOptionalCString(next?.absoluteString) { nextURL in
-      coda_mpv_update_next(engine, nextURL)
+  func updateNext(_ next: PlaybackBackendItem?) {
+    let playlistState = withOptionalCString(next?.url.absoluteString) { nextURL in
+      coda_mpv_update_next(engine, nextURL, next?.replayGainDb ?? 0)
     }
     hasExpectedNext = next != nil
     playlistAdvanceTracker.updateNext(
@@ -174,7 +169,7 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
     )
   }
 
-  func promoteAutomaticallyAdvancedItem(following: URL?) {
+  func promoteAutomaticallyAdvancedItem(following: PlaybackBackendItem?) {
     updateNext(following)
   }
 
@@ -211,6 +206,10 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
 
   func setMuted(_ muted: Bool) {
     coda_mpv_set_muted(engine, muted)
+  }
+
+  func setReplayGain(_ gainDb: Double) {
+    coda_mpv_set_replay_gain(engine, gainDb)
   }
 
   private func drainEvents() {

@@ -49,9 +49,12 @@ CodaMPVPlaylistState coda_mpv_load(
   const char *current_url,
   const char *next_url,
   double position,
-  bool autoplay
+  bool autoplay,
+  double current_gain_db,
+  double next_gain_db
 );
-CodaMPVPlaylistState coda_mpv_update_next(CodaMPV *engine, const char *next_url);
+CodaMPVPlaylistState coda_mpv_update_next(CodaMPV *engine, const char *next_url, double gain_db);
+void coda_mpv_set_replay_gain(CodaMPV *engine, double gain_db);
 void coda_mpv_set_paused(CodaMPV *engine, bool paused);
 void coda_mpv_seek(CodaMPV *engine, double position);
 void coda_mpv_stop(CodaMPV *engine);

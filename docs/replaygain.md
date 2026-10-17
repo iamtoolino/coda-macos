@@ -1,7 +1,6 @@
 # ReplayGain playback specification
 
-Status: agreed product behaviour for implementation. This document does not imply that the
-feature is already implemented. It defines platform-independent behaviour; playback engines,
+This document defines platform-independent product behaviour; playback engines,
 settings storage, and UI layout may differ between implementations.
 
 ## Purpose and scope
@@ -164,6 +163,9 @@ Without a usable matching peak, use the selected gain, but do not claim clipping
 is guaranteed. Fallback-only items receive -9 dB without inventing peak metadata. This feature
 does not repair pre-existing clipping or guarantee against unreported peaks or later effects.
 
+Clamp the final gain to the playback engine's supported range if necessary. This is a numerical
+guard for extreme metadata, not a substitute for the peak calculation.
+
 ReplayGain must remain independent of the user volume slider and mute. Do not change their
 displayed or persisted values to represent normalization.
 
@@ -217,3 +219,21 @@ Use synthetic metadata and local audio fixtures; do not commit private library d
 
 The queue heuristic, UI, fixed fallback, and preference defaults above are product policy, not
 requirements imposed by those external specifications.
+
+## Current implementation
+
+The client reads ReplayGain from the OpenSubsonic song responses and carries it into queue
+entries. It does not independently inspect embedded file tags: absent API metadata uses the
+fallback even if the underlying file might contain tags. A future metadata adapter may add
+embedded-tag support without changing the queue resolver.
+
+`AlbumSequenceResolver` owns adjacency decisions outside the queue UI. Playback snapshots its
+context for each occurrence and includes that context with completion events; queue presentation
+and album-resume eligibility are separate consumers and have not yet been migrated.
+
+`ReplayGainPolicy` chooses and peak-limits the constant gain, clamped to mpv's -150...150 dB
+range. The bridge supplies `volume-gain` as a per-file option for both current and prepared next
+items. Native mpv ReplayGain and its fallback remain disabled to avoid applying gain twice.
+An explicit user toggle changes the active gain without reloading the song.
+
+The sole UI control is Playback → ReplayGain. It defaults to Off and persists locally.

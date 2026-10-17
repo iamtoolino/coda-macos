@@ -9,6 +9,7 @@ func playbackTimelinePublicationInterval(windowIsVisible: Bool) -> Duration {
 struct CompletedPlayback: Equatable {
   let id = UUID()
   let sourceID: String
+  var albumSequence: AlbumSequenceContext? = nil
 }
 
 struct PlaybackArtworkQueueContext: Equatable, Sendable {
@@ -60,6 +61,7 @@ final class PlaybackTimeline: ObservableObject {
 @MainActor
 final class PlayerController: ObservableObject {
   private static let storedVolumeKey = "playback-volume"
+  private static let replayGainEnabledKey = "playback-replaygain-enabled"
 
   @Published private(set) var queue: [QueueEntry] = []
   @Published private(set) var currentIndex: Int?
@@ -74,6 +76,12 @@ final class PlayerController: ObservableObject {
   @Published private(set) var errorMessage: String?
   @Published private(set) var volume: Double = 1
   @Published private(set) var isMuted = false
+  @Published private(set) var replayGainEnabled = false
+  private(set) var currentAlbumSequence: AlbumSequenceContext?
+  private(set) var currentReplayGainDb: Double = 0
+  private var preparedNextContext: AlbumSequenceContext?
+  private var preparedNextItem: PlaybackBackendItem?
+  private var hasStartedCurrentOccurrence = false
   @Published private(set) var playbackEngineName = "Unknown"
   @Published private(set) var queueTopScrollRequest = 0
   @Published private(set) var queueCurrentScrollRequest = 0
@@ -140,6 +148,7 @@ final class PlayerController: ObservableObject {
   ) {
     self.backend = backend
     self.volumeDefaults = volumeDefaults
+    replayGainEnabled = volumeDefaults?.bool(forKey: Self.replayGainEnabledKey) ?? false
     if let savedVolume = volumeDefaults?.object(forKey: Self.storedVolumeKey) as? NSNumber {
       let restoredVolume = savedVolume.doubleValue
       if restoredVolume.isFinite {
@@ -234,6 +243,7 @@ final class PlayerController: ObservableObject {
     guard let currentIndex, queue.indices.contains(currentIndex) else { return }
     errorMessage = nil
     if backend.hasLoadedItem {
+      hasStartedCurrentOccurrence = true
       backend.play()
       isPlaying = true
       status = "Playing"
@@ -361,6 +371,36 @@ final class PlayerController: ObservableObject {
     resetPublishedState()
   }
 
+  func setReplayGainEnabled(_ enabled: Bool) {
+    guard replayGainEnabled != enabled else { return }
+    replayGainEnabled = enabled
+    volumeDefaults?.set(enabled, forKey: Self.replayGainEnabledKey)
+    if let currentEntry, backend.hasLoadedItem {
+      currentReplayGainDb = ReplayGainPolicy.gainDb(
+        enabled: enabled, context: currentAlbumSequence, metadata: currentEntry.replayGain
+      )
+      backend.setReplayGain(currentReplayGainDb)
+      synchronizeNextItem()
+    }
+  }
+
+  private func playbackItem(at index: Int) -> PlaybackBackendItem? {
+    guard queue.indices.contains(index) else { return nil }
+    return PlaybackBackendItem(
+      url: queue[index].url,
+      replayGainDb: ReplayGainPolicy.gainDb(
+        enabled: replayGainEnabled,
+        context: AlbumSequenceResolver.context(in: queue, at: index),
+        metadata: queue[index].replayGain
+      )
+    )
+  }
+
+  private func prepareNextItem(after index: Int) {
+    preparedNextContext = AlbumSequenceResolver.context(in: queue, at: index + 1)
+    preparedNextItem = playbackItem(at: index + 1)
+  }
+
   private func load(
     index: Int,
     position: Double,
@@ -375,7 +415,13 @@ final class PlayerController: ObservableObject {
     currentIndex = index
     if !isAutomaticIdleRecovery || playbackOccurrenceID == nil {
       playbackOccurrenceID = UUID()
+      currentAlbumSequence = AlbumSequenceResolver.context(in: queue, at: index)
+      currentReplayGainDb = ReplayGainPolicy.gainDb(
+        enabled: replayGainEnabled, context: currentAlbumSequence, metadata: queue[index].replayGain
+      )
+      hasStartedCurrentOccurrence = autoplay
     }
+    prepareNextItem(after: index)
     timeline.reset(position: max(0, position))
     bufferedUntil = 0
     errorMessage = nil
@@ -383,8 +429,8 @@ final class PlayerController: ObservableObject {
     status = autoplay ? "Playing" : "Ready"
     restartTimelinePublicationTask()
     backend.load(
-      current: queue[index].url,
-      next: queue.indices.contains(index + 1) ? queue[index + 1].url : nil,
+      current: PlaybackBackendItem(url: queue[index].url, replayGainDb: currentReplayGainDb),
+      next: preparedNextItem,
       position: timeline.position,
       autoplay: autoplay
     )
@@ -394,8 +440,17 @@ final class PlayerController: ObservableObject {
 
   private func synchronizeNextItem() {
     guard let currentIndex, backend.hasLoadedItem else { return }
-    let next = queue.indices.contains(currentIndex + 1) ? queue[currentIndex + 1].url : nil
-    backend.updateNext(next)
+    // A restored/loaded item that has never started can still adopt the edited queue context.
+    // Pausing an occurrence that has already played must not unfreeze its decision.
+    if !hasStartedCurrentOccurrence, let item = playbackItem(at: currentIndex) {
+      currentAlbumSequence = AlbumSequenceResolver.context(in: queue, at: currentIndex)
+      if currentReplayGainDb != item.replayGainDb {
+        currentReplayGainDb = item.replayGainDb
+        backend.setReplayGain(currentReplayGainDb)
+      }
+    }
+    prepareNextItem(after: currentIndex)
+    backend.updateNext(preparedNextItem)
   }
 
   private func applyReorderedQueue(_ reordered: [QueueEntry]) {
@@ -465,11 +520,14 @@ final class PlayerController: ObservableObject {
       automaticIdleRecoveryPosition = nil
       self.currentIndex = nextIndex
       playbackOccurrenceID = UUID()
+      currentAlbumSequence = preparedNextContext
+      currentReplayGainDb = preparedNextItem?.replayGainDb ?? 0
+      hasStartedCurrentOccurrence = true
       timeline.reset()
       bufferedUntil = 0
       errorMessage = nil
-      let following = queue.indices.contains(nextIndex + 1) ? queue[nextIndex + 1].url : nil
-      backend.promoteAutomaticallyAdvancedItem(following: following)
+      prepareNextItem(after: nextIndex)
+      backend.promoteAutomaticallyAdvancedItem(following: preparedNextItem)
       status = isPlaying ? "Playing" : "Ready"
       restartTimelinePublicationTask()
       updateNowPlayingInfo()
@@ -504,6 +562,11 @@ final class PlayerController: ObservableObject {
       publishCurrentPlaybackCompletion()
       currentIndex = nil
       playbackOccurrenceID = nil
+      currentAlbumSequence = nil
+      currentReplayGainDb = 0
+      preparedNextContext = nil
+      preparedNextItem = nil
+      hasStartedCurrentOccurrence = false
       isPlaying = false
       timeline.reset()
       bufferedUntil = 0
@@ -524,12 +587,19 @@ final class PlayerController: ObservableObject {
 
   private func publishCurrentPlaybackCompletion() {
     guard let currentEntry else { return }
-    completedPlayback = CompletedPlayback(sourceID: currentEntry.sourceID)
+    completedPlayback = CompletedPlayback(
+      sourceID: currentEntry.sourceID, albumSequence: currentAlbumSequence
+    )
   }
 
   private func resetPublishedState() {
     currentIndex = nil
     playbackOccurrenceID = nil
+    currentAlbumSequence = nil
+    currentReplayGainDb = 0
+    preparedNextContext = nil
+    preparedNextItem = nil
+    hasStartedCurrentOccurrence = false
     isPlaying = false
     restartTimelinePublicationTask()
     timeline.reset()

@@ -143,6 +143,14 @@ struct CodaPlaybackSpikeApp: App {
 
         Divider()
 
+        Toggle("ReplayGain", isOn: Binding(
+          get: { player.replayGainEnabled },
+          set: { player.setReplayGainEnabled($0) }
+        ))
+        .help("Match playback loudness using ReplayGain tags, preserving album dynamics for consecutive tracks from the same album.")
+
+        Divider()
+
         Button("Clear Queue", systemImage: "trash", role: .destructive) {
           clearQueueOrEditText()
         }

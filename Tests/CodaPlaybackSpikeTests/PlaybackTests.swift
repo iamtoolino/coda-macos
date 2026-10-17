@@ -9,16 +9,6 @@ import Testing
 @Suite("Playback")
 @MainActor
 struct PlaybackTests {
-  @Test("mpv next refresh never removes a numeric playlist position")
-  func mpvNextRefreshNeverRemovesANumericPlaylistPosition() {
-    let next = URL(string: "https://example.test/next.flac")!
-    #expect(mpvExpectedNextCommands(next) == [
-      ["playlist-clear"],
-      ["loadfile", next.absoluteString, "insert-next"],
-    ])
-    #expect(mpvExpectedNextCommands(nil) == [["playlist-clear"]])
-  }
-
   @Test("mpv advances Coda only when the current file ends")
   func mpvAdvancesCodaOnlyWhenTheCurrentFileEnds() {
     var tracker = MPVPlaylistAdvanceTracker()
