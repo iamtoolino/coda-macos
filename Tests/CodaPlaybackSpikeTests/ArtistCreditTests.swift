@@ -67,7 +67,7 @@ struct ArtistCreditTests {
     #expect(song.applyingAlbum(album).artistName == "Legacy")
   }
 
-  @Test("album API carries compilation metadata into playable tracks and search retains performers")
+  @Test("album API carries compilation metadata and search hides zero-album artists only")
   func albumAPIAndSearch() async throws {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.protocolClasses = [ArtistMetadataProtocol.self]
@@ -82,7 +82,9 @@ struct ArtistCreditTests {
     #expect(page.songs.first?.albumArtistName == "Album Credit")
     #expect(page.songs.first?.isCompilation == true)
     let results = try await client.search("performer")
-    #expect(results.artists.map(\.id) == ["performer"])
+    #expect(results.artists.map(\.id) == ["album-artist", "legacy"])
+    #expect(results.albums.map(\.id) == ["compilation"])
+    #expect(results.songs.map(\.id) == ["compilation-track"])
   }
 
   @Test("queue album grouping remains stable when track performers differ")
@@ -103,7 +105,7 @@ private final class ArtistMetadataProtocol: URLProtocol, @unchecked Sendable {
   override class func canInit(with request: URLRequest) -> Bool { true }
   override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
   override func startLoading() {
-    let body = Data(#"{"subsonic-response":{"status":"ok","version":"1.16.1","album":{"id":"album","name":"Album","artist":"Legacy Credit","displayArtist":"Album Credit","artists":[{"id":"album-artist","name":"Album Credit"}],"isCompilation":true,"song":[{"id":"song","title":"Song","artist":"Track Performer"}]},"searchResult3":{"artist":[{"id":"performer","name":"Track Performer","albumCount":0}]}}}"#.utf8)
+    let body = Data(#"{"subsonic-response":{"status":"ok","version":"1.16.1","album":{"id":"album","name":"Album","artist":"Legacy Credit","displayArtist":"Album Credit","artists":[{"id":"album-artist","name":"Album Credit"}],"isCompilation":true,"song":[{"id":"song","title":"Song","artist":"Track Performer"}]},"searchResult3":{"artist":[{"id":"album-artist","name":"Album Artist","albumCount":2},{"id":"performer","name":"Track Performer","albumCount":0},{"id":"legacy","name":"Legacy Artist"}],"album":[{"id":"compilation","name":"Soundtrack","artist":"Various Artists"}],"song":[{"id":"compilation-track","title":"Song","artist":"Track Performer"}]}}}"#.utf8)
     guard let url = request.url,
       let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil,
                                      headerFields: ["Content-Type": "application/json"])

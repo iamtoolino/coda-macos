@@ -545,7 +545,8 @@ struct NavidromeClient: Sendable {
     )
     let result = response.searchResult3
     return LibrarySearchResults(
-      artists: result?.artist ?? [],
+      // Preserve compatibility with servers that omit the optional album count.
+      artists: (result?.artist ?? []).filter { $0.albumCount != 0 },
       albums: result?.album ?? [],
       songs: result?.song ?? []
     )
