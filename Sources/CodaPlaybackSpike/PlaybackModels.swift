@@ -315,6 +315,11 @@ struct RemoteArtist: Decodable, Identifiable, Hashable, Sendable {
   var coverArt: String? = nil
   var artistImageUrl: String? = nil
   var genre: String? = nil
+
+  var isVariousArtists: Bool {
+    name.trimmingCharacters(in: .whitespacesAndNewlines)
+      .caseInsensitiveCompare("Various Artists") == .orderedSame
+  }
 }
 
 struct RemotePlaylist: Decodable, Identifiable, Hashable, Sendable {

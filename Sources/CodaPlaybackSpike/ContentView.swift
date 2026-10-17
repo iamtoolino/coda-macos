@@ -2052,11 +2052,9 @@ private struct QueueItemContextMenu: View {
         session.open(.album(albumID))
       }
 
-      if let credit = artistCredit ?? album?.artistCredit {
-        ForEach(credit.artists) { artist in
-          Button("Show \(artist.name)", systemImage: "person") {
-            session.open(.artist(artist.id))
-          }
+      if let artist = (artistCredit ?? album?.artistCredit)?.artists.first {
+        Button("Show Artist", systemImage: "person") {
+          session.open(.artist(artist.id))
         }
       }
 

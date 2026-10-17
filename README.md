@@ -24,6 +24,8 @@ Coda is an independent community project and is not affiliated with or endorsed 
   queue rows when Navidrome marks the album as a compilation; other albums keep title-only rows.
   Song search and Now Playing use track credits, while album headers keep album credits.
   Artist search hides artists with zero albums; matching albums and songs remain searchable.
+  The Various Artists page presents a compilation collection with a stack icon and a Compilations
+  heading. Queue context menus use “Show Artist” for the clicked track or album's first artist.
 - A visible, editable queue with drag-and-drop insertion, reordering, removal, and queue handoff.
   In narrow windows, hover over, click, or drag music to the right edge to reveal the queue over the content;
   it closes shortly after the pointer leaves, or with Escape.

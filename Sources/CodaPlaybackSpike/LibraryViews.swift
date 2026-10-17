@@ -856,12 +856,17 @@ struct ArtistDetailView: View {
         queueAction: { queue(page) }
       )
 
-      discographyGrid(page.albums, availableWidth: availableWidth)
+      discographyGrid(
+        page.albums,
+        title: page.artist.isVariousArtists ? "Compilations" : "Discography",
+        availableWidth: availableWidth
+      )
     }
   }
 
   private func discographyGrid(
     _ albums: [RemoteAlbum],
+    title: String,
     minimumWidth: CGFloat = 145,
     maximumWidth: CGFloat = 200,
     availableWidth: CGFloat? = nil
@@ -897,7 +902,7 @@ struct ArtistDetailView: View {
     }
 
     return VStack(alignment: .leading, spacing: 18) {
-      Text("Discography")
+      Text(title)
         .font(.system(size: 18, weight: .semibold))
         .foregroundStyle(.primary.opacity(0.78))
 
@@ -993,12 +998,18 @@ private struct ArtistCodaHero: View {
           .frame(maxWidth: .infinity, alignment: .leading)
           .layoutPriority(1)
 
+        if page.artist.isVariousArtists {
+          Text("Compilation collection")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
+
         Text("\(page.albums.count) albums")
           .font(.callout)
           .foregroundStyle(.secondary)
 
         CollectionPlaybackControls(
-          collectionKind: "artist",
+          collectionKind: page.artist.isVariousArtists ? "compilation collection" : "artist",
           playAction: playAction,
           queueAction: queueAction
         )
@@ -1031,17 +1042,35 @@ private struct ArtistCodaHero: View {
         .blur(radius: 11)
         .offset(y: 12)
 
-      ArtistContainedImage(url: artworkURL, cornerRadius: 13)
-        .frame(width: size, height: size)
-        .scaleEffect(0.98)
-        .shadow(
-          color: .black.opacity(CollectionHeroArtworkStyle.shadowOpacity),
-          radius: CollectionHeroArtworkStyle.shadowRadius,
-          y: CollectionHeroArtworkStyle.shadowY
-        )
+      Group {
+        if page.artist.isVariousArtists {
+          RoundedRectangle(cornerRadius: 13, style: .continuous)
+            .fill(.secondary.opacity(0.08))
+            .overlay {
+              Image(systemName: "square.stack.fill")
+                .font(.system(size: size * 0.26, weight: .light))
+                .foregroundStyle(.secondary)
+            }
+            .overlay {
+              RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(.primary.opacity(0.08), lineWidth: 1)
+            }
+            .accessibilityLabel("Compilation collection")
+        } else {
+          ArtistContainedImage(url: artworkURL, cornerRadius: 13)
+        }
+      }
+      .frame(width: size, height: size)
+      .scaleEffect(0.98)
+      .shadow(
+        color: .black.opacity(CollectionHeroArtworkStyle.shadowOpacity),
+        radius: CollectionHeroArtworkStyle.shadowRadius,
+        y: CollectionHeroArtworkStyle.shadowY
+      )
     }
     .frame(width: size + 30, height: size + 36)
     .artistDragSource(page.artist.id)
+    .help(page.artist.isVariousArtists ? "Drag compilation albums to queue" : "Drag artist discography to queue")
   }
 }
 
