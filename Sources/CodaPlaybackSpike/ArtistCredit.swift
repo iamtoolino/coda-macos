@@ -118,6 +118,27 @@ struct ArtistCreditView: View {
   }
 }
 
-func trackRowTitle(title: String, artist: String, isCompilation: Bool) -> String {
-  isCompilation && !artist.isEmpty ? "\(artist) — \(title)" : title
+struct TrackRowLabel: View {
+  let title: String
+  let artist: String
+  let isCompilation: Bool
+  let titleColor: Color
+  var titleFont: Font = .body
+  var artistFont: Font = .caption
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text(title)
+        .font(titleFont)
+        .foregroundStyle(titleColor)
+        .lineLimit(1)
+      if isCompilation, !artist.isEmpty {
+        Text(artist)
+          .font(artistFont)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+      }
+    }
+    .accessibilityElement(children: .combine)
+  }
 }

@@ -2158,16 +2158,14 @@ private struct QueueTrackRow: View {
       )
       .frame(width: 24, alignment: .trailing)
 
-      Text(trackRowTitle(
+      TrackRowLabel(
         title: entry.title,
         artist: entry.artist,
-        isCompilation: album?.isCompilation ?? entry.isCompilation ?? false
-      ))
-        .font(.callout)
-        .lineLimit(1)
-        .foregroundStyle(
-          isCurrent ? activeAccent : Color.primary
-        )
+        isCompilation: album?.isCompilation ?? entry.isCompilation ?? false,
+        titleColor: isCurrent ? activeAccent : .primary,
+        titleFont: .callout,
+        artistFont: .caption2
+      )
       Spacer(minLength: 4)
       Text(formatDuration(entry.durationSeconds))
         .font(.caption.monospacedDigit())

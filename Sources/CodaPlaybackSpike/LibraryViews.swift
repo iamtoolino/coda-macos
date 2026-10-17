@@ -2083,9 +2083,12 @@ private struct SongRow: View {
       .font(.caption)
       .foregroundStyle(isPlaying ? artworkTreatments.accent.color : Color.secondary)
       .frame(width: 34, alignment: .trailing)
-      Text(rowTitle)
-        .foregroundStyle(isPlaying ? artworkTreatments.accent.color : Color.primary)
-        .lineLimit(1)
+      TrackRowLabel(
+        title: song.title,
+        artist: song.artistName,
+        isCompilation: isCompilation,
+        titleColor: isPlaying ? artworkTreatments.accent.color : .primary
+      )
       Spacer()
       Text(formatDuration(song.duration ?? 0))
         .font(.caption.monospacedDigit())
@@ -2109,7 +2112,7 @@ private struct SongRow: View {
   }
 
   private var rowTitle: String {
-    trackRowTitle(title: song.title, artist: song.artistName, isCompilation: isCompilation)
+    isCompilation && !song.artistName.isEmpty ? "\(song.artistName) — \(song.title)" : song.title
   }
 }
 

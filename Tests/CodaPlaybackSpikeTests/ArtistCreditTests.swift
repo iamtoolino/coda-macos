@@ -52,10 +52,6 @@ struct ArtistCreditTests {
     #expect(entry.artist == "Performer")
     #expect(entry.albumArtistName == "Various Artists")
     #expect(entry.isCompilation == true)
-    #expect(trackRowTitle(title: entry.title, artist: entry.artist,
-                         isCompilation: entry.isCompilation == true) == "Performer — Song")
-    #expect(trackRowTitle(title: "Song", artist: "Various Artists", isCompilation: false) == "Song")
-    #expect(trackRowTitle(title: "Song", artist: "", isCompilation: true) == "Song")
   }
 
   @Test("album display credits and legacy song fallbacks decode independently")
