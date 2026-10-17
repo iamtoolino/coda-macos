@@ -2,19 +2,14 @@
 """Select artist-credit test albums using read-only OpenSubsonic requests."""
 
 import argparse
-import getpass
-import hashlib
 import json
-import os
 from pathlib import Path
 import re
-import secrets
 import sys
 import tempfile
 import unicodedata
-import urllib.error
-import urllib.parse
-import urllib.request
+
+from naviclient import Client, NaviclientError
 
 
 def normalized(value):
@@ -43,6 +38,8 @@ def categories(album):
     if album.get("isCompilation") is False and len(album.get("artists", [])) == 1:
         result.append("single_artist_non_compilation_candidate")
     songs = album.get("song", [])
+    if any(re.search(r"\b(?:feat\.?|ft\.?)\s", song.get("title", ""), re.I) for song in songs):
+        result.append("guest_credit_in_title")
     if any(len(song.get("artists", [])) > 1 for song in songs):
         result.append("multiple_track_artists")
     if any(song.get("displayArtist", song.get("artist", "")) !=
@@ -61,9 +58,12 @@ def shared_tracks(albums):
     groups = {}
     for album in albums:
         for song in album.get("song", []):
+            base_title = re.sub(r"\s*[\(\[]\s*(?:feat\.?|ft\.?)\s+[^\)\]]*[\)\]]",
+                                "", song.get("title", ""), flags=re.I)
             # Title matches are candidates only: covers/remasters can share titles.
             for kind, value in (("recording_mbid", song.get("musicBrainzId")),
-                                ("normalized_title_candidate", normalized(song.get("title", "")))):
+                                ("normalized_title_candidate", normalized(song.get("title", ""))),
+                                ("title_without_guest_credit_candidate", normalized(base_title))):
                 if value:
                     groups.setdefault((kind, value), []).append({
                         "albumId": album["id"], "song": metadata(song)})
@@ -72,52 +72,13 @@ def shared_tracks(albums):
             if len({track["albumId"] for track in tracks}) > 1]
 
 
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise RuntimeError("Server redirected the request; use its final base URL.")
-
-
-class Client:
-    def __init__(self, server, username, password):
-        parts = urllib.parse.urlsplit(server)
-        if (parts.scheme not in ("http", "https") or not parts.hostname or
-                parts.username or parts.password or parts.query or parts.fragment):
-            raise RuntimeError("Use an HTTP(S) base URL without credentials, query or fragment.")
-        self.server = server.rstrip("/")
-        if self.server.endswith("/rest"):
-            self.server = self.server[:-5]
-        self.username, self.password = username, password
-        # Do not route private LAN metadata through environment-configured proxies.
-        self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
-
-    def request(self, endpoint, **params):
-        assert endpoint in ("getAlbumList2", "getAlbum")
-        salt = secrets.token_hex(12)
-        auth = dict(u=self.username, t=hashlib.md5((self.password + salt).encode()).hexdigest(),
-                    s=salt, v="1.16.1", c="CodaArtistCases", f="json")
-        query = urllib.parse.urlencode(dict(auth, **params))
-        request = urllib.request.Request(f"{self.server}/rest/{endpoint}?{query}")
-        try:
-            with self.opener.open(request, timeout=30) as response:
-                data = response.read(16 * 1024 * 1024 + 1)
-            if len(data) > 16 * 1024 * 1024:
-                raise RuntimeError("API response exceeded the 16 MiB limit.")
-            result = json.loads(data)["subsonic-response"]
-        except (urllib.error.URLError, OSError, ValueError, KeyError):
-            # Exception text can contain the authenticated URL or private host.
-            raise RuntimeError("API request failed; check connection, TLS and login settings.") from None
-        if result.get("status") != "ok":
-            raise RuntimeError("Server rejected the API request (details withheld for privacy).")
-        return result
-
-
-def collect(client, queries, discover, max_albums):
+def collect(client, queries, discover, max_albums, artist_queries=()):
     summaries = []
     seen = set()
     offset = 0
     while True:
-        page = client.request("getAlbumList2", type="alphabeticalByName", size=500,
-                              offset=offset).get("albumList2", {}).get("album", [])
+        page = client.request("getAlbumList2", {"type": "alphabeticalByName", "size": 500,
+                              "offset": offset}).get("albumList2", {}).get("album", [])
         if not page:
             break
         if any(album["id"] in seen for album in page):
@@ -132,14 +93,21 @@ def collect(client, queries, discover, max_albums):
                        if normalized(query) in normalized(album.get("name", ""))]
                for query in queries}
     selected = {album_id for ids in matches.values() for album_id in ids}
+    artist_matches = {query: [album["id"] for album in summaries
+                             if any(normalized(query) in normalized(name) for name in
+                                    [album.get("artist", ""), album.get("displayArtist", "")] +
+                                    [artist.get("name", "") for artist in album.get("artists", [])])]
+                      for query in artist_queries}
+    selected.update(album_id for ids in artist_matches.values() for album_id in ids)
     for category in ("compilation", "multiple_album_artists",
                      "single_artist_non_compilation_candidate"):
         selected.update(album["id"] for album in
                         [a for a in summaries if category in categories(a)][:discover])
-    albums = [client.request("getAlbum", id=album["id"])["album"]
+    albums = [client.get_album(album["id"])
               for album in summaries if album["id"] in selected]
     return dict(
         scannedAlbumCount=len(summaries), requestedMatches=matches,
+        requestedArtistMatches=artist_matches,
         scope="Track analysis and shared-recording comparison cover selected albums only.",
         albums=[dict(metadata(album), categories=categories(album),
                      songs=[metadata(song) for song in album.get("song", [])]) for album in albums],
@@ -153,17 +121,17 @@ def main():
     parser.add_argument("--discover", type=int, default=0, metavar="N",
                         help="Also select N albums per album-level category")
     parser.add_argument("--max-albums", type=int, default=20000)
+    parser.add_argument("--artist", action="append", default=[],
+                        help="Album-artist name substring; repeat to select their albums")
+    parser.add_argument("--config", help="Private naviclient TOML path (otherwise use its defaults)")
     args = parser.parse_args()
-    if (not args.album and args.discover == 0) or args.discover < 0 or args.max_albums < 1:
-        parser.error("Provide --album or a positive --discover; limits must be positive.")
-    if any(not normalized(query) for query in args.album):
-        parser.error("Album queries must contain letters or numbers.")
-    server = os.environ.get("NAVIDROME_URL") or input("Navidrome base URL: ").strip()
-    username = os.environ.get("NAVIDROME_USER") or input("Username: ").strip()
-    password = os.environ.get("NAVIDROME_PASSWORD") or getpass.getpass("Password: ")
-    if not username or not password:
-        raise RuntimeError("Username and password are required.")
-    report = collect(Client(server, username, password), args.album, args.discover, args.max_albums)
+    if (not args.album and not args.artist and args.discover == 0) or args.discover < 0 or args.max_albums < 1:
+        parser.error("Provide --album, --artist or a positive --discover; limits must be positive.")
+    if any(not normalized(query) for query in args.album + args.artist):
+        parser.error("Queries must contain letters or numbers.")
+    client = Client.from_config(args.config, timeout=30, client_name="CodaArtistCases",
+                                max_response_bytes=16 * 1024 * 1024)
+    report = collect(client, args.album, args.discover, args.max_albums, args.artist)
     directory = Path(__file__).resolve().parent.parent / ".build" / "artist-test-cases"
     directory.mkdir(parents=True, exist_ok=True)
     # Unique mode-0600 files avoid overwriting a prior selection or following a file symlink.
@@ -174,14 +142,15 @@ def main():
         path = output.name
     print(f"Scanned {report['scannedAlbumCount']} albums; selected {len(report['albums'])}.")
     print(f"Private report: {path}")
-    missing = sum(not ids for ids in report["requestedMatches"].values())
-    print(f"Unmatched album queries: {missing}. Inspect requestedMatches for missing or ambiguous editions.")
+    missing = sum(not ids for key in ("requestedMatches", "requestedArtistMatches")
+                  for ids in report[key].values())
+    print(f"Unmatched queries: {missing}. Inspect requestedMatches and requestedArtistMatches for editions.")
 
 
 if __name__ == "__main__":
     try:
         main()
-    except RuntimeError as error:
+    except (RuntimeError, NaviclientError) as error:
         print(str(error), file=sys.stderr)
         sys.exit(1)
     except (OSError, KeyError):

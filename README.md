@@ -66,17 +66,22 @@ swift test
 
 ### Selecting artist-credit test albums
 
-With Python 3.9 or newer, use the read-only metadata selector:
+With Python 3.11 or newer and `naviclient` installed in the active environment, use the
+read-only metadata selector:
 
 ```sh
 python3 scripts/find-artist-test-cases.py --album "Album title" --discover 2
 python3 -m unittest discover -s scripts -p 'test_artist_test_cases.py'
 ```
 
-Repeat `--album` for each title substring. All matching editions are retained. The script prompts
-for the server base URL, username and hidden password, or reads `NAVIDROME_URL`, `NAVIDROME_USER`
-and `NAVIDROME_PASSWORD` from the environment. HTTP is supported for trusted LANs; use HTTPS
-outside them. Redirects and environment proxies are disabled; enter the final server base URL.
+Repeat `--album` for each title substring. All matching editions are retained. The script uses
+`naviclient.Client.from_config()` to load the existing private `[navidrome]` configuration;
+no password prompt is needed. Use `--config /path/to/private/config.toml` or `NAVICLIENT_CONFIG`
+to override naviclient's shared configuration defaults. Authentication, TLS, redirects, proxies
+and transport limits follow naviclient's behavior. HTTP is supported for trusted LANs; use HTTPS
+outside them. Run with your configured venv's Python interpreter when it is not activated.
+Use `--artist "Artist name"` to select albums by album-artist credit or individual artist name
+instead of title; this can be repeated or combined with `--album`.
 
 It pages through album summaries and fetches tracks only for selected albums. `--discover N`
 adds up to N candidates in each album-level category: compilations, multiple album artists,
@@ -87,7 +92,9 @@ The private JSON report under `.build/artist-test-cases/` preserves display cred
 and arrays, and compilation flags (including absence). It flags varying track credits and
 possible shared recordings across selected albums. Matching titles alone are candidates, not
 proof of identical recordings. Missing queries and ambiguous editions remain visible in
-`requestedMatches`. These are server-interpreted fields, not a dump of the files' original tags.
+`requestedMatches` and `requestedArtistMatches`. A separate candidate comparison removes parenthesized
+`feat.` / `ft.` credits from titles; it does not establish recording identity. These are
+server-interpreted fields, not a dump of the files' original tags.
 Reports contain personal library metadata: keep them untracked. Credentials, server URLs,
 file paths and artwork are excluded. No playback, tag edits, ratings or server scans are triggered.
 

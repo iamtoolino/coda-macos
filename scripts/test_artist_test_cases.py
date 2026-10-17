@@ -15,13 +15,16 @@ class FakeClient:
         self.albums = albums
         self.calls = []
 
-    def request(self, endpoint, **params):
+    def request(self, endpoint, params):
         self.calls.append((endpoint, params))
         if endpoint == "getAlbumList2":
             # Return short pages to exercise offset-based pagination.
             offset = params["offset"]
             return {"albumList2": {"album": self.albums[offset:offset + 1]}}
-        return {"album": next(a for a in self.albums if a["id"] == params["id"])}
+
+    def get_album(self, album_id):
+        self.calls.append(("getAlbum", {"id": album_id}))
+        return next(a for a in self.albums if a["id"] == album_id)
 
 
 class ArtistCaseTests(unittest.TestCase):
@@ -58,7 +61,19 @@ class ArtistCaseTests(unittest.TestCase):
             {"id": album_id + "2", "title": "Other Song"}]} for album_id in ("a", "b")]
         matches = cases.shared_tracks(albums)
         self.assertEqual([m["match"] for m in matches], [
-            "recording_mbid", "normalized_title_candidate", "normalized_title_candidate"])
+            "recording_mbid", "normalized_title_candidate", "title_without_guest_credit_candidate",
+            "normalized_title_candidate", "title_without_guest_credit_candidate"])
+
+    def test_artist_selection_and_guest_title_candidates(self):
+        albums = [{"id": "a", "name": "Debut", "artist": "Example Band", "song": [
+            {"title": "Shared"}]}, {"id": "b", "name": "Second", "artist": "Other", "song": [
+            {"title": "Shared (feat. Example Band)"}]}]
+        report = cases.collect(FakeClient(albums), [], 0, 10, ["example band"])
+        self.assertEqual(report["requestedArtistMatches"], {"example band": ["a"]})
+        self.assertEqual([a["id"] for a in report["albums"]], ["a"])
+        self.assertIn("guest_credit_in_title", cases.categories(albums[1]))
+        self.assertEqual([m["match"] for m in cases.shared_tracks(albums)],
+                         ["title_without_guest_credit_candidate"])
 
     def test_report_whitelists_metadata(self):
         result = cases.metadata({"id": "a", "path": "private", "url": "private",
