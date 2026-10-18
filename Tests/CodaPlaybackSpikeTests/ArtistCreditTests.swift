@@ -92,7 +92,7 @@ struct ArtistCreditTests {
     let url = try #require(URL(string: "https://example.test/stream"))
     let entries = ["Alice", "Bob"].map { artist in
       QueueEntry.remoteSong(RemoteSong(id: artist, title: "Song", album: "Album", artist: artist,
-        displayAlbumArtist: "Album Credit"), streamURL: url, artworkURL: nil, nowPlayingArtworkURL: nil)
+        displayAlbumArtist: "Album Credit", albumId: "album"), streamURL: url, artworkURL: nil, nowPlayingArtworkURL: nil)
     }
     let groups = queueGroups(entries)
     #expect(groups.count == 1)

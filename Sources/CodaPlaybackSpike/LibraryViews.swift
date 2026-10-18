@@ -2272,23 +2272,12 @@ private struct PlaylistAlbumHeader: View {
   let album: RemoteAlbum?
 
   var body: some View {
-    HStack(spacing: 12) {
-      ArtworkImage(
-        url: session.artworkURL(id: group.songs.first?.song.albumArtworkID),
-        cornerRadius: 8
-      )
-      .frame(width: 62, height: 62)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(group.albumTitle)
-          .font(.headline)
-        Text(album?.artistName ?? group.artist)
-          .foregroundStyle(.secondary)
-        Text(group.detail)
-          .font(.caption.monospacedDigit())
-          .foregroundStyle(.tertiary)
-      }
-      Spacer()
-    }
+    TrackListAlbumLabel(
+      artworkURL: session.artworkURL(id: group.songs.first?.song.albumArtworkID),
+      title: group.albumTitle,
+      artist: album?.artistName ?? group.artist,
+      detail: group.detail
+    )
     .padding(.horizontal, 22)
     .padding(.top, 8)
   }
@@ -2335,50 +2324,6 @@ private struct LibraryErrorView: View {
       Button("Try Again", action: retry)
     }
   }
-}
-
-private struct IndexedSong: Identifiable {
-  let index: Int
-  let song: RemoteSong
-  var id: String { "\(index):\(song.id)" }
-}
-
-private struct PlaylistGroup: Identifiable {
-  let id: String
-  let songs: [IndexedSong]
-  var albumID: String? { songs.first?.song.albumId }
-
-  var albumTitle: String { songs.first?.song.albumName.nonEmptyValue ?? "Unknown Album" }
-  var artist: String { songs.first?.song.albumArtistName.nonEmptyValue ?? "Unknown Artist" }
-  var detail: String {
-    let year = songs.first?.song.year.map(String.init)
-    let duration = formatCollectionDuration(songs.compactMap { $0.song.duration }.reduce(0, +))
-    return [year, duration.nonEmptyValue].compactMap { $0 }.joined(separator: " · ")
-  }
-}
-
-private func playlistGroups(_ songs: [RemoteSong]) -> [PlaylistGroup] {
-  var result: [PlaylistGroup] = []
-  var current: [IndexedSong] = []
-  var currentKey = ""
-
-  for (index, song) in songs.enumerated() {
-    let key = albumGroupingIdentity(
-      albumID: song.albumId,
-      artist: song.albumArtistName,
-      album: song.albumName
-    )
-    if !current.isEmpty, key != currentKey {
-      result.append(PlaylistGroup(id: "\(current[0].index):\(currentKey)", songs: current))
-      current = []
-    }
-    currentKey = key
-    current.append(IndexedSong(index: index, song: song))
-  }
-  if !current.isEmpty {
-    result.append(PlaylistGroup(id: "\(current[0].index):\(currentKey)", songs: current))
-  }
-  return result
 }
 
 private func recentArtists(

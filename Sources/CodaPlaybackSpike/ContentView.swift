@@ -1953,7 +1953,7 @@ private struct QueueAlbumBlock: View {
   }
 
   private var albumID: String? {
-    group.entries.first?.albumID?.nonEmpty
+    group.albumID
   }
 
   @MainActor
@@ -1986,23 +1986,13 @@ private struct QueueAlbumHeader: View {
       Button {
         selectAction(currentTrackSelectionModifiers())
       } label: {
-        HStack(spacing: 10) {
-          ArtworkImage(url: group.entries.first?.artworkURL, cornerRadius: 6)
-            .frame(width: 48, height: 48)
-          VStack(alignment: .leading, spacing: 2) {
-            Text(group.albumTitle)
-              .font(.subheadline.weight(.semibold))
-              .lineLimit(1)
-            Text(album?.artistName ?? group.artist)
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .lineLimit(1)
-            Text(group.detail)
-              .font(.caption2.monospacedDigit())
-              .foregroundStyle(.tertiary)
-          }
-          Spacer(minLength: 0)
-        }
+        TrackListAlbumLabel(
+          artworkURL: group.entries.first?.artworkURL,
+          title: group.albumTitle,
+          artist: album?.artistName ?? group.artist,
+          detail: group.detail,
+          compact: true
+        )
         .contentShape(Rectangle())
       }
       .buttonStyle(NoPressEffectButtonStyle())
@@ -2028,7 +2018,7 @@ private struct QueueAlbumHeader: View {
   }
 
   private var albumID: String? {
-    group.entries.first?.albumID?.nonEmpty
+    group.albumID
   }
 }
 
@@ -2221,95 +2211,6 @@ private struct QueueTrackRow: View {
       )
     }
   }
-}
-
-struct QueueGroup: Identifiable {
-  let id: UUID
-  let startIndex: Int
-  let entries: [QueueEntry]
-
-  var entryIDs: [UUID] { entries.map(\.id) }
-  var albumTitle: String { entries.first?.album.nonEmpty ?? "Unknown Album" }
-  var artist: String { entries.first?.albumArtistName.nonEmpty ?? "Unknown Artist" }
-
-  var showsDiscHeadings: Bool {
-    Set(entries.map(normalizedDiscNumber)).count > 1
-      || entries.contains { $0.discSubtitle?.nonEmpty != nil }
-  }
-
-  var detail: String {
-    let year = entries.first?.year.map(String.init)
-    let duration = formatCollectionDuration(entries.reduce(0) { $0 + $1.durationSeconds })
-    return [year, duration].compactMap { $0 }.joined(separator: " · ")
-  }
-
-  func beginsDiscSection(at offset: Int) -> Bool {
-    guard showsDiscHeadings, entries.indices.contains(offset) else { return false }
-    guard offset > 0 else { return true }
-    return normalizedDiscNumber(entries[offset - 1]) != normalizedDiscNumber(entries[offset])
-  }
-
-  func discNumber(at offset: Int) -> Int {
-    guard entries.indices.contains(offset) else { return 1 }
-    return normalizedDiscNumber(entries[offset])
-  }
-
-  func discSubtitle(at offset: Int) -> String? {
-    let number = discNumber(at: offset)
-    return entries.first {
-      normalizedDiscNumber($0) == number && $0.discSubtitle?.nonEmpty != nil
-    }?.discSubtitle
-  }
-
-  func discDuration(at offset: Int) -> Int {
-    let number = discNumber(at: offset)
-    return entries.filter { normalizedDiscNumber($0) == number }
-      .reduce(0) { $0 + $1.durationSeconds }
-  }
-
-  func discEntryIDs(at offset: Int) -> [UUID] {
-    let number = discNumber(at: offset)
-    return entries.filter { normalizedDiscNumber($0) == number }.map(\.id)
-  }
-
-  private func normalizedDiscNumber(_ entry: QueueEntry) -> Int {
-    max(1, entry.discNumber ?? 1)
-  }
-}
-
-func queueGroups(_ entries: [QueueEntry]) -> [QueueGroup] {
-  var result: [QueueGroup] = []
-  var currentEntries: [QueueEntry] = []
-  var currentKey = ""
-  var startIndex = 0
-
-  func appendCurrentGroup() {
-    guard let firstEntry = currentEntries.first else { return }
-    result.append(
-      QueueGroup(id: firstEntry.id, startIndex: startIndex, entries: currentEntries)
-    )
-  }
-
-  for (index, entry) in entries.enumerated() {
-    let key = entry.queueGroupID.map { "group:\($0.uuidString)" }
-      ?? albumGroupingIdentity(
-        albumID: entry.albumID,
-        artist: entry.albumArtistName,
-        album: entry.album
-      )
-    if !currentEntries.isEmpty, key != currentKey {
-      appendCurrentGroup()
-      currentEntries = []
-      startIndex = index
-    }
-    currentKey = key
-    currentEntries.append(entry)
-  }
-
-  if !currentEntries.isEmpty {
-    appendCurrentGroup()
-  }
-  return result
 }
 
 func trackLabel(_ entry: QueueEntry) -> String {

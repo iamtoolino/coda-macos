@@ -15,7 +15,7 @@ struct AlbumSequenceResolverTests {
     #expect(AlbumSequenceResolver.context(in: queue, at: 1)?.continuesNext == false)
   }
 
-  @Test("Membership uses album identity, not metadata, disc, or insertion group")
+  @Test("Membership uses album identity, not metadata or disc boundaries")
   func identity() {
     let queue = [
       entry("A", disc: 1), entry("A", disc: 2), entry("B"),
@@ -42,7 +42,7 @@ struct AlbumSequenceResolverTests {
     QueueEntry(
       sourceID: UUID().uuidString, url: URL(string: "https://example.test/audio")!,
       title: "Song", artist: "Artist", album: "Same title",
-      albumID: albumID, queueGroupID: UUID(), discNumber: disc
+      albumID: albumID, discNumber: disc
     )
   }
 }

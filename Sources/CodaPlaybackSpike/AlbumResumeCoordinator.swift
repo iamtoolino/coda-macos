@@ -155,11 +155,6 @@ private func albumResumeBuckets(from bookmarks: [RemoteBookmark]) -> [AlbumResum
       coverArt: song.albumArtworkID,
       year: song.year
     )
-    let identity = albumGroupingIdentity(
-      albumID: albumID,
-      artist: song.albumArtistName,
-      album: song.albumName
-    )
     return (
       bookmark,
       AlbumResumeItem(
@@ -168,7 +163,7 @@ private func albumResumeBuckets(from bookmarks: [RemoteBookmark]) -> [AlbumResum
         resumeSongID: marker.resumeSongID,
         changed: changed
       ),
-      identity
+      albumID
     )
   }
 

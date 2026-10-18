@@ -135,7 +135,6 @@ struct QueueEntry: Identifiable, Hashable, Sendable {
   let artist: String
   let album: String
   let albumID: String?
-  let queueGroupID: UUID?
   let year: Int?
   let trackNumber: Int?
   let discNumber: Int?
@@ -163,7 +162,6 @@ struct QueueEntry: Identifiable, Hashable, Sendable {
     artist: String = "",
     album: String = "",
     albumID: String? = nil,
-    queueGroupID: UUID? = nil,
     year: Int? = nil,
     trackNumber: Int? = nil,
     discNumber: Int? = nil,
@@ -185,7 +183,6 @@ struct QueueEntry: Identifiable, Hashable, Sendable {
     self.artist = artist
     self.album = album
     self.albumID = albumID
-    self.queueGroupID = queueGroupID
     self.year = year
     self.trackNumber = trackNumber
     self.discNumber = discNumber
@@ -198,15 +195,6 @@ struct QueueEntry: Identifiable, Hashable, Sendable {
     self.isCompilation = isCompilation
     self.replayGain = replayGain
   }
-}
-
-func albumGroupingIdentity(albumID: String?, artist: String, album: String) -> String {
-  if let albumID = albumID?.trimmingCharacters(in: .whitespacesAndNewlines), !albumID.isEmpty {
-    return "album:\(albumID)"
-  }
-  let normalizedArtist = artist.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-  let normalizedAlbum = album.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-  return "metadata:\(normalizedArtist)|\(normalizedAlbum)"
 }
 
 struct RemoteSong: Decodable, Identifiable, Hashable, Sendable {
@@ -512,8 +500,7 @@ extension QueueEntry {
     _ song: RemoteSong,
     streamURL: URL,
     artworkURL: URL?,
-    nowPlayingArtworkURL: URL?,
-    queueGroupID: UUID? = nil
+    nowPlayingArtworkURL: URL?
   ) -> QueueEntry {
     QueueEntry(
       sourceID: song.id,
@@ -524,7 +511,6 @@ extension QueueEntry {
       artist: song.artistName,
       album: song.albumName,
       albumID: song.albumId,
-      queueGroupID: queueGroupID,
       year: song.year,
       trackNumber: song.track,
       discNumber: song.discNumber,

@@ -529,25 +529,23 @@ struct LibraryInteractionTests {
 
   @Test("queue grouping preserves occurrences and splits")
   func queueGroupingPreservesOccurrencesAndSplits() {
-    let albumGroup = UUID()
-    let otherGroup = UUID()
     let first = QueueEntry(
       sourceID: "first", url: URL(string: "https://example.test/first")!,
-      title: "First", album: "Album", queueGroupID: albumGroup)
+      title: "First", album: "Album", albumID: "A")
     let other = QueueEntry(
       sourceID: "other", url: URL(string: "https://example.test/other")!,
-      title: "Other", album: "Other Album", queueGroupID: otherGroup)
+      title: "Other", album: "Other Album", albumID: "B")
     let second = QueueEntry(
       sourceID: "second", url: URL(string: "https://example.test/second")!,
-      title: "Second", album: "Album", queueGroupID: albumGroup)
+      title: "Second", album: "Album", albumID: "A")
 
     #expect(
       queueGroups([first, other, second]).map(\.entryIDs)
         == [[first.id], [other.id], [second.id]])
   }
 
-  @Test("empty album IDs fall back to album metadata for grouping")
-  func emptyAlbumIDsFallBackToAlbumMetadataForGrouping() {
+  @Test("missing album IDs stay separate despite matching titles and artists")
+  func missingAlbumIDsStaySeparate() {
     let first = QueueEntry(
       sourceID: "first", url: URL(string: "https://example.test/first")!,
       title: "First", artist: "Artist A", album: "Album A", albumID: "")
@@ -558,13 +556,8 @@ struct LibraryInteractionTests {
       sourceID: "other", url: URL(string: "https://example.test/other")!,
       title: "Other", artist: "Artist B", album: "Album B", albumID: "")
 
-    #expect(
-      albumGroupingIdentity(albumID: nil, artist: " Artist A ", album: "Album A")
-        == albumGroupingIdentity(albumID: "", artist: "artist a", album: " Album A "))
-    #expect(
-      albumGroupingIdentity(albumID: "server-id", artist: "Artist A", album: "Album A")
-        != albumGroupingIdentity(albumID: nil, artist: "Artist A", album: "Album A"))
-    #expect(queueGroups([first, second, other]).map(\.entryIDs) == [[first.id, second.id], [other.id]])
+    #expect(queueGroups([first, second, other]).map(\.entryIDs)
+      == [[first.id], [second.id], [other.id]])
   }
 
   @Test("album chronology uses full release date")

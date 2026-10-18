@@ -464,18 +464,7 @@ final class AppSession: ObservableObject {
     albumContinuationID: String? = nil
   ) throws -> [QueueEntry] {
     guard let configuration else { throw CredentialStoreError.notConnected }
-    var currentAlbumKey: String?
-    var currentGroupID = UUID()
     return try songs.map { song in
-      let albumKey = albumGroupingIdentity(
-        albumID: song.albumId,
-        artist: song.albumArtistName,
-        album: song.albumName
-      )
-      if currentAlbumKey != albumKey {
-        currentAlbumKey = albumKey
-        currentGroupID = UUID()
-      }
       let streamURL = try configuration.originalStreamURL(songID: song.id)
       let artworkID = Self.resolvedAlbumArtworkID(
         for: song,
@@ -486,8 +475,7 @@ final class AppSession: ObservableObject {
         song,
         streamURL: streamURL,
         artworkURL: artworkURL(id: artworkID),
-        nowPlayingArtworkURL: artworkURL(id: artworkID, purpose: .nowPlaying),
-        queueGroupID: currentGroupID
+        nowPlayingArtworkURL: artworkURL(id: artworkID, purpose: .nowPlaying)
       )
       entry.albumContinuationID = albumContinuationID
       return entry

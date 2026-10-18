@@ -27,6 +27,8 @@ Coda is an independent community project and is not affiliated with or endorsed 
   The Various Artists page presents a compilation collection with a stack icon and a Compilations
   heading. Queue context menus use “Show Artist” for the clicked track or album's first artist.
 - A visible, editable queue with drag-and-drop insertion, reordering, removal, and queue handoff.
+  Queue and playlist group adjacent tracks by album ID, including consecutive repeated additions;
+  grouping preserves track order. Tracks without an album ID remain separate.
   In narrow windows, hover over, click, or drag music to the right edge to reveal the queue over the content;
   it closes shortly after the pointer leaves, or with Escape.
 - Original-format playback with gapless transitions, seeking, scrobbling, and saved queue restoration.
@@ -78,6 +80,9 @@ swift test
 
 The platform-independent ReplayGain behaviour is specified in
 [docs/replaygain.md](docs/replaygain.md).
+
+Shared queue and playlist presentation rules and ownership are documented in
+[docs/track-list-presentation.md](docs/track-list-presentation.md).
 
 ### Selecting artist-credit test albums
 

@@ -210,13 +210,12 @@ struct PlaybackTests {
   func reorderingThePlayingAlbumPreservesPlaybackIdentity() {
     let backend = TestPlaybackBackend()
     let player = PlayerController(backend: backend)
-    let albumGroup = UUID()
     let first = QueueEntry(
       sourceID: "first", url: URL(string: "https://example.test/first")!,
-      title: "First", queueGroupID: albumGroup)
+      title: "First", albumID: "A")
     let playing = QueueEntry(
       sourceID: "playing", url: URL(string: "https://example.test/playing")!,
-      title: "Playing", queueGroupID: albumGroup)
+      title: "Playing", albumID: "A")
     let other = QueueEntry(
       sourceID: "other", url: URL(string: "https://example.test/other")!, title: "Other")
     player.replaceQueue([first, playing, other], startAt: 1, startsPlaying: true)
