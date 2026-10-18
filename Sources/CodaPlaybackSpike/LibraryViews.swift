@@ -1294,7 +1294,8 @@ struct AlbumDetailView: View {
         .contentShape(Rectangle())
         .draggable(
           QueueDropItem.library(
-            .songs(remainingIDs, canonicalAlbumArtworkID: page.album.artworkID)
+            .songs(remainingIDs, canonicalAlbumArtworkID: page.album.artworkID,
+                   albumContinuationID: page.album.id)
           )
         ) {
           LibraryDragPreview(
@@ -1339,6 +1340,7 @@ struct AlbumDetailView: View {
       session.append(
         songs: Array(page.songs[index...]),
         canonicalAlbumArtworkID: page.album.artworkID,
+        albumContinuationID: page.album.id,
         to: player
       )
     } else {
@@ -1347,6 +1349,7 @@ struct AlbumDetailView: View {
         startAt: index,
         scrollQueueToCurrent: true,
         canonicalAlbumArtworkID: page.album.artworkID,
+        albumContinuationID: page.album.id,
         with: player
       )
     }

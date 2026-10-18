@@ -76,14 +76,19 @@ otherwise tied songs remains a v1 limitation, not a reason to migrate existing a
 
 - One stable marker represents each unfinished album.
 - Resume starts at the beginning of the canonical song named by `resumeSongId`.
-- Natural completion of a non-final canonical album track upserts the first-track anchor with the
-  next canonical disc/track as `resumeSongId`, even when that next track is absent from the queue.
-- Completing an isolated track may therefore create album progress. Queue construction is not part
-  of the protocol.
+- Clients decide which playback occurrences represent album listening before applying these
+  mutations. Coda's eligibility policy is defined in the companion design: album sequences and
+  explicit continuation actions qualify; isolated ordinary playlist songs leave markers unchanged.
+- For qualifying playback, natural completion of a non-final canonical album track upserts the
+  first-track anchor with the next canonical disc/track as `resumeSongId`, even when that next
+  track is absent from the queue.
+- The eligibility snapshot and local explicit continuation intent are not serialized in markers.
+  Existing v1 markers remain readable, including markers written by older clients that recorded
+  isolated-track completions. They cannot be retrospectively classified by playback origin.
 - The latest successful listening session wins; progress may move backward when an earlier track
   is completed later.
-- Natural completion of the final canonical track deletes the first-track bookmark. A completed
-  one-track album has no marker.
+- Natural completion of a qualifying final canonical track deletes the first-track bookmark.
+  A completed one-track album has no marker.
 - Starting, pausing, seeking, manually skipping, restoring, or quitting during a track does not
   change the marker. Continuous position monitoring is outside this protocol.
 
@@ -93,8 +98,8 @@ deliberate v1 tradeoff that removes a full `getBookmarks` ownership read from ev
 track. Podcasts, audiobooks, video, and entries without trustworthy album membership are never
 eligible for this behavior.
 
-Reservation also applies to final-track deletion: it may delete a foreign ordinary music bookmark
-on the anchor, including when a one-track album finishes. No ownership read precedes this deletion.
+Reservation also applies to qualifying final-track deletion: it may delete a foreign ordinary music
+bookmark on the anchor, including when a one-track album finishes. No ownership read precedes this deletion.
 This is distinct from housekeeping, which only deletes recognized supported protocol markers.
 
 ## Ordering and deduplication
@@ -161,3 +166,6 @@ used as a per-track progress request.
 
 Changes to the required marker fields, eligibility rules, progress semantics, ordering, or
 retention contract must remain backward-compatible or increment `protocolVersion`.
+The narrower Coda recording policy changes which local events write records; it does not alter
+the v1 record format, interpretation, canonical progression, or retention contract. Older clients
+can still create markers from isolated songs until they adopt the newer recording policy.

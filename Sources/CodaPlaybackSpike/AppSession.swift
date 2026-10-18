@@ -460,7 +460,8 @@ final class AppSession: ObservableObject {
   func queueEntries(
     for songs: [RemoteSong],
     canonicalAlbumArtworkID: String? = nil,
-    canonicalAlbumArtworkIDsBySongID: [String: String] = [:]
+    canonicalAlbumArtworkIDsBySongID: [String: String] = [:],
+    albumContinuationID: String? = nil
   ) throws -> [QueueEntry] {
     guard let configuration else { throw CredentialStoreError.notConnected }
     var currentAlbumKey: String?
@@ -481,13 +482,15 @@ final class AppSession: ObservableObject {
         canonicalAlbumArtworkID: canonicalAlbumArtworkID,
         canonicalAlbumArtworkIDsBySongID: canonicalAlbumArtworkIDsBySongID
       )
-      return QueueEntry.remoteSong(
+      var entry = QueueEntry.remoteSong(
         song,
         streamURL: streamURL,
         artworkURL: artworkURL(id: artworkID),
         nowPlayingArtworkURL: artworkURL(id: artworkID, purpose: .nowPlaying),
         queueGroupID: currentGroupID
       )
+      entry.albumContinuationID = albumContinuationID
+      return entry
     }
   }
 
@@ -498,13 +501,15 @@ final class AppSession: ObservableObject {
     scrollQueueToCurrent: Bool = false,
     canonicalAlbumArtworkID: String? = nil,
     canonicalAlbumArtworkIDsBySongID: [String: String] = [:],
+    albumContinuationID: String? = nil,
     with player: PlayerController
   ) {
     do {
       let entries = try queueEntries(
         for: songs,
         canonicalAlbumArtworkID: canonicalAlbumArtworkID,
-        canonicalAlbumArtworkIDsBySongID: canonicalAlbumArtworkIDsBySongID
+        canonicalAlbumArtworkIDsBySongID: canonicalAlbumArtworkIDsBySongID,
+        albumContinuationID: albumContinuationID
       )
       player.replaceQueue(
         entries,
@@ -542,6 +547,7 @@ final class AppSession: ObservableObject {
     songs: [RemoteSong],
     canonicalAlbumArtworkID: String? = nil,
     canonicalAlbumArtworkIDsBySongID: [String: String] = [:],
+    albumContinuationID: String? = nil,
     to player: PlayerController
   ) {
     do {
@@ -549,7 +555,8 @@ final class AppSession: ObservableObject {
         try queueEntries(
           for: songs,
           canonicalAlbumArtworkID: canonicalAlbumArtworkID,
-          canonicalAlbumArtworkIDsBySongID: canonicalAlbumArtworkIDsBySongID
+          canonicalAlbumArtworkIDsBySongID: canonicalAlbumArtworkIDsBySongID,
+          albumContinuationID: albumContinuationID
         )
       )
     } catch {
@@ -570,7 +577,9 @@ final class AppSession: ObservableObject {
     do {
       var songs: [RemoteSong] = []
       var canonicalArtworkIDsBySongID: [String: String] = [:]
+      var continuationIDs: [String?] = []
       for item in libraryItems {
+        let previousCount = songs.count
         switch item.kind {
         case .album:
           let page = try await client.album(id: item.id)
@@ -618,16 +627,21 @@ final class AppSession: ObservableObject {
             in: &canonicalArtworkIDsBySongID
           )
         }
+        continuationIDs.append(contentsOf: repeatElement(
+          item.kind == .songs ? item.albumContinuationID : nil,
+          count: songs.count - previousCount
+        ))
         guard isCurrentSession(sessionID) else { return }
       }
       guard isCurrentSession(sessionID) else { return }
-      player.insert(
-        try queueEntries(
-          for: songs,
-          canonicalAlbumArtworkIDsBySongID: canonicalArtworkIDsBySongID
-        ),
-        before: entryID
+      var entries = try queueEntries(
+        for: songs,
+        canonicalAlbumArtworkIDsBySongID: canonicalArtworkIDsBySongID
       )
+      for index in entries.indices {
+        entries[index].albumContinuationID = continuationIDs[index]
+      }
+      player.insert(entries, before: entryID)
     } catch {
       guard isCurrentSession(sessionID) else { return }
       player.report(error: error)

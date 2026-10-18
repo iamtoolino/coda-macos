@@ -5,6 +5,7 @@ struct AlbumSequenceContext: Equatable, Sendable {
   let albumID: String?
   let continuesPrevious: Bool
   let continuesNext: Bool
+  var isExplicitContinuation: Bool = false
 
   var isAlbumSequence: Bool { continuesPrevious || continuesNext }
 }
@@ -21,7 +22,9 @@ enum AlbumSequenceResolver {
     return AlbumSequenceContext(
       albumID: albumID,
       continuesPrevious: matches(index - 1),
-      continuesNext: matches(index + 1)
+      continuesNext: matches(index + 1),
+      isExplicitContinuation: albumID != nil
+        && queue[index].albumContinuationID?.trimmingCharacters(in: .whitespacesAndNewlines) == albumID
     )
   }
 

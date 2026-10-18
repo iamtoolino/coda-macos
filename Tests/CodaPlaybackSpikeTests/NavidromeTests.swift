@@ -188,14 +188,16 @@ struct NavidromeTests {
 
     #expect(
       albumResumeCompletionAction(
-        completedSongID: first.id,
+        completion: CompletedPlayback(sourceID: first.id, albumSequence: AlbumSequenceContext(
+          albumID: "album-1", continuesPrevious: false, continuesNext: true)),
         album: page
       ) == .upsert(anchorSongID: first.id, resumeSongID: second.id)
     )
 
     #expect(
       albumResumeCompletionAction(
-        completedSongID: second.id,
+        completion: CompletedPlayback(sourceID: second.id, albumSequence: AlbumSequenceContext(
+          albumID: "album-1", continuesPrevious: true, continuesNext: false)),
         album: page
       ) == .delete(anchorSongID: first.id)
     )

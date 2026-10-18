@@ -25,6 +25,7 @@ struct LibraryQueueDragItem: Codable, Hashable, Sendable {
   var discNumber: Int? = nil
   var songIDs: [String]? = nil
   var canonicalAlbumArtworkID: String? = nil
+  var albumContinuationID: String? = nil
 
   static func album(_ id: String) -> Self { Self(kind: .album, id: id) }
   static func albumDisc(_ id: String, discNumber: Int) -> Self {
@@ -39,12 +40,15 @@ struct LibraryQueueDragItem: Codable, Hashable, Sendable {
   static func song(_ id: String, canonicalAlbumArtworkID: String? = nil) -> Self {
     Self(kind: .song, id: id, canonicalAlbumArtworkID: canonicalAlbumArtworkID)
   }
-  static func songs(_ ids: [String], canonicalAlbumArtworkID: String? = nil) -> Self {
+  static func songs(
+    _ ids: [String], canonicalAlbumArtworkID: String? = nil, albumContinuationID: String? = nil
+  ) -> Self {
     Self(
       kind: .songs,
       id: ids.first ?? "",
       songIDs: ids,
-      canonicalAlbumArtworkID: canonicalAlbumArtworkID
+      canonicalAlbumArtworkID: canonicalAlbumArtworkID,
+      albumContinuationID: albumContinuationID
     )
   }
 }
@@ -143,6 +147,8 @@ struct QueueEntry: Identifiable, Hashable, Sendable {
   let albumArtists: [RemoteArtistReference]
   let isCompilation: Bool?
   let replayGain: ReplayGainMetadata?
+  // Narrow intent hint for Resume actions whose remaining queue may contain just one song.
+  var albumContinuationID: String? = nil
 
   var albumArtistName: String { albumArtist?.nonEmptyValue ?? artist }
   var artistCredit: ArtistCredit { ArtistCredit(name: artist, artists: artists) }

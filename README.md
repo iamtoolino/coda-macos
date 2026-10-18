@@ -30,6 +30,8 @@ Coda is an independent community project and is not affiliated with or endorsed 
   In narrow windows, hover over, click, or drag music to the right edge to reveal the queue over the content;
   it closes shortly after the pointer leaves, or with Escape.
 - Original-format playback with gapless transitions, seeking, scrobbling, and saved queue restoration.
+- Continue Listening records progress for album sequences and explicit Resume actions. Isolated
+  playlist tracks leave album bookmarks unchanged, including existing progress for their albums.
 - Optional ReplayGain under Playback → ReplayGain. It automatically uses album gain for
   consecutive songs from the same album and track gain for isolated songs. It defaults to Off
   and remembers your choice; tracks without usable gain metadata play 9 dB quieter when enabled.

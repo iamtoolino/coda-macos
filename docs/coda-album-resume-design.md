@@ -7,9 +7,23 @@ primitives.
 
 ## Product behavior
 
-- Completing any non-final canonical track of an eligible album counts as starting that album and
-  records the next canonical track. The complete album need not be present in the queue.
-- Completing the album's final track removes its continuation marker.
+- Album progress is recorded only for an album-listening occurrence: the shared album-sequence
+  resolver found a same-album neighbour when playback started, or the entry came from an explicit
+  Resume Play, Append, or remaining-tracks drag action for that album. Playlist origin alone does
+  not disqualify an album run. A complete album need not be present, and track numbers need not
+  be consecutive. Disc boundaries do not split an album.
+- Completing a qualifying non-final canonical track records the next canonical track. Completing
+  a qualifying final track removes its continuation marker. An isolated ordinary track neither
+  creates nor advances nor deletes album progress, including when a marker already exists.
+- Capture eligibility with the playback occurrence. Later queue edits must not retroactively
+  change it. A paused item that has never started can still adopt edited queue context.
+- Explicit Resume intent handles a final remaining singleton, including Append and drag. It is
+  a local queue hint validated against the entry's album ID, not a new bookmark field or a
+  ReplayGain override. Reordering retains the hint; standard server queue handoff and saved
+  playlists do not carry it. A restored singleton without explicit intent is conservatively
+  ineligible; restored album runs qualify normally.
+- Existing markers remain readable. Their stored format cannot identify how they were originally
+  created, so do not remove old cards merely because some may have come from isolated songs.
 - Manual skips, seeking, pausing, quitting, and queue restoration do not advance album progress.
 - Home shows a horizontal `Continue Listening` shelf between Recently Played and Playlists.
 - Show at most 20 cards, newest bookmark first, without a disclosure chevron or separate list.
@@ -48,9 +62,11 @@ and wider window sizes. The same inline row can be used on Android without chang
 
 Do not call `getBookmarks` when a track completes.
 
-1. Resolve the completed song and reject explicit non-music media. Accept missing legacy type
-   fields only when a non-empty album ID and canonical album membership validate the relationship.
-2. Fetch the canonical album and locate the completed song.
+1. Reject ineligible playback snapshots before making any server request. For an eligible
+   occurrence, resolve the completed song and reject explicit non-music media. Accept missing legacy
+   type fields only when a non-empty album ID and canonical album membership validate the relationship.
+2. Require the returned song's album ID to match the snapshot. Fetch that canonical album and
+   locate the completed song, also verifying the returned album's identity.
 3. For a non-final track, call `createBookmark` once on the first canonical song with position zero
    and the next canonical song in the protocol comment.
 4. For the final track, call `deleteBookmark` once on the first canonical song.
@@ -110,10 +126,11 @@ client and are replaced by the next authoritative refresh.
 Home-state updates, and fresh-snapshot housekeeping. `HomeView` renders the shelf, opens album
 detail, and exposes explicit refresh. Album detail owns the continuation controls and hides their
 treatment for the current album. The player publishes natural completion events; views do not
-infer completion from progress.
+infer completion from progress. The event includes the frozen `AlbumSequenceResolver` context;
+the coordinator owns the decision about whether that context permits bookmark mutation.
 
 Automated tests should cover marker encoding/version rejection, music-media eligibility, canonical
 next/final-track actions, newest-first filtering, foreign-marker exclusion from presentation and
 housekeeping, and stale-session cancellation. Runtime smoke testing should cover fresh launch,
-foregrounding after the other Coda changes progress, isolated-track completion, final-track removal,
+foregrounding after the other Coda changes progress, isolated-track non-mutation, final-track removal,
 and continuation from both platforms.

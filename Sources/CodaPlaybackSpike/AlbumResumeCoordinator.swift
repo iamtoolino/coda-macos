@@ -90,11 +90,20 @@ func albumResumeComment(
   return nil
 }
 
+func albumResumeRecordingAlbumID(for completion: CompletedPlayback) -> String? {
+  guard let context = completion.albumSequence,
+    context.isAlbumSequence || context.isExplicitContinuation,
+    let albumID = context.albumID, !albumID.isEmpty
+  else { return nil }
+  return albumID
+}
+
 func albumResumeCompletionAction(
-  completedSongID: String,
+  completion: CompletedPlayback,
   album: AlbumPage
 ) -> AlbumResumeCompletionAction {
-  guard let completedIndex = album.songs.firstIndex(where: { $0.id == completedSongID }),
+  guard albumResumeRecordingAlbumID(for: completion) == album.album.id,
+    let completedIndex = album.songs.firstIndex(where: { $0.id == completion.sourceID }),
     let anchorSongID = album.songs.first?.id.nonEmptyValue
   else { return .none }
 
@@ -231,9 +240,9 @@ final class AlbumResumeCoordinator: ObservableObject {
       .dropFirst()
       .compactMap { $0 }
       .sink { [weak self] completion in
-        Task { @MainActor [weak self] in
-          self?.enqueue(completion)
-        }
+        // PlayerController publishes on MainActor. Capture its session before yielding so a
+        // login change cannot attribute an old completion to a new authenticated session.
+        self?.enqueue(completion)
       }
       .store(in: &cancellables)
 
@@ -263,27 +272,32 @@ final class AlbumResumeCoordinator: ObservableObject {
   }
 
   private func enqueue(_ completion: CompletedPlayback) {
-    guard let request = session.sessionRequestContext() else { return }
+    // Ineligible playlist songs must neither create progress nor delete an existing marker.
+    // Check the occurrence snapshot before any server lookup or mutation is scheduled.
+    guard albumResumeRecordingAlbumID(for: completion) != nil,
+      let request = session.sessionRequestContext()
+    else { return }
     let previous = mutationTask
     mutationTask = Task { @MainActor [weak self] in
       await previous?.value
       guard !Task.isCancelled, let self, self.session.isCurrent(request) else { return }
-      await self.process(completedSongID: completion.sourceID, request: request)
+      await self.process(completion: completion, request: request)
     }
   }
 
-  private func process(completedSongID: String, request: SessionRequestContext) async {
+  private func process(completion: CompletedPlayback, request: SessionRequestContext) async {
+    guard let expectedAlbumID = albumResumeRecordingAlbumID(for: completion) else { return }
     do {
-      let song = try await request.client.song(id: completedSongID)
+      let song = try await request.client.song(id: completion.sourceID)
       guard session.isCurrent(request), isEligibleAlbumResumeSong(song),
         let albumID = song.albumId?.trimmingCharacters(in: .whitespacesAndNewlines),
-        !albumID.isEmpty
+        albumID == expectedAlbumID
       else { return }
       let page = try await request.client.album(id: albumID)
       guard session.isCurrent(request) else { return }
 
       switch albumResumeCompletionAction(
-        completedSongID: completedSongID,
+        completion: completion,
         album: page
       ) {
       case .upsert(let anchorSongID, let resumeSongID):

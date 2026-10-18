@@ -228,8 +228,10 @@ fallback even if the underlying file might contain tags. A future metadata adapt
 embedded-tag support without changing the queue resolver.
 
 `AlbumSequenceResolver` owns adjacency decisions outside the queue UI. Playback snapshots its
-context for each occurrence and includes that context with completion events; queue presentation
-and album-resume eligibility are separate consumers and have not yet been migrated.
+context for each occurrence and includes that context with completion events. Album-resume
+eligibility consumes that snapshot, including a separate explicit continuation hint for a final
+remaining singleton. That hint does not change ReplayGain's adjacency rule. Queue presentation
+has not yet been migrated.
 
 `ReplayGainPolicy` chooses and peak-limits the constant gain, clamped to mpv's -150...150 dB
 range. The bridge supplies `volume-gain` as a per-file option for both current and prepared next
