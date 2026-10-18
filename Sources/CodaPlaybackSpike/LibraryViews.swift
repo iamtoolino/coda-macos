@@ -1512,9 +1512,9 @@ struct PlaylistDetailView: View {
                 }
                 .padding(.horizontal, 22)
                 .padding(.top, 18)
+                .padding(.bottom, 20)
 
-                let groups = playlistGroups(playlist.songs)
-                ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                ForEach(playlistGroups(playlist.songs)) { group in
                   VStack(alignment: .leading, spacing: 5) {
                     if !group.isStandalone {
                       PlaylistAlbumHeader(group: group, album: albumMetadata[group.albumID ?? ""])
@@ -1550,8 +1550,6 @@ struct PlaylistDetailView: View {
                       }
                     }
                   }
-                  .padding(.top, index == 0
-                    || !(group.isStandalone && groups[index - 1].isStandalone) ? 20 : 0)
                   .task(id: [group.albumID ?? "", albumMetadataGeneration.uuidString,
                              session.activeSessionID?.uuidString ?? ""]) {
                     await loadAlbumMetadata(group.albumID)

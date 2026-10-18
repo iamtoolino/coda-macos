@@ -1338,7 +1338,7 @@ private struct QueuePanel: View {
                 }
 
               LazyVStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                ForEach(groups) { group in
                   QueueAlbumBlock(
                     group: group,
                     currentIndex: player.currentIndex,
@@ -1362,8 +1362,6 @@ private struct QueuePanel: View {
                     dragStateAction: updateDragState,
                     visibilityAction: updateEntryVisibility
                   )
-                  .padding(.top, index > 0
-                    && !(group.isStandalone && groups[index - 1].isStandalone) ? 12 : 0)
                   .id(QueueAlbumScrollTarget(id: group.id))
                 }
               }
