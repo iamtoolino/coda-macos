@@ -44,7 +44,8 @@ Standalone rows show cover, title, track artist, duration, and a playback indica
 without an album header, disc heading, or original album track number. The indicator distinguishes
 playing and paused playback. Both surfaces use those rules with their existing density: 36-point
 covers in the queue and 44-point covers in playlists. Album runs keep their headers and numbered
-track rows. Moving or removing tracks updates the layout immediately as groups split or reunite.
+track rows. Consecutive standalone rows use only their row padding between covers; larger group
+spacing remains around album runs. Moving or removing tracks updates the layout immediately as groups split or reunite.
 The queue retains its wrapper, row identity, scroll target, measurement callbacks, and interaction
 modifiers for both layouts.
 
