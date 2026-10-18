@@ -237,3 +237,9 @@ items. Native mpv ReplayGain and its fallback remain disabled to avoid applying 
 An explicit user toggle changes the active gain without reloading the song.
 
 The sole UI control is Playback → ReplayGain. It defaults to Off and persists locally.
+
+Coda → About Coda shows a live ReplayGain readout: the current song, selected gain source,
+requested gain, gain sent to the engine, and whether peak-based clipping prevention reduced it.
+These are resolved playback values, not an independent measurement of audio output. The readout
+uses in-memory player state and adds no timer, polling, or persistent listening log. Song titles
+and ReplayGain readout values are not included by Copy Diagnostics.

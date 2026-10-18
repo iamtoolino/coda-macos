@@ -163,7 +163,7 @@ struct CodaPlaybackSpikeApp: App {
         .environmentObject(session)
         .environmentObject(player)
     }
-    .defaultSize(width: 540, height: 620)
+    .defaultSize(width: 540, height: 700)
     .windowResizability(.contentSize)
     .defaultLaunchBehavior(.suppressed)
   }

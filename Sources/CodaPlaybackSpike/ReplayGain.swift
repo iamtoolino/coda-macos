@@ -46,25 +46,48 @@ struct ReplayGainMetadata: Decodable, Hashable, Sendable {
   }
 }
 
+struct ReplayGainDecision {
+  enum Source: String {
+    case off = "Off", track = "Track", album = "Album", fallback = "Fallback"
+  }
+
+  let source: Source
+  let requestedGainDb: Double
+  let peak: Double?
+
+  private var peakLimitedGainDb: Double {
+    guard let peak, peak.isFinite, peak > 0 else { return requestedGainDb }
+    return min(requestedGainDb, -20 * log10(peak))
+  }
+
+  var isPeakLimited: Bool { peakLimitedGainDb < requestedGainDb }
+
+  var gainDb: Double {
+    // mpv's constant gain path supports -150...150 dB. Normal tags are well inside this range.
+    return min(150, max(-150, peakLimitedGainDb))
+  }
+}
+
 enum ReplayGainPolicy {
   static let fallbackDb = -9.0
 
   static func gainDb(
     enabled: Bool, context: AlbumSequenceContext?, metadata: ReplayGainMetadata?
   ) -> Double {
-    guard enabled else { return 0 }
+    decision(enabled: enabled, context: context, metadata: metadata).gainDb
+  }
+
+  static func decision(
+    enabled: Bool, context: AlbumSequenceContext?, metadata: ReplayGainMetadata?
+  ) -> ReplayGainDecision {
+    guard enabled else { return ReplayGainDecision(source: .off, requestedGainDb: 0, peak: nil) }
     let usesAlbum = context?.isAlbumSequence == true && metadata?.albumGain?.isFinite == true
     let gain = usesAlbum ? metadata?.albumGain : metadata?.trackGain
     let peak = usesAlbum ? metadata?.albumPeak : metadata?.trackPeak
-    guard let gain, gain.isFinite else { return fallbackDb }
-    let result: Double
-    if let peak, peak.isFinite, peak > 0 {
-      result = min(gain, -20 * log10(peak))
-    } else {
-      result = gain
+    guard let gain, gain.isFinite else {
+      return ReplayGainDecision(source: .fallback, requestedGainDb: fallbackDb, peak: nil)
     }
-    // mpv's constant gain path supports -150...150 dB. Normal tags are well inside this range.
-    return min(150, max(-150, result))
+    return ReplayGainDecision(source: usesAlbum ? .album : .track, requestedGainDb: gain, peak: peak)
   }
 }
 

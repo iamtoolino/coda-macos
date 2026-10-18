@@ -8,33 +8,36 @@ struct CodaStatusView: View {
   private let build = BuildIdentity.current
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 20) {
-      header
-      connectionSection
-      buildSection
+    ScrollView {
+      VStack(alignment: .leading, spacing: 20) {
+        header
+        connectionSection
+        replayGainSection
+        buildSection
 
-      HStack {
-        if session.hasEstablishedConnection {
-          Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
-            Task {
-              player.clear()
-              await session.signOut()
+        HStack {
+          if session.hasEstablishedConnection {
+            Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
+              Task {
+                player.clear()
+                await session.signOut()
+              }
             }
           }
+          Button("Copy Diagnostics", systemImage: "doc.on.doc") {
+            copyDiagnostics()
+          }
+          Spacer()
+          Button("Reconnect", systemImage: "arrow.clockwise") {
+            Task { await session.connect() }
+          }
+          .disabled(session.connectionState == .connecting || session.isSigningOut)
         }
-        Button("Copy Diagnostics", systemImage: "doc.on.doc") {
-          copyDiagnostics()
-        }
-        Spacer()
-        Button("Reconnect", systemImage: "arrow.clockwise") {
-          Task { await session.connect() }
-        }
-        .disabled(session.connectionState == .connecting || session.isSigningOut)
+        .buttonStyle(.bordered)
       }
-      .buttonStyle(.bordered)
+      .padding(26)
     }
-    .padding(26)
-    .frame(width: 540)
+    .frame(width: 540, height: 700)
   }
 
   private var header: some View {
@@ -110,6 +113,41 @@ struct CodaStatusView: View {
       StatusRow(label: "Configuration", value: build.configuration)
       StatusRow(label: "Built", value: build.date)
     }
+  }
+
+  // In-memory playback readout. No listening history is written or copied.
+  private var replayGainSection: some View {
+    let decision = ReplayGainPolicy.decision(
+      enabled: player.replayGainEnabled, context: player.currentAlbumSequence,
+      metadata: player.currentEntry?.replayGain
+    )
+    return StatusSection(title: "ReplayGain", systemImage: "waveform") {
+      if let entry = player.currentEntry {
+        Text(entry.title)
+          .font(.subheadline)
+          .lineLimit(1)
+          .help(entry.title)
+        StatusRow(label: "Source", value: decision.source.rawValue)
+        StatusRow(label: "Requested gain", value: gainLabel(decision.requestedGainDb), monospaced: true)
+        StatusRow(label: "Gain sent to engine", value: gainLabel(player.currentReplayGainDb), monospaced: true)
+        StatusRow(label: "Clipping prevention", value: clippingLabel(decision))
+      } else {
+        StatusRow(label: "ReplayGain", value: player.replayGainEnabled ? "Auto · Nothing queued" : "Off")
+      }
+    }
+  }
+
+  private func gainLabel(_ value: Double) -> String {
+    String(format: "%+.2f dB", value)
+  }
+
+  private func clippingLabel(_ decision: ReplayGainDecision) -> String {
+    if decision.source == .off { return "Inactive" }
+    if decision.source == .fallback { return "No peak metadata · fixed fallback" }
+    guard let peak = decision.peak, peak.isFinite, peak > 0 else {
+      return "No usable peak metadata"
+    }
+    return decision.isPeakLimited ? "Gain reduced to avoid clipping" : "No reduction needed"
   }
 
   private var connectionTitle: String {

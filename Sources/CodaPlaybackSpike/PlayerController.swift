@@ -77,8 +77,8 @@ final class PlayerController: ObservableObject {
   @Published private(set) var volume: Double = 1
   @Published private(set) var isMuted = false
   @Published private(set) var replayGainEnabled = false
-  private(set) var currentAlbumSequence: AlbumSequenceContext?
-  private(set) var currentReplayGainDb: Double = 0
+  @Published private(set) var currentAlbumSequence: AlbumSequenceContext?
+  @Published private(set) var currentReplayGainDb: Double = 0
   private var preparedNextContext: AlbumSequenceContext?
   private var preparedNextItem: PlaybackBackendItem?
   private var hasStartedCurrentOccurrence = false
