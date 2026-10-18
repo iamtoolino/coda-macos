@@ -30,23 +30,23 @@ resume, which does not change grouping or ReplayGain's adjacency rule.
 
 `TrackListPresentation` adapts those ranges to queue occurrences and indexed playlist songs.
 It preserves each surface's identity model and computes group labels and disc-section scopes.
-`TrackListAlbumLabel` shares header contents at compact and regular sizes. `TrackRowLabel` already
-shares track text styling.
+`TrackListAlbumLabel` shares header contents at compact and regular sizes.
+`TrackListStandaloneLabel` shares standalone row contents, using `TrackRowLabel` for track text.
 
 The queue keeps ownership of drop geometry, scrolling, collection actions, and occurrence-based
 selection. The playlist keeps index-based selection and copying tracks into the queue. Playback
 ordering and mutations remain in `PlayerController`; presentation never writes back a regrouped
 or sorted queue.
 
-## Current checkpoint and next layout step
+## Row layout
 
-This refactor migrates grouping and header contents. It retains the existing header-and-track-row
-layout for every group, including singletons. Compact standalone rows are a separate iteration.
-
-The agreed standalone layout will show cover, title, track artist, duration, and playback indicator,
-without an album header, disc heading, or original album track number. Both surfaces will use
-those rules with their existing density. The queue's current wrapper, row identity, scroll target,
-measurement callbacks, and interaction modifiers should be retained.
+Standalone rows show cover, title, track artist, duration, and a playback indicator over the cover,
+without an album header, disc heading, or original album track number. The indicator distinguishes
+playing and paused playback. Both surfaces use those rules with their existing density: 36-point
+covers in the queue and 44-point covers in playlists. Album runs keep their headers and numbered
+track rows. Moving or removing tracks updates the layout immediately as groups split or reunite.
+The queue retains its wrapper, row identity, scroll target, measurement callbacks, and interaction
+modifiers for both layouts.
 
 Presentation follows the current list immediately. ReplayGain and album-resume eligibility use
 the playback occurrence snapshot instead: editing neighbours must not retroactively change an
@@ -62,4 +62,5 @@ For UI verification, inspect a normal-width window with the docked queue and a n
 the compact queue overlay. Check repeated album additions, track and header multi-selection,
 dragging a track out and back, disc selection/removal, drops at group boundaries, Return to Playing,
 restoration, and inactive-window first clicks. Compare header appearance and track order in the
-playlist. Automated policy tests do not verify SwiftUI geometry or native drag sessions.
+playlist, including standalone rows with long titles, missing artwork, playing and paused playback,
+and selection in each layout. Automated policy tests do not verify SwiftUI geometry or native drag sessions.

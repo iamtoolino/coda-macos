@@ -1515,11 +1515,15 @@ struct PlaylistDetailView: View {
 
                 ForEach(playlistGroups(playlist.songs)) { group in
                   VStack(alignment: .leading, spacing: 5) {
-                    PlaylistAlbumHeader(group: group, album: albumMetadata[group.albumID ?? ""])
+                    if !group.isStandalone {
+                      PlaylistAlbumHeader(group: group, album: albumMetadata[group.albumID ?? ""])
+                    }
                     ForEach(group.songs, id: \.index) { indexed in
                       SongRow(
                         song: indexed.song,
                         isPlaying: player.currentEntry?.sourceID == indexed.song.id,
+                        playbackActive: player.isPlaying,
+                        isStandalone: group.isStandalone,
                         isCompilation: albumMetadata[group.albumID ?? ""]?.isCompilation
                           ?? indexed.song.isCompilation ?? false,
                         isSelected: selectedSongIndices.contains(indexed.index),
@@ -2038,9 +2042,12 @@ private struct ContinuePlayingCard: View {
 }
 
 private struct SongRow: View {
+  @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   let song: RemoteSong
   let isPlaying: Bool
+  var playbackActive = true
+  var isStandalone = false
   var isCompilation = false
   var horizontalPadding: CGFloat = 22
   var isSelected = false
@@ -2101,30 +2108,44 @@ private struct SongRow: View {
   }
 
   private var rowContent: some View {
-    HStack(spacing: 12) {
-      Group {
-        if isPlaying {
-          Image(systemName: "speaker.wave.2.fill")
-        } else if let track = song.track {
-          Text(String(track))
-            .monospacedDigit()
-        } else {
-          Text("–")
+    Group {
+      if isStandalone {
+        TrackListStandaloneLabel(
+          artworkURL: session.artworkURL(id: song.albumArtworkID),
+          title: song.title,
+          artist: song.artistName,
+          durationSeconds: song.duration ?? 0,
+          isCurrent: isPlaying,
+          isPlaying: playbackActive,
+          accent: artworkTreatments.accent.color
+        )
+      } else {
+        HStack(spacing: 12) {
+          Group {
+            if isPlaying {
+              Image(systemName: "speaker.wave.2.fill")
+            } else if let track = song.track {
+              Text(String(track))
+                .monospacedDigit()
+            } else {
+              Text("–")
+            }
+          }
+          .font(.caption)
+          .foregroundStyle(isPlaying ? artworkTreatments.accent.color : Color.secondary)
+          .frame(width: 34, alignment: .trailing)
+          TrackRowLabel(
+            title: song.title,
+            artist: song.artistName,
+            isCompilation: isCompilation,
+            titleColor: isPlaying ? artworkTreatments.accent.color : .primary
+          )
+          Spacer()
+          Text(formatDuration(song.duration ?? 0))
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
         }
       }
-      .font(.caption)
-      .foregroundStyle(isPlaying ? artworkTreatments.accent.color : Color.secondary)
-      .frame(width: 34, alignment: .trailing)
-      TrackRowLabel(
-        title: song.title,
-        artist: song.artistName,
-        isCompilation: isCompilation,
-        titleColor: isPlaying ? artworkTreatments.accent.color : .primary
-      )
-      Spacer()
-      Text(formatDuration(song.duration ?? 0))
-        .font(.caption.monospacedDigit())
-        .foregroundStyle(.secondary)
     }
     .contentShape(Rectangle())
     .padding(.horizontal, horizontalPadding)

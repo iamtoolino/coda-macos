@@ -232,8 +232,7 @@ context for each occurrence and includes that context with completion events. Al
 eligibility consumes that snapshot, including a separate explicit continuation hint for a final
 remaining singleton. That hint does not change ReplayGain's adjacency rule. Queue and playlist
 grouping also use this resolver, independently of the frozen playback snapshot; see
-[track-list presentation](track-list-presentation.md). Compact standalone rows are a separate
-layout step.
+[track-list presentation](track-list-presentation.md). Standalone row layout follows the live list; it does not change the frozen playback context.
 
 `ReplayGainPolicy` chooses and peak-limits the constant gain, clamped to mpv's -150...150 dB
 range. The bridge supplies `volume-gain` as a per-file option for both current and prepared next

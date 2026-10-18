@@ -21,6 +21,8 @@ struct TrackListPresentationTests {
     let playlist = playlistGroups(songs)
     #expect(queue.map { $0.startIndex..<($0.startIndex + $0.entries.count) } == expected)
     #expect(playlist.map { $0.songs.map(\.index) } == expected.map(Array.init))
+    #expect(queue.map(\.isStandalone) == [false, true, false, true, true, true])
+    #expect(playlist.map(\.isStandalone) == queue.map(\.isStandalone))
     #expect(queue.flatMap(\.entryIDs) == entries.map(\.id))
     #expect(playlist.flatMap(\.songs).map(\.song.id) == songs.map(\.id))
     #expect(Set(playlist.flatMap(\.songs).map(\.id)).count == songs.count)
@@ -70,6 +72,7 @@ struct TrackListPresentationTests {
     #expect(player.currentEntry?.id == a.id)
     #expect(backend.loadCalls.count == 1)
     player.remove(entryID: b.id)
+    #expect(queueGroups(player.queue).allSatisfy { $0.isStandalone })
     #expect(AlbumSequenceResolver.context(in: player.queue, at: 0)?.isAlbumSequence == false)
     #expect(player.currentAlbumSequence?.isAlbumSequence == true)
   }

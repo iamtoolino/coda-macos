@@ -125,6 +125,7 @@ struct TrackRowLabel: View {
   let titleColor: Color
   var titleFont: Font = .body
   var artistFont: Font = .caption
+  var alwaysShowsArtist = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 2) {
@@ -132,7 +133,7 @@ struct TrackRowLabel: View {
         .font(titleFont)
         .foregroundStyle(titleColor)
         .lineLimit(1)
-      if isCompilation, !artist.isEmpty {
+      if isCompilation || alwaysShowsArtist, !artist.isEmpty {
         Text(artist)
           .font(artistFont)
           .foregroundStyle(.secondary)

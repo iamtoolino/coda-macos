@@ -5,6 +5,7 @@ struct QueueGroup: Identifiable {
   let startIndex: Int
   let entries: [QueueEntry]
 
+  var isStandalone: Bool { entries.count == 1 }
   var entryIDs: [UUID] { entries.map(\.id) }
   var albumID: String? { AlbumSequenceResolver.normalizedAlbumID(entries.first?.albumID) }
 
@@ -70,6 +71,7 @@ struct IndexedSong: Identifiable {
 struct PlaylistGroup: Identifiable {
   let id: Int
   let songs: [IndexedSong]
+  var isStandalone: Bool { songs.count == 1 }
   var albumID: String? { AlbumSequenceResolver.normalizedAlbumID(songs.first?.song.albumId) }
 
   var albumTitle: String { songs.first?.song.albumName.nonEmptyGroupValue ?? "Unknown Album" }

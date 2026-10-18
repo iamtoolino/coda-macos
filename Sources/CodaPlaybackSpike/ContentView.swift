@@ -1874,19 +1874,21 @@ private struct QueueAlbumBlock: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
-      QueueAlbumHeader(
-        group: group,
-        album: album,
-        dragEntryIDs: queueCollectionDragIDs(
-          collection: group.entryIDs,
-          selected: selectedEntryIDs ?? []
-        ),
-        selectAction: { modifiers in selectAction(group.entryIDs, modifiers) },
-        deleteAction: { deleteAction(group.entryIDs) },
-        dragStateAction: dragStateAction
-      )
+      if !group.isStandalone {
+        QueueAlbumHeader(
+          group: group,
+          album: album,
+          dragEntryIDs: queueCollectionDragIDs(
+            collection: group.entryIDs,
+            selected: selectedEntryIDs ?? []
+          ),
+          selectAction: { modifiers in selectAction(group.entryIDs, modifiers) },
+          deleteAction: { deleteAction(group.entryIDs) },
+          dragStateAction: dragStateAction
+        )
+      }
       ForEach(Array(group.entries.enumerated()), id: \.element.id) { offset, entry in
-        if group.beginsDiscSection(at: offset) {
+        if !group.isStandalone, group.beginsDiscSection(at: offset) {
           let discEntryIDs = group.discEntryIDs(at: offset)
           QueueDiscHeader(
             number: group.discNumber(at: offset),
@@ -1902,6 +1904,7 @@ private struct QueueAlbumBlock: View {
         QueueTrackRow(
           entry: entry,
           album: album,
+          isStandalone: group.isStandalone,
           isCurrent: currentIndex == group.startIndex + offset,
           isPlaying: isPlaying,
           isTrackSelected: selectedEntryIDs?.contains(entry.id) == true,
@@ -2113,6 +2116,7 @@ private struct QueueTrackRow: View {
   @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   let entry: QueueEntry
   let album: RemoteAlbum?
+  let isStandalone: Bool
   let isCurrent: Bool
   let isPlaying: Bool
   let isTrackSelected: Bool
@@ -2131,33 +2135,48 @@ private struct QueueTrackRow: View {
   }
 
   var body: some View {
-    HStack(spacing: 8) {
-      Group {
-        if isCurrent {
-          Image(systemName: isPlaying ? "speaker.wave.2.fill" : "speaker.fill")
-        } else {
-          Text(trackLabel(entry))
-            .monospacedDigit()
+    Group {
+      if isStandalone {
+        TrackListStandaloneLabel(
+          artworkURL: entry.artworkURL,
+          title: entry.title,
+          artist: entry.artist,
+          durationSeconds: entry.durationSeconds,
+          isCurrent: isCurrent,
+          isPlaying: isPlaying,
+          accent: activeAccent,
+          compact: true
+        )
+      } else {
+        HStack(spacing: 8) {
+          Group {
+            if isCurrent {
+              Image(systemName: isPlaying ? "speaker.wave.2.fill" : "speaker.fill")
+            } else {
+              Text(trackLabel(entry))
+                .monospacedDigit()
+            }
+          }
+          .font(.caption)
+          .foregroundStyle(
+            isCurrent ? activeAccent : Color.secondary
+          )
+          .frame(width: 24, alignment: .trailing)
+
+          TrackRowLabel(
+            title: entry.title,
+            artist: entry.artist,
+            isCompilation: album?.isCompilation ?? entry.isCompilation ?? false,
+            titleColor: isCurrent ? activeAccent : .primary,
+            titleFont: .callout,
+            artistFont: .caption2
+          )
+          Spacer(minLength: 4)
+          Text(formatDuration(entry.durationSeconds))
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
         }
       }
-      .font(.caption)
-      .foregroundStyle(
-        isCurrent ? activeAccent : Color.secondary
-      )
-      .frame(width: 24, alignment: .trailing)
-
-      TrackRowLabel(
-        title: entry.title,
-        artist: entry.artist,
-        isCompilation: album?.isCompilation ?? entry.isCompilation ?? false,
-        titleColor: isCurrent ? activeAccent : .primary,
-        titleFont: .callout,
-        artistFont: .caption2
-      )
-      Spacer(minLength: 4)
-      Text(formatDuration(entry.durationSeconds))
-        .font(.caption.monospacedDigit())
-        .foregroundStyle(.secondary)
     }
     .contentShape(Rectangle())
     .padding(.vertical, 3)
