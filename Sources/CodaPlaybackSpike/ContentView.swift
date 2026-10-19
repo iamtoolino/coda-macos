@@ -78,14 +78,6 @@ struct ContentView: View {
             Color.clear
               .contentShape(Rectangle())
               .onTapGesture { nowPlayingPresentation.dismiss() }
-              .onHover { isInside in
-                withAnimation(.easeInOut(duration: 0.16)) {
-                  nowPlayingPresentation.updatePointerInsidePresentation(
-                    .background,
-                    isInside: isInside
-                  )
-                }
-              }
           }
           .ignoresSafeArea(.container, edges: .top)
           .opacity(nowPlayingPresentation.isPresented ? 1 : 0)

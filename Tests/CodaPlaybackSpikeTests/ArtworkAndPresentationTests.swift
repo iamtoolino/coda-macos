@@ -9,6 +9,21 @@ import Testing
 @Suite("Artwork and presentation")
 @MainActor
 struct ArtworkAndPresentationTests {
+  @Test("Now Playing dismiss hint stops after three user dismissals")
+  func nowPlayingDismissHintStopsAfterThreeUserDismissals() {
+    #expect(NowPlayingPresentationController.dismissHintIsDue(userDismissals: 0))
+    #expect(NowPlayingPresentationController.dismissHintIsDue(userDismissals: 2))
+    #expect(!NowPlayingPresentationController.dismissHintIsDue(userDismissals: 3))
+
+    let suite = "coda-dismiss-hint-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let controller = NowPlayingPresentationController(defaults: defaults)
+    controller.dismiss()
+    #expect(defaults.integer(forKey: NowPlayingPresentationController.userDismissalCountKey) == 0)
+    #expect(!controller.showsDismissHint)
+  }
+
   @Test("collection hero metrics preserve narrow and wide layouts")
   func collectionHeroMetricsPreserveNarrowAndWideLayouts() {
     let narrow = CollectionHeroMetrics(width: 430)
