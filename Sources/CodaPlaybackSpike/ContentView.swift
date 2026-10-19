@@ -2002,8 +2002,11 @@ private struct QueueAlbumBlock: View {
       }
     }
     .padding(.horizontal, 6)
-    // Consecutive standalone tracks sit closer together than album blocks.
-    .padding(.vertical, group.isStandalone ? 3 : 6)
+    // Every top-level item keeps the same rhythm: 12 pt between neighbouring covers or rows,
+    // 6 pt between neighbouring selection outlines. Standalone rows carry 3 pt of their own
+    // padding; album blocks get 3 pt more above the header to match.
+    .padding(.top, group.isStandalone ? 3 : 6)
+    .padding(.bottom, 3)
     .contentShape(Rectangle())
     .onGeometryChange(for: QueueDropGeometryMeasurement.self) { geometry in
       QueueDropGeometryMeasurement(generation: geometryGeneration, geometry: geometry)
@@ -2013,6 +2016,7 @@ private struct QueueAlbumBlock: View {
     .background {
       if fillsBlock {
         QueueSelectionBackground(accent: interfaceAccent, appearsActive: appearsActive, cornerRadius: 9)
+          .padding(.vertical, 3)
       }
     }
     .task(id: albumID) {
