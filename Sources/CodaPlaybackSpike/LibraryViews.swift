@@ -1043,6 +1043,11 @@ private extension View {
     draggable(QueueDropItem.library(.artist(artistID)))
       .dragConfiguration(.codaInternal())
   }
+
+  func albumDragSource(_ albumID: String) -> some View {
+    draggable(QueueDropItem.library(.album(albumID)))
+      .dragConfiguration(.codaInternal())
+  }
 }
 
 struct AlbumDetailView: View {
@@ -1821,45 +1826,44 @@ private struct AlbumCard: View {
   var showsArtist = true
 
   var body: some View {
-    Button {
-      session.open(.album(album.id))
-    } label: {
-      VStack(alignment: .leading, spacing: 6) {
-        ZStack(alignment: .topTrailing) {
-          ArtworkImage(
-            url: session.artworkURL(id: album.artworkID), cornerRadius: 9
-          )
-          .aspectRatio(1, contentMode: .fit)
+    VStack(alignment: .leading, spacing: 6) {
+      Button {
+        session.open(.album(album.id))
+      } label: {
+        VStack(alignment: .leading, spacing: 6) {
+          ZStack(alignment: .topTrailing) {
+            ArtworkImage(
+              url: session.artworkURL(id: album.artworkID), cornerRadius: 9
+            )
+            .aspectRatio(1, contentMode: .fit)
 
-          if let rating = visibleRating, artworkTreatments.showsAlbumRatingLabels {
-            AlbumRatingBadge(rating: rating)
+            if let rating = visibleRating, artworkTreatments.showsAlbumRatingLabels {
+              AlbumRatingBadge(rating: rating)
+            }
           }
+          .albumDragSource(album.id)
+          .help("Drag album to queue")
+          Text(album.name)
+            .font(.subheadline.weight(.medium))
+            .lineLimit(1)
         }
-        .draggable(
-          QueueDropItem.library(
-            .album(album.id)
-          )
-        )
-        .dragConfiguration(.codaInternal())
-        .help("Drag album to queue")
-        Text(album.name)
-          .font(.subheadline.weight(.medium))
-          .lineLimit(1)
-        Text(cardSubtitle)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
+        .contentShape(Rectangle())
       }
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-  }
+      .buttonStyle(.plain)
 
-  private var cardSubtitle: String {
-    if showsArtist, !album.artistName.isEmpty {
-      return album.artistName
+      // Outside the card button, so following the artist never also opens the album.
+      Group {
+        if showsArtist, !album.artistName.isEmpty {
+          AlbumCardArtistLine(credit: album.artistCredit) { session.open(.artist($0)) }
+        } else {
+          Text(album.releaseYear.map(String.init) ?? "")
+        }
+      }
+      .font(.caption)
+      .foregroundStyle(.secondary)
+      .lineLimit(1)
+      .albumDragSource(album.id)
     }
-    return album.releaseYear.map(String.init) ?? ""
   }
 
   private var visibleRating: Int? {
@@ -1952,6 +1956,39 @@ private struct ArtistCard: View {
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
+  }
+}
+
+/// The artist under an album card, linked like the web UI. On hover the name takes the
+/// artwork accent; several linked artists reuse ArtistCreditView; no artist ID stays plain text.
+private struct AlbumCardArtistLine: View {
+  @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
+  let credit: ArtistCredit
+  let openArtist: (String) -> Void
+  @State private var isHovering = false
+
+  var body: some View {
+    let linkedIDs = credit.segments.compactMap(\.artistID)
+    if linkedIDs.count > 1 {
+      ArtistCreditView(credit: credit, openArtist: openArtist)
+        .tint(isHovering ? artworkTreatments.accent.color : .secondary)
+        .onHover { isHovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: isHovering)
+    } else if let artistID = linkedIDs.first {
+      Button { openArtist(artistID) } label: {
+        Text(credit.name)
+          .foregroundStyle(isHovering ? artworkTreatments.accent.color : .secondary)
+      }
+      .buttonStyle(.plain)
+      .focusable(false)
+      .pointerStyle(.link)
+      .onHover { isHovering = $0 }
+      .animation(.easeOut(duration: 0.12), value: isHovering)
+      .help("Show \(credit.name)")
+      .accessibilityAddTraits(.isLink)
+    } else {
+      Text(credit.name)
+    }
   }
 }
 
