@@ -712,7 +712,8 @@ enum FloatingPanelStyle {
   static let darkness = 0.64
   static let border = 0.07
   static let shadow = 0.37
-  static let cornerRadius = 11.95
+  /// Concentric with the macOS 26 toolbar-window corner (about 26 pt) at the 10 pt window inset.
+  static let cornerRadius: CGFloat = 16
   static let materialDarkness = 0.68
   static let tintDarkness = 0.36
   static let tintAccent = 0.05

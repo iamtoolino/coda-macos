@@ -3,6 +3,8 @@ import SwiftUI
 
 private enum CodaWindowLayout {
   static let mainContentTopLift: CGFloat = 20
+  static let titlebarFadeStart: CGFloat = 8
+  static let titlebarFadeHeight: CGFloat = 44
   static let minimumWidth = PlaybackDockMetrics.collapsedWidth + 40
   static let minimumHeight: CGFloat = 580
 }
@@ -47,6 +49,20 @@ struct ContentView: View {
                   .navigationDestination(for: LibraryRoute.self) { route in
                     RouteContentView(route: route)
                   }
+            }
+            // Library content dissolves under the titlebar instead of meeting a hard edge.
+            // The native scroll edge effect does not reach this lifted, custom-laid-out
+            // column, so a window-anchored mask fades the titlebar band instead.
+            .mask {
+              GeometryReader { proxy in
+                let windowTop = -proxy.frame(in: .global).minY
+                VStack(spacing: 0) {
+                  Color.clear.frame(height: max(0, windowTop + CodaWindowLayout.titlebarFadeStart))
+                  LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom)
+                    .frame(height: CodaWindowLayout.titlebarFadeHeight)
+                  Color.black
+                }
+              }
             }
             .animation(.easeOut(duration: 0.14), value: session.rootToken)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
