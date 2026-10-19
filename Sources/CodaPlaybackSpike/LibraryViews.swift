@@ -1003,6 +1003,12 @@ private struct ArtistCodaHero: View {
     metrics.height - max(224, metrics.artworkSize + 24)
   }
 
+  /// Artist pictures use softer corners than album covers so the two read differently
+  /// without cropping band members, as a circle would.
+  private func heroCornerRadius(size: CGFloat) -> CGFloat {
+    size * artistPictureCornerRadiusRatio
+  }
+
   private func heroArtwork(size: CGFloat) -> some View {
     ZStack(alignment: .bottom) {
       Ellipse()
@@ -1013,7 +1019,7 @@ private struct ArtistCodaHero: View {
 
       Group {
         if page.artist.isVariousArtists {
-          RoundedRectangle(cornerRadius: 13, style: .continuous)
+          RoundedRectangle(cornerRadius: heroCornerRadius(size: size), style: .continuous)
             .fill(.secondary.opacity(0.08))
             .overlay {
               Image(systemName: "square.stack.fill")
@@ -1021,12 +1027,12 @@ private struct ArtistCodaHero: View {
                 .foregroundStyle(.secondary)
             }
             .overlay {
-              RoundedRectangle(cornerRadius: 13, style: .continuous)
+              RoundedRectangle(cornerRadius: heroCornerRadius(size: size), style: .continuous)
                 .strokeBorder(.primary.opacity(0.08), lineWidth: 1)
             }
             .accessibilityLabel("Compilation collection")
         } else {
-          ArtworkImage(url: artworkURL, cornerRadius: 13, showsBorder: true)
+          ArtworkImage(url: artworkURL, cornerRadius: heroCornerRadius(size: size), showsBorder: true)
         }
       }
       .frame(width: size, height: size)
@@ -1685,9 +1691,9 @@ private struct AlbumShelf: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       SectionHeading(title: title, action: onMore)
-      PagedHorizontalShelf(items: albums, itemWidth: 154) { album in
+      PagedHorizontalShelf(items: albums, itemWidth: 154) { album, width in
         AlbumCard(album: album)
-          .frame(width: 154)
+          .frame(width: width)
       }
     }
   }
@@ -1697,7 +1703,7 @@ private struct PagedHorizontalShelf<Item: Identifiable, Card: View>: View
 where Item.ID: Hashable {
   let items: [Item]
   let itemWidth: CGFloat
-  @ViewBuilder let card: (Item) -> Card
+  @ViewBuilder let card: (Item, CGFloat) -> Card
 
   @State private var leadingItemID: Item.ID?
   @State private var viewportWidth: CGFloat = 0
@@ -1707,18 +1713,22 @@ where Item.ID: Hashable {
   private let horizontalPadding: CGFloat = 22
 
   var body: some View {
+    let width = cardWidth
     ScrollView(.horizontal, showsIndicators: false) {
       LazyHStack(alignment: .top, spacing: spacing) {
         ForEach(items) { item in
-          card(item)
+          card(item, width)
             .id(item.id)
         }
       }
       .scrollTargetLayout()
-      .padding(.horizontal, horizontalPadding)
+      .padding(.leading, horizontalPadding)
     }
     .scrollTargetBehavior(.viewAligned)
     .scrollPosition(id: $leadingItemID, anchor: .leading)
+    // The visible row ends at the heading edge, so the next card (one spacing further)
+    // is clipped rather than peeking into the margin.
+    .padding(.trailing, horizontalPadding)
     .background {
       GeometryReader { geometry in
         Color.clear
@@ -1739,6 +1749,14 @@ where Item.ID: Hashable {
         .padding(.trailing, 7)
     }
     .onHover { isHovering = $0 }
+  }
+
+  /// Cards grow from `itemWidth` just enough to fill the row, so it always ends on a whole card.
+  private var cardWidth: CGFloat {
+    let available = viewportWidth - horizontalPadding * 2
+    guard available > itemWidth else { return itemWidth }
+    let count = max(1, ((available + spacing) / (itemWidth + spacing)).rounded(.down))
+    return (available - (count - 1) * spacing) / count
   }
 
   private func pagingButton(direction: Int) -> some View {
@@ -1778,8 +1796,8 @@ where Item.ID: Hashable {
 
   private func page(direction: Int) {
     guard !items.isEmpty else { return }
-    let usableWidth = max(itemWidth, viewportWidth - (horizontalPadding * 2))
-    let pageSize = max(1, Int(usableWidth / (itemWidth + spacing)))
+    let usableWidth = max(cardWidth, viewportWidth - (horizontalPadding * 2))
+    let pageSize = max(1, Int(usableWidth / (cardWidth + spacing)))
     let targetIndex = min(
       max(currentIndex + (direction * pageSize), 0),
       items.count - 1
@@ -1798,9 +1816,10 @@ private struct ArtistShelf: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       SectionHeading(title: title, action: onMore)
-      PagedHorizontalShelf(items: artists, itemWidth: 140) { artist in
+      // Same base width as album rows, so all rows pick the same card size as the window resizes.
+      PagedHorizontalShelf(items: artists, itemWidth: 154) { artist, width in
         ArtistCard(artist: artist)
-          .frame(width: 140)
+          .frame(width: width)
       }
     }
   }
@@ -1910,8 +1929,12 @@ private struct AlbumRatingBadge: View {
   }
 }
 
+/// Corner radius of artist pictures relative to their width.
+private let artistPictureCornerRadiusRatio: CGFloat = 0.2
+
 private struct ArtistCard: View {
   @EnvironmentObject private var session: AppSession
+  @State private var imageWidth: CGFloat = 0
   let artist: RemoteArtist
 
   var body: some View {
@@ -1921,10 +1944,11 @@ private struct ArtistCard: View {
       VStack(alignment: .leading, spacing: 6) {
         ArtworkImage(
           url: session.artworkURL(id: artist.coverArt),
-          cornerRadius: 10,
+          cornerRadius: max(10, imageWidth * artistPictureCornerRadiusRatio),
           showsBorder: true
         )
           .aspectRatio(1, contentMode: .fit)
+          .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { imageWidth = $0 }
           .artistDragSource(artist.id)
           .help("Drag artist discography to queue")
         Text(artist.name)
