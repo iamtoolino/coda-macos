@@ -580,9 +580,14 @@ struct NowPlayingPresentationView: View {
             hasConnection: session.hasEstablishedConnection
           )
         ) {
-          album = nil
-          guard let albumID = entry.albumID, let client = session.client else { return }
-          let loadedAlbum = try? await client.album(id: albumID).album
+          guard let albumID = entry.albumID else {
+            album = nil
+            return
+          }
+          // Usually already cached by the queue's album header for the same album.
+          album = session.cachedAlbumMetadata(id: albumID)
+          guard album == nil else { return }
+          let loadedAlbum = await session.albumMetadata(id: albumID)
           guard !Task.isCancelled, player.currentEntry?.albumID == albumID else { return }
           album = loadedAlbum
         }

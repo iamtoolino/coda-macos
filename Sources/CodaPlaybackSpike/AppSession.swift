@@ -82,6 +82,9 @@ final class AppSession: ObservableObject {
   @Published private(set) var isSigningOut = false
 
   private var artworkURLs: [String: URL] = [:]
+  private var albumMetadataCache: [String: RemoteAlbum] = [:]
+  private var albumMetadataRequests: [String: (token: UUID, task: Task<RemoteAlbum?, Never>)] =
+    [:]
   private var automaticConnectionTask: Task<Void, Never>?
   private var connectionAttemptID: UUID?
   private var ratingUpdateSessionID: UUID?
@@ -266,6 +269,7 @@ final class AppSession: ObservableObject {
     ArtworkImageCache.shared.resetMemory()
     activeSessionID = nil
     connectionAttemptID = attemptID
+    clearAlbumMetadata()
     handledPlayQueueIdentity = nil
     albumRatingOverrides.removeAll()
     isUpdatingAlbumRating = false
@@ -287,6 +291,7 @@ final class AppSession: ObservableObject {
     activeSessionID = nil
     connectionAttemptID = nil
     serverDetails = nil
+    clearAlbumMetadata()
     self.configuration = configuration
     isUpdatingAlbumRating = false
     albumRatingErrorMessage = nil
@@ -308,6 +313,7 @@ final class AppSession: ObservableObject {
     albumRatingErrorMessage = nil
     ratingUpdateSessionID = nil
     artworkURLs.removeAll()
+    clearAlbumMetadata()
     connectionState = state
     selectedRoot = .home
     path.removeAll()
@@ -422,6 +428,42 @@ final class AppSession: ObservableObject {
 
   func markPlayQueueHandled(_ queue: RemotePlayQueue) {
     handledPlayQueueIdentity = queue.handoffIdentity
+  }
+
+  /// Album summaries for optional context such as queue headers, Now Playing and playlist groups.
+  /// Results are shared for the current session and concurrent requests share one fetch.
+  func albumMetadata(id albumID: String) async -> RemoteAlbum? {
+    if let album = albumMetadataCache[albumID] { return album }
+    if let pending = albumMetadataRequests[albumID] { return await pending.task.value }
+    guard let request = sessionRequestContext() else { return nil }
+    let token = UUID()
+    let task = Task { try? await request.client.album(id: albumID).album }
+    albumMetadataRequests[albumID] = (token, task)
+    let album = await task.value
+    // A refresh or session change while loading discards the request without caching it.
+    if albumMetadataRequests[albumID]?.token == token {
+      albumMetadataRequests[albumID] = nil
+      if let album { albumMetadataCache[albumID] = album }
+    }
+    return isCurrent(request) ? album : nil
+  }
+
+  func cachedAlbumMetadata(id albumID: String) -> RemoteAlbum? {
+    albumMetadataCache[albumID]
+  }
+
+  func rememberAlbumMetadata(_ album: RemoteAlbum) {
+    albumMetadataCache[album.id] = album
+  }
+
+  func invalidateAlbumMetadata(id albumID: String) {
+    albumMetadataCache[albumID] = nil
+    albumMetadataRequests[albumID] = nil
+  }
+
+  private func clearAlbumMetadata() {
+    albumMetadataCache.removeAll()
+    albumMetadataRequests.removeAll()
   }
 
   func refreshArtwork(

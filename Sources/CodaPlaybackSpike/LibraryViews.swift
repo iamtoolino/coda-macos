@@ -1230,6 +1230,7 @@ struct AlbumDetailView: View {
       \.codaRefreshAction,
       CodaRefreshAction {
         let artworkID = page?.album.artworkID ?? albumID
+        session.invalidateAlbumMetadata(id: albumID)
         Task {
           await session.refreshArtwork(
             id: artworkID,
@@ -1431,10 +1432,14 @@ struct AlbumDetailView: View {
   @MainActor
   private func load() async {
     guard let client = session.client else { return }
+    let sessionID = session.activeSessionID
     errorMessage = nil
     do {
       let loadedPage = try await client.album(id: albumID)
       page = loadedPage
+      if let sessionID, session.isCurrentSession(sessionID) {
+        session.rememberAlbumMetadata(loadedPage.album)
+      }
       await artworkLoader.load(
         url: session.artworkURL(id: loadedPage.album.artworkID),
         placeholderIdentity: loadedPage.album.id
@@ -1468,7 +1473,6 @@ struct PlaylistDetailView: View {
 
   @State private var playlist: RemotePlaylist?
   @State private var albumMetadata: [String: RemoteAlbum] = [:]
-  @State private var albumMetadataGeneration = UUID()
   @State private var errorMessage: String?
   @State private var selectedSongIndices: [Int] = []
   @State private var selectionAnchorSongIndex: Int?
@@ -1550,8 +1554,7 @@ struct PlaylistDetailView: View {
                       }
                     }
                   }
-                  .task(id: [group.albumID ?? "", albumMetadataGeneration.uuidString,
-                             session.activeSessionID?.uuidString ?? ""]) {
+                  .task(id: [group.albumID ?? "", session.activeSessionID?.uuidString ?? ""]) {
                     await loadAlbumMetadata(group.albumID)
                   }
                 }
@@ -1621,21 +1624,10 @@ struct PlaylistDetailView: View {
 
   @MainActor
   private func loadAlbumMetadata(_ albumID: String?) async {
-    guard let albumID, albumMetadata[albumID] == nil,
-      let request = session.sessionRequestContext()
-    else { return }
-    let requestedPlaylistID = playlistID
-    let generation = albumMetadataGeneration
-    do {
-      let album = try await request.client.album(id: albumID).album
-      guard !Task.isCancelled, playlistID == requestedPlaylistID,
-        generation == albumMetadataGeneration,
-        session.isCurrent(request)
-      else { return }
-      albumMetadata[albumID] = album
-    } catch {
-      // Optional album context must not hide playable playlist tracks.
-    }
+    guard let albumID else { return }
+    // Optional album context must not hide playable playlist tracks.
+    guard let album = await session.albumMetadata(id: albumID), !Task.isCancelled else { return }
+    albumMetadata[albumID] = album
   }
 
   @MainActor
@@ -1644,8 +1636,6 @@ struct PlaylistDetailView: View {
     errorMessage = nil
     do {
       playlist = try await client.playlist(id: playlistID)
-      albumMetadata = [:]
-      albumMetadataGeneration = UUID()
     } catch {
       errorMessage = error.localizedDescription
     }
@@ -2348,13 +2338,17 @@ private struct LibraryErrorView: View {
   }
 }
 
-private func recentArtists(
+func recentArtists(
   newestAlbums: [RemoteAlbum],
   artists: [RemoteArtist],
   limit: Int? = 20
 ) -> [RemoteArtist] {
-  let byID = Dictionary(uniqueKeysWithValues: artists.map { ($0.id, $0) })
-  let byName = Dictionary(uniqueKeysWithValues: artists.map { ($0.name.lowercased(), $0) })
+  // Distinct artists can share a name (or differ only by case); keep the first match.
+  let byID = Dictionary(artists.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+  let byName = Dictionary(
+    artists.map { ($0.name.lowercased(), $0) },
+    uniquingKeysWith: { first, _ in first }
+  )
   var seen: Set<String> = []
   var result: [RemoteArtist] = []
   for album in newestAlbums {

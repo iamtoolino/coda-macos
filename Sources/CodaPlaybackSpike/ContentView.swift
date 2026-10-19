@@ -1964,18 +1964,14 @@ private struct QueueAlbumBlock: View {
 
   @MainActor
   private func loadAlbum() async {
-    guard let albumID, let client = session.client else {
+    guard let albumID else {
       album = nil
       return
     }
-    do {
-      let loadedAlbum = try await client.album(id: albumID).album
-      guard self.albumID == albumID else { return }
-      album = loadedAlbum
-    } catch {
-      // Queue controls remain available if optional context-menu metadata cannot load.
-      album = nil
-    }
+    // Queue controls remain available if optional context-menu metadata cannot load.
+    let loadedAlbum = await session.albumMetadata(id: albumID)
+    guard self.albumID == albumID else { return }
+    album = loadedAlbum
   }
 }
 

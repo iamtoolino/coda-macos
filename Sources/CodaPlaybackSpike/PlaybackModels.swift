@@ -380,8 +380,21 @@ struct ItemDate: Decodable, Hashable, Sendable {
 struct AlbumPage: Hashable, Sendable {
   let album: RemoteAlbum
   let songs: [RemoteSong]
+  /// Derived once per loaded page; album views read these on every render.
+  let discSections: [AlbumDiscSection]
+  let showsDiscHeadings: Bool
 
-  var discSections: [AlbumDiscSection] {
+  init(album: RemoteAlbum, songs: [RemoteSong]) {
+    self.album = album
+    self.songs = songs
+    discSections = Self.discSections(album: album, songs: songs)
+    showsDiscHeadings = discSections.count > 1 || discSections.contains { $0.subtitle != nil }
+  }
+
+  private static func discSections(
+    album: RemoteAlbum,
+    songs: [RemoteSong]
+  ) -> [AlbumDiscSection] {
     let subtitles = Dictionary(
       (album.discTitles ?? []).map {
         (max(1, $0.disc), $0.title.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -404,11 +417,6 @@ struct AlbumPage: Hashable, Sendable {
       }
     }
     return sections
-  }
-
-  var showsDiscHeadings: Bool {
-    let sections = discSections
-    return sections.count > 1 || sections.contains { $0.subtitle != nil }
   }
 }
 

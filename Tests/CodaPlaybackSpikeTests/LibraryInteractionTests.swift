@@ -9,6 +9,38 @@ import Testing
 @Suite("Library interactions")
 @MainActor
 struct LibraryInteractionTests {
+  @Test("recent artists tolerate artists that share a name")
+  func recentArtistsTolerateArtistsThatShareAName() {
+    let first = RemoteArtist(id: "artist-1", name: "Shared Name")
+    let second = RemoteArtist(id: "artist-2", name: "shared name")
+    let other = RemoteArtist(id: "artist-3", name: "Other")
+    let albums = [
+      RemoteAlbum(id: "album-1", name: "Unlinked", artist: "SHARED NAME"),
+      RemoteAlbum(id: "album-2", name: "Linked", artist: "Shared Name", artistId: "artist-2"),
+      RemoteAlbum(id: "album-3", name: "Other", artist: "Other"),
+    ]
+
+    let result = recentArtists(newestAlbums: albums, artists: [first, second, other])
+
+    #expect(result.map(\.id) == ["artist-1", "artist-2", "artist-3"])
+  }
+
+  @Test("album metadata cache is shared and invalidated per album")
+  func albumMetadataCacheIsSharedAndInvalidatedPerAlbum() async {
+    let session = AppSession(loadCredentials: false)
+    let first = RemoteAlbum(id: "album-1", name: "First")
+    let second = RemoteAlbum(id: "album-2", name: "Second")
+    session.rememberAlbumMetadata(first)
+    session.rememberAlbumMetadata(second)
+
+    #expect(await session.albumMetadata(id: "album-1") == first)
+    session.invalidateAlbumMetadata(id: "album-1")
+    #expect(session.cachedAlbumMetadata(id: "album-1") == nil)
+    #expect(session.cachedAlbumMetadata(id: "album-2") == second)
+    // Without a connected session an uncached album cannot be fetched.
+    #expect(await session.albumMetadata(id: "album-1") == nil)
+  }
+
   @Test("album rating updates are globally serialized")
   func albumRatingUpdatesAreGloballySerialized() throws {
     let session = AppSession(loadCredentials: false)
