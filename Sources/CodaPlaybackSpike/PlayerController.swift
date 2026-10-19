@@ -63,7 +63,17 @@ final class PlayerController: ObservableObject {
   private static let storedVolumeKey = "playback-volume"
   private static let replayGainEnabledKey = "playback-replaygain-enabled"
 
-  @Published private(set) var queue: [QueueEntry] = []
+  @Published private(set) var queue: [QueueEntry] = [] {
+    didSet {
+      queueEntryIDs = queue.map(\.id)
+      queueDurationSeconds = queue.reduce(0) { $0 + $1.durationSeconds }
+      queueRevision &+= 1
+    }
+  }
+  /// Derived from `queue` once per change so views can observe and read them cheaply.
+  private(set) var queueEntryIDs: [UUID] = []
+  private(set) var queueDurationSeconds = 0
+  private(set) var queueRevision = 0
   @Published private(set) var currentIndex: Int?
   @Published private(set) var artworkQueueContext = PlaybackArtworkQueueContext(
     current: nil,

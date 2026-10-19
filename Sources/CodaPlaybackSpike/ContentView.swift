@@ -252,10 +252,10 @@ struct ContentView: View {
       applyArtworkDisplayContext()
       volumePresentation.dismiss()
     }
-    .onChange(of: player.queue.map(\.id)) { _, entryIDs in
-      queueSelection.reconcile(with: entryIDs)
+    .onChange(of: player.queueRevision) {
+      queueSelection.reconcile(with: player.queueEntryIDs)
     }
-    .onChange(of: queueHandoff.continueQueue?.handoffIdentity) {
+    .onChange(of: queueHandoff.continueQueueIdentity) {
       revealContinueOfferIfNeeded()
     }
   }
@@ -1281,6 +1281,21 @@ private struct QueueInsertionTarget: Equatable {
 private struct QueueDropGeometryMeasurement: Equatable {
   let generation: Int
   let frame: CGRect
+
+  /// Rows only report frames while a drop or reorder is active (`generation` is non-nil),
+  /// so ordinary scrolling does not stream geometry updates into the queue.
+  init(generation: Int?, geometry: GeometryProxy) {
+    self.generation = generation ?? -1
+    frame = generation == nil ? .zero : geometry.frame(in: .named(queueDropCoordinateSpace))
+  }
+}
+
+/// Queue geometry that actions read but rendering does not depend on, so row visibility and
+/// frame updates while scrolling do not invalidate the whole queue panel.
+private final class QueueGeometryStore {
+  var visibleEntryIDs: Set<UUID> = []
+  var groupFrames: [UUID: CGRect] = [:]
+  var entryFrames: [UUID: CGRect] = [:]
 }
 
 private struct QueueAlbumScrollTarget: Hashable {
@@ -1295,9 +1310,9 @@ private struct QueuePanel: View {
   @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   var onDropTargetChanged: ((Bool) -> Void)? = nil
   @State private var groups: [QueueGroup] = []
-  @State private var visibleEntryIDs: Set<UUID> = []
-  @State private var groupFrames: [UUID: CGRect] = [:]
-  @State private var entryFrames: [UUID: CGRect] = [:]
+  @State private var groupedQueueRevision: Int?
+  @State private var geometry = QueueGeometryStore()
+  @State private var currentEntryIsVisible = false
   @State private var dropGeometryGeneration = 0
   @State private var activeReorderItem: QueueReorderDragItem?
   @State private var insertionTarget: QueueInsertionTarget?
@@ -1337,6 +1352,8 @@ private struct QueuePanel: View {
                   }
                 }
 
+              let selectedEntryIDSet = Set(selectedEntryIDs ?? [])
+              let geometryGeneration = tracksDropGeometry ? dropGeometryGeneration : nil
               LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(groups) { group in
                   QueueAlbumBlock(
@@ -1344,20 +1361,20 @@ private struct QueuePanel: View {
                     currentIndex: player.currentIndex,
                     isPlaying: player.isPlaying,
                     selectedEntryIDs: selectedEntryIDs,
-                    selectedEntryIDSet: Set(selectedEntryIDs ?? []),
+                    selectedEntryIDSet: selectedEntryIDSet,
                     selectAction: select,
                     trackSelectAction: selectTrack,
                     deleteAction: remove,
                     playAction: player.play,
                     removeEntryAction: player.remove,
-                    geometryGeneration: dropGeometryGeneration,
+                    geometryGeneration: geometryGeneration,
                     groupFrameAction: { generation, frame in
                       guard generation == dropGeometryGeneration else { return }
-                      groupFrames[group.id] = frame
+                      geometry.groupFrames[group.id] = frame
                     },
                     entryFrameAction: { entryID, generation, frame in
                       guard generation == dropGeometryGeneration else { return }
-                      entryFrames[entryID] = frame
+                      geometry.entryFrames[entryID] = frame
                     },
                     dragStateAction: updateDragState,
                     visibilityAction: updateEntryVisibility
@@ -1384,7 +1401,7 @@ private struct QueuePanel: View {
         guard let selectedEntryIDs,
           selectedEntryIDs.count == 1,
           let entryID = selectedEntryIDs.first,
-          let index = player.queue.firstIndex(where: { $0.id == entryID })
+          let index = player.queueEntryIDs.firstIndex(of: entryID)
         else { return .ignored }
         player.play(index: index)
         return .handled
@@ -1401,16 +1418,17 @@ private struct QueuePanel: View {
           nowPlayingPresentation.dismiss()
         }
       }
-      .onChange(of: player.queue.map(\.id)) { previousIDs, currentIDs in
-        groups = queueGroups(player.queue)
+      .onChange(of: player.queueRevision) {
+        let wasEmpty = groups.isEmpty
+        refreshGroups()
         refreshDropGeometry()
-        if previousIDs.isEmpty, !currentIDs.isEmpty {
+        if wasEmpty, !player.queue.isEmpty {
           Task { @MainActor in
             // Queue restoration publishes the entries before PlayerController
             // publishes its restored current index. Wait for both that update and
             // the derived album groups to enter the scroll view.
             await Task.yield()
-            groups = queueGroups(player.queue)
+            refreshGroups()
             await Task.yield()
             revealCurrentPlayback(proxy, animated: false)
           }
@@ -1423,7 +1441,7 @@ private struct QueuePanel: View {
           guard request == player.queueTopScrollRequest,
             let firstEntryID = player.queue.first?.id
           else { return }
-          groups = queueGroups(player.queue)
+          refreshGroups()
           await Task.yield()
           guard request == player.queueTopScrollRequest else { return }
           proxy.scrollTo(QueueAlbumScrollTarget(id: firstEntryID), anchor: .top)
@@ -1434,18 +1452,19 @@ private struct QueuePanel: View {
         Task { @MainActor in
           await Task.yield()
           guard request == player.queueCurrentScrollRequest else { return }
-          groups = queueGroups(player.queue)
+          refreshGroups()
           await Task.yield()
           guard request == player.queueCurrentScrollRequest else { return }
           revealCurrentPlayback(proxy, animated: false)
         }
       }
       .onChange(of: player.currentEntry?.id) { oldEntryID, newEntryID in
+        updateCurrentEntryVisibility()
         guard newEntryID != nil else { return }
         revealCurrentPlayback(proxy, from: oldEntryID)
       }
       .task {
-        groups = queueGroups(player.queue)
+        refreshGroups()
         await Task.yield()
         revealCurrentPlayback(proxy, animated: false)
       }
@@ -1534,8 +1553,17 @@ private struct QueuePanel: View {
   }
 
   private var shouldShowReturnToPlaying: Bool {
-    guard let currentID = player.currentEntry?.id else { return false }
-    return !visibleEntryIDs.contains(currentID)
+    player.currentEntry != nil && !currentEntryIsVisible
+  }
+
+  private var tracksDropGeometry: Bool {
+    activeReorderItem != nil || isDropTargeted
+  }
+
+  private func refreshGroups() {
+    guard groupedQueueRevision != player.queueRevision else { return }
+    groups = queueGroups(player.queue)
+    groupedQueueRevision = player.queueRevision
   }
 
   private var selectedEntryIDs: [UUID]? {
@@ -1544,9 +1572,7 @@ private struct QueuePanel: View {
 
   private var queueDurationHelp: String {
     let trackCount = player.queue.count
-    let duration = formatCollectionDuration(
-      player.queue.reduce(0) { $0 + $1.durationSeconds }
-    )
+    let duration = formatCollectionDuration(player.queueDurationSeconds)
     let count = "\(trackCount) \(trackCount == 1 ? "track" : "tracks")"
     let summary = duration.isEmpty ? count : "\(count) · \(duration)"
     return "Queue: \(summary)"
@@ -1560,7 +1586,7 @@ private struct QueuePanel: View {
   private func select(_ entryIDs: [UUID], modifiers: TrackSelectionModifiers) {
     queueSelection.select(
       entryIDs,
-      orderedBy: player.queue.map(\.id),
+      orderedBy: player.queueEntryIDs,
       modifiers: modifiers
     )
     queueHasFocus = true
@@ -1657,8 +1683,8 @@ private struct QueuePanel: View {
     guard !player.queue.isEmpty else { return fallbackInsertionTarget }
     let measuredEntries = visibleQueueDropMeasurements(
       entries: player.queue,
-      frames: entryFrames,
-      visibleEntryIDs: visibleEntryIDs
+      frames: geometry.entryFrames,
+      visibleEntryIDs: geometry.visibleEntryIDs
     )
     guard let last = measuredEntries.last else { return nil }
     if let next = measuredEntries.first(where: { location.y < $0.1.midY }) {
@@ -1676,14 +1702,14 @@ private struct QueuePanel: View {
 
   private func insertionLineY(before entry: QueueEntry, fallback: CGFloat) -> CGFloat {
     guard let group = groups.first(where: { $0.entryIDs.first == entry.id }),
-      let groupFrame = groupFrames[group.id]
+      let groupFrame = geometry.groupFrames[group.id]
     else { return fallback }
     return groupFrame.minY
   }
 
   private var fallbackInsertionTarget: QueueInsertionTarget {
-    let measuredBottom = entryFrames.values.map(\.maxY).max()
-      ?? groupFrames.values.map(\.maxY).max()
+    let measuredBottom = geometry.entryFrames.values.map(\.maxY).max()
+      ?? geometry.groupFrames.values.map(\.maxY).max()
       ?? 44
     return QueueInsertionTarget(beforeEntryID: nil, lineY: measuredBottom)
   }
@@ -1699,12 +1725,12 @@ private struct QueuePanel: View {
   }
 
   private func refreshDropGeometry() {
-    entryFrames.removeAll(keepingCapacity: true)
-    groupFrames.removeAll(keepingCapacity: true)
+    geometry.entryFrames.removeAll(keepingCapacity: true)
+    geometry.groupFrames.removeAll(keepingCapacity: true)
     dropGeometryGeneration &+= 1
     insertionTarget = nil
 
-    let entryIDs = Set(player.queue.map(\.id))
+    let entryIDs = Set(player.queueEntryIDs)
     if let activeReorderItem,
       !Set(activeReorderItem.entryIDs).isSubset(of: entryIDs)
     {
@@ -1714,10 +1740,20 @@ private struct QueuePanel: View {
 
   private func updateEntryVisibility(_ entryID: UUID, _ isVisible: Bool) {
     if isVisible {
-      visibleEntryIDs.insert(entryID)
+      geometry.visibleEntryIDs.insert(entryID)
     } else {
-      visibleEntryIDs.remove(entryID)
-      entryFrames[entryID] = nil
+      geometry.visibleEntryIDs.remove(entryID)
+      geometry.entryFrames[entryID] = nil
+    }
+    if entryID == player.currentEntry?.id {
+      updateCurrentEntryVisibility()
+    }
+  }
+
+  private func updateCurrentEntryVisibility() {
+    let isVisible = player.currentEntry.map { geometry.visibleEntryIDs.contains($0.id) } ?? false
+    if currentEntryIsVisible != isVisible {
+      currentEntryIsVisible = isVisible
     }
   }
 
@@ -1747,9 +1783,10 @@ private struct QueuePanel: View {
       discHeaderOffsets: discHeaderOffsets,
       isAutomatic: oldEntryID != nil,
       automaticWithinSameAlbum: oldEntryID != nil && oldGroupID == currentGroup.id,
-      previousTrackIsVisible: oldEntryID.map(visibleEntryIDs.contains) ?? true,
-      albumTracksAreFullyVisible: currentGroup.entryIDs.allSatisfy(visibleEntryIDs.contains),
-      currentTrackIsVisible: visibleEntryIDs.contains(currentID),
+      previousTrackIsVisible: oldEntryID.map(geometry.visibleEntryIDs.contains) ?? true,
+      albumTracksAreFullyVisible: currentGroup.entryIDs.allSatisfy(
+        geometry.visibleEntryIDs.contains),
+      currentTrackIsVisible: geometry.visibleEntryIDs.contains(currentID),
       targetIsBelow: targetIsBelow
     ) else { return }
 
@@ -1775,14 +1812,14 @@ private struct QueuePanel: View {
     oldEntryID: UUID?,
     currentEntryID: UUID
   ) -> Bool {
-    let queueIDs = player.queue.map(\.id)
+    let queueIDs = player.queueEntryIDs
     guard let currentIndex = queueIDs.firstIndex(of: currentEntryID) else { return false }
     if let oldEntryID,
       let oldIndex = queueIDs.firstIndex(of: oldEntryID)
     {
       return currentIndex >= oldIndex
     }
-    let visibleIndices = visibleEntryIDs.compactMap { queueIDs.firstIndex(of: $0) }
+    let visibleIndices = geometry.visibleEntryIDs.compactMap { queueIDs.firstIndex(of: $0) }
     guard let firstVisible = visibleIndices.min() else { return currentIndex > 0 }
     return currentIndex >= firstVisible
   }
@@ -1862,7 +1899,7 @@ private struct QueueAlbumBlock: View {
   let deleteAction: ([UUID]) -> Void
   let playAction: (Int) -> Void
   let removeEntryAction: (UUID) -> Void
-  let geometryGeneration: Int
+  let geometryGeneration: Int?
   let groupFrameAction: (Int, CGRect) -> Void
   let entryFrameAction: (UUID, Int, CGRect) -> Void
   let dragStateAction: (QueueReorderDragItem, Bool) -> Void
@@ -1876,6 +1913,7 @@ private struct QueueAlbumBlock: View {
     let selectedDiscSections = Set(group.discSections.indices.filter {
       group.discSections[$0].entryIDs.allSatisfy(selectedEntryIDSet.contains)
     })
+    let isGroupSelected = group.entryIDs.allSatisfy(selectedEntryIDSet.contains)
     VStack(alignment: .leading, spacing: 5) {
       if !group.isStandalone {
         QueueAlbumHeader(
@@ -1933,21 +1971,18 @@ private struct QueueAlbumBlock: View {
     .padding(6)
     .contentShape(Rectangle())
     .onGeometryChange(for: QueueDropGeometryMeasurement.self) { geometry in
-      QueueDropGeometryMeasurement(
-        generation: geometryGeneration,
-        frame: geometry.frame(in: .named(queueDropCoordinateSpace))
-      )
+      QueueDropGeometryMeasurement(generation: geometryGeneration, geometry: geometry)
     } action: { measurement in
       groupFrameAction(measurement.generation, measurement.frame)
     }
     .background {
-      if group.entryIDs.allSatisfy(selectedEntryIDSet.contains) {
+      if isGroupSelected {
         RoundedRectangle(cornerRadius: 9, style: .continuous)
           .fill(interfaceAccent.opacity(0.12))
       }
     }
     .overlay {
-      if group.entryIDs.allSatisfy(selectedEntryIDSet.contains) {
+      if isGroupSelected {
         RoundedRectangle(cornerRadius: 9, style: .continuous)
           .strokeBorder(interfaceAccent.opacity(0.42), lineWidth: 1)
           .allowsHitTesting(false)
@@ -2124,7 +2159,7 @@ private struct QueueTrackRow: View {
   let selectAction: (TrackSelectionModifiers) -> Void
   let playAction: () -> Void
   let removeAction: () -> Void
-  let geometryGeneration: Int
+  let geometryGeneration: Int?
   let frameAction: (Int, CGRect) -> Void
   let dragStateAction: (QueueReorderDragItem, Bool) -> Void
   let visibilityAction: (UUID, Bool) -> Void
@@ -2209,10 +2244,7 @@ private struct QueueTrackRow: View {
       dragStateAction(item, dragSession.phase == .initial || dragSession.phase == .active)
     }
     .onGeometryChange(for: QueueDropGeometryMeasurement.self) { geometry in
-      QueueDropGeometryMeasurement(
-        generation: geometryGeneration,
-        frame: geometry.frame(in: .named(queueDropCoordinateSpace))
-      )
+      QueueDropGeometryMeasurement(generation: geometryGeneration, geometry: geometry)
     } action: { measurement in
       frameAction(measurement.generation, measurement.frame)
     }

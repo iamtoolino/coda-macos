@@ -109,7 +109,11 @@ final class QueueHandoffCoordinator: ObservableObject {
   private var ownership: Ownership = .none
   private var pauseSavePending = false
 
-  @Published private(set) var continueQueue: RemotePlayQueue?
+  @Published private(set) var continueQueue: RemotePlayQueue? {
+    didSet { continueQueueIdentity = continueQueue?.handoffIdentity }
+  }
+  /// Computed once per offer so views can observe offer changes without rebuilding it.
+  private(set) var continueQueueIdentity: String?
 
   init(session: AppSession, player: PlayerController) {
     self.session = session
@@ -291,7 +295,8 @@ final class QueueHandoffCoordinator: ObservableObject {
       while !Task.isCancelled {
         try? await Task.sleep(for: .seconds(60))
         guard !Task.isCancelled, let self else { return }
-        if !self.player.isPlaying {
+        // Becoming active schedules its own refresh, so a background app need not poll.
+        if !self.player.isPlaying, NSApplication.shared.isActive {
           await self.refreshRemoteQueue()
         }
       }
