@@ -1981,7 +1981,6 @@ private struct AlbumCardArtistLine: View {
       }
       .buttonStyle(.plain)
       .focusable(false)
-      .pointerStyle(.link)
       .onHover { isHovering = $0 }
       .animation(.easeOut(duration: 0.12), value: isHovering)
       .help("Show \(credit.name)")
