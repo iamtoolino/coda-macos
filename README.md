@@ -78,6 +78,26 @@ Run the automated tests with:
 swift test
 ```
 
+Debug builds (the default for `scripts/build-app.sh`) store the server URL, username and password
+as plaintext JSON at `~/Library/Application Support/Coda/DevelopmentLogin.json`, with file mode
+`0600` and a newly created Coda directory mode `0700`. If that file is absent, a debug launch
+reads an existing Keychain login and automatically copies it to this file. Release builds use
+Keychain only and do not read or remove the development file. Debug sign-out removes both the
+file and the Keychain login; release sign-out removes only the Keychain login. To remove the
+plaintext copy without signing out, delete that file and use a release build: launching debug
+again can recreate it from Keychain. Keep the development file out of shared reports/backups.
+
+Run the offline ReplayGain audio-output check after building libmpv:
+
+```sh
+python3 scripts/check-replaygain-output.py
+```
+
+It compiles the production C bridge into a test harness, renders synthetic tones through the
+bundled libmpv to WAV files under `.build/replaygain-output-check/`, and checks PCM scaling,
+per-file transitions, updated same-URL next gain and disabling gain. It uses no server,
+credentials or audio device. Policy and occurrence-state checks remain in `swift test`.
+
 The platform-independent ReplayGain behaviour is specified in
 [docs/replaygain.md](docs/replaygain.md).
 

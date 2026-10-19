@@ -527,23 +527,6 @@ struct LibraryInteractionTests {
         == [ids[0], ids[2], ids[3], ids[1]])
   }
 
-  @Test("queue grouping preserves occurrences and splits")
-  func queueGroupingPreservesOccurrencesAndSplits() {
-    let first = QueueEntry(
-      sourceID: "first", url: URL(string: "https://example.test/first")!,
-      title: "First", album: "Album", albumID: "A")
-    let other = QueueEntry(
-      sourceID: "other", url: URL(string: "https://example.test/other")!,
-      title: "Other", album: "Other Album", albumID: "B")
-    let second = QueueEntry(
-      sourceID: "second", url: URL(string: "https://example.test/second")!,
-      title: "Second", album: "Album", albumID: "A")
-
-    #expect(
-      queueGroups([first, other, second]).map(\.entryIDs)
-        == [[first.id], [other.id], [second.id]])
-  }
-
   @Test("missing album IDs stay separate despite matching titles and artists")
   func missingAlbumIDsStaySeparate() {
     let first = QueueEntry(
@@ -605,13 +588,14 @@ struct LibraryInteractionTests {
         sourceID: song.id,
         url: URL(string: "https://example.test/\(song.id)")!,
         title: song.title,
+        albumID: album.id,
         trackNumber: song.track,
         discNumber: song.discNumber,
         discSubtitle: song.discSubtitle,
         durationSeconds: song.duration ?? 0
       )
     }
-    let queueGroup = QueueGroup(id: queueEntries[0].id, startIndex: 0, entries: queueEntries)
+    let queueGroup = queueGroups(queueEntries)[0]
 
     #expect(page.showsDiscHeadings)
     #expect(page.discSections.map(\.number) == [1, 2, 3])

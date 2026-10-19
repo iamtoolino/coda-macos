@@ -73,7 +73,9 @@ Do not call `getBookmarks` when a track completes.
 5. After server success, adjust the local Home presentation state opportunistically. This state is
    not authoritative for housekeeping.
 
-Serialize completion mutations and cancel/ignore work after session rotation. Do not retry by
+Serialize completion mutations and authoritative refresh/retention work on the same queue. Fetch
+refresh data after prior writes finish and complete retention before later writes, so a stale
+cleanup delete cannot race a newly advanced marker. Cancel/ignore work after session rotation. Do not retry by
 reordering older and newer completion events.
 
 Recording is best-effort, with in-memory serialized work only: no durable retry outbox or replay

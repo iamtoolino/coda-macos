@@ -29,7 +29,9 @@ queue entries to use it. The queue adapter also supplies explicit continuation i
 resume, which does not change grouping or ReplayGain's adjacency rule.
 
 `TrackListPresentation` adapts those ranges to queue occurrences and indexed playlist songs.
-It preserves each surface's identity model and computes group labels and disc-section scopes.
+It preserves each surface's identity model and computes group labels and contiguous disc metadata
+once per group. Queue rows use indexed section lookups; section selection is computed once per
+section for each render, rather than rescanning the group for every row.
 `TrackListAlbumLabel` shares header contents at compact and regular sizes.
 `TrackListStandaloneLabel` shares standalone row contents, using `TrackRowLabel` for track text.
 

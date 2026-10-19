@@ -184,6 +184,32 @@ private func albumResumeBuckets(from bookmarks: [RemoteBookmark]) -> [AlbumResum
     }
 }
 
+/// Both authoritative refresh/retention and completion writes share this ordering.
+@MainActor
+final class AlbumResumeWorkQueue {
+  private var tail: Task<Void, Never>?
+  private var generation = UUID()
+
+  @discardableResult
+  func enqueue(_ operation: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
+    let previous = tail
+    let generation = generation
+    let task = Task { @MainActor [weak self] in
+      await previous?.value
+      guard !Task.isCancelled, self?.generation == generation else { return }
+      await operation()
+    }
+    tail = task
+    return task
+  }
+
+  func cancel() {
+    generation = UUID()
+    tail?.cancel()
+    tail = nil
+  }
+}
+
 @MainActor
 final class AlbumResumeCoordinator: ObservableObject {
   @Published private(set) var items: [AlbumResumeItem] = []
@@ -193,7 +219,7 @@ final class AlbumResumeCoordinator: ObservableObject {
   private var cancellables: Set<AnyCancellable> = []
   private var refreshTask: Task<Void, Never>?
   private var refreshID: UUID?
-  private var mutationTask: Task<Void, Never>?
+  private let workQueue = AlbumResumeWorkQueue()
   private var publicationGeneration = UUID()
 
   init(session: AppSession, player: PlayerController) {
@@ -209,17 +235,18 @@ final class AlbumResumeCoordinator: ObservableObject {
     }
     guard let request = session.sessionRequestContext() else { return }
     let id = UUID()
-    let generation = beginPublication()
     refreshID = id
-    let task = Task { @MainActor [weak self] in
+    let task = workQueue.enqueue { [weak self] in
+      guard let self, self.refreshID == id, self.session.isCurrent(request) else { return }
+      // Fetch only after earlier completion writes finish, so retention candidates are fresh.
+      let generation = self.beginPublication()
       defer {
-        if let self, self.refreshID == id {
+        if self.refreshID == id {
           self.refreshID = nil
           self.refreshTask = nil
         }
       }
       guard let bookmarks = try? await request.client.bookmarks(),
-        let self,
         self.refreshID == id,
         self.session.isCurrent(request),
         self.publicationGeneration == generation
@@ -272,9 +299,7 @@ final class AlbumResumeCoordinator: ObservableObject {
     guard albumResumeRecordingAlbumID(for: completion) != nil,
       let request = session.sessionRequestContext()
     else { return }
-    let previous = mutationTask
-    mutationTask = Task { @MainActor [weak self] in
-      await previous?.value
+    workQueue.enqueue { [weak self] in
       guard !Task.isCancelled, let self, self.session.isCurrent(request) else { return }
       await self.process(completion: completion, request: request)
     }
@@ -374,8 +399,7 @@ final class AlbumResumeCoordinator: ObservableObject {
     refreshID = nil
     refreshTask?.cancel()
     refreshTask = nil
-    mutationTask?.cancel()
-    mutationTask = nil
+    workQueue.cancel()
     items = []
   }
 }

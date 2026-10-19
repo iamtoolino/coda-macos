@@ -65,25 +65,6 @@ enum CredentialStore {
     #endif
   }
 
-  static func loadForDevelopmentTest() throws -> NavidromeConfiguration {
-    let environment = ProcessInfo.processInfo.environment
-    if let server = environment["CODA_SERVER_URL"],
-      let username = environment["CODA_USERNAME"],
-      let password = environment["CODA_PASSWORD"]
-    {
-      return try NavidromeConfiguration(
-        server: server,
-        username: username,
-        password: password
-      )
-    }
-
-    if let stored = try load() {
-      return try stored.configuration
-    }
-    throw CredentialStoreError.noStoredLogin
-  }
-
   private static func loadFromKeychain() throws -> StoredLogin? {
     var query = baseQuery
     query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -208,7 +189,6 @@ enum CredentialStoreError: LocalizedError {
   case invalidStoredLogin
   case encoding(String)
   case developmentStorage(String)
-  case noStoredLogin
   case notConnected
 
   var errorDescription: String? {
@@ -222,8 +202,6 @@ enum CredentialStoreError: LocalizedError {
       return "Coda could not prepare the login for Keychain: \(message)"
     case .developmentStorage(let message):
       return "Coda could not access its local development login: \(message)"
-    case .noStoredLogin:
-      return "No Coda login is stored. Sign in first or provide CODA_SERVER_URL, CODA_USERNAME, and CODA_PASSWORD."
     case .notConnected:
       return "Sign in to Navidrome first."
     }

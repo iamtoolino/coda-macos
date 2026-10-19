@@ -107,7 +107,6 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
   private var hasExpectedNext = false
   private var isLoadingItem = false
   private var intentionallyStopping = false
-  private var eventDrainScheduled = false
 
   private nonisolated static let wakeupCallback: CodaMPVWakeupCallback = { context in
     guard let context else { return }

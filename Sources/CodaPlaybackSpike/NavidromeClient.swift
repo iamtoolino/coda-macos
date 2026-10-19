@@ -516,15 +516,6 @@ struct NavidromeClient: Sendable {
     _ = try await checkedResponse(request)
   }
 
-  func searchSongs(_ query: String, count: Int = 30) async throws -> [RemoteSong] {
-    try await search(
-      query,
-      artistCount: 0,
-      albumCount: 0,
-      songCount: count
-    ).songs
-  }
-
   func search(
     _ query: String,
     artistCount: Int = 16,

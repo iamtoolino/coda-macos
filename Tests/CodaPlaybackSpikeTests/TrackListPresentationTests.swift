@@ -118,6 +118,20 @@ struct TrackListPresentationTests {
     #expect(group.discDuration(at: 2) == 60)
   }
 
+  @Test("Rows map to their contiguous disc section, including repeated disc numbers")
+  func indexedDiscSections() throws {
+    let entries = [1, 1, 2, 2, 1, 1].map { entry("song", albumID: "A", disc: $0) }
+    let group = try #require(queueGroups(entries).first)
+    #expect(group.discSections.map(\.range) == [0..<2, 2..<4, 4..<6])
+    #expect(entries.indices.map { group.discSectionIndex(at: $0) } == [0, 0, 1, 1, 2, 2])
+    #expect(entries.indices.filter { group.beginsDiscSection(at: $0) } == [0, 2, 4])
+    #expect(group.discEntryIDs(at: 1) == Array(entries[0..<2]).map(\.id))
+    #expect(group.discEntryIDs(at: 5) == Array(entries[4..<6]).map(\.id))
+    #expect(group.discDuration(at: 5) == 120)
+    #expect(group.discSectionIndex(at: -1) == nil)
+    #expect(group.discSectionIndex(at: 6) == nil)
+  }
+
   private func entry(_ songID: String, albumID: String?, track: Int = 1, disc: Int = 1) -> QueueEntry {
     QueueEntry(sourceID: songID, url: URL(string: "https://example.test/audio")!, title: songID,
                artist: "Artist", album: "Same album title", albumID: albumID,

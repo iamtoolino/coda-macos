@@ -1873,6 +1873,9 @@ private struct QueueAlbumBlock: View {
   }
 
   var body: some View {
+    let selectedDiscSections = Set(group.discSections.indices.filter {
+      group.discSections[$0].entryIDs.allSatisfy(selectedEntryIDSet.contains)
+    })
     VStack(alignment: .leading, spacing: 5) {
       if !group.isStandalone {
         QueueAlbumHeader(
@@ -1894,7 +1897,7 @@ private struct QueueAlbumBlock: View {
             number: group.discNumber(at: offset),
             subtitle: group.discSubtitle(at: offset),
             durationSeconds: group.discDuration(at: offset),
-            isSelected: discEntryIDs.allSatisfy(selectedEntryIDSet.contains),
+            isSelected: group.discSectionIndex(at: offset).map(selectedDiscSections.contains) ?? false,
             selectAction: { modifiers in selectAction(discEntryIDs, modifiers) },
             deleteAction: { deleteAction(discEntryIDs) }
           )
@@ -1907,10 +1910,10 @@ private struct QueueAlbumBlock: View {
           isStandalone: group.isStandalone,
           isCurrent: currentIndex == group.startIndex + offset,
           isPlaying: isPlaying,
-          isTrackSelected: selectedEntryIDs?.contains(entry.id) == true,
+          isTrackSelected: selectedEntryIDSet.contains(entry.id),
           isCollectionSelected: group.showsDiscHeadings
-            && group.discEntryIDs(at: offset).allSatisfy(selectedEntryIDSet.contains),
-          dragEntryIDs: selectedEntryIDs?.contains(entry.id) == true
+            && (group.discSectionIndex(at: offset).map(selectedDiscSections.contains) ?? false),
+          dragEntryIDs: selectedEntryIDSet.contains(entry.id)
             ? selectedEntryIDs ?? [entry.id] : [entry.id],
           selectAction: { modifiers in
             trackSelectAction(entry.id, modifiers)

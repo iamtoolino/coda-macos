@@ -1,64 +1,76 @@
 import Foundation
 
+struct QueueDiscSection {
+  let range: Range<Int>
+  let number: Int
+  let subtitle: String?
+  let durationSeconds: Int
+  let entryIDs: [UUID]
+}
+
 struct QueueGroup: Identifiable {
   let id: UUID
   let startIndex: Int
   let entries: [QueueEntry]
+  let entryIDs: [UUID]
+  let showsDiscHeadings: Bool
+  let discSections: [QueueDiscSection]
+  private let discSectionIndices: [Int]
+  let detail: String
+
+  init(id: UUID, startIndex: Int, entries: [QueueEntry]) {
+    self.id = id
+    self.startIndex = startIndex
+    self.entries = entries
+    entryIDs = entries.map(\.id)
+    detail = albumGroupDetail(year: entries.first?.year,
+                             durationSeconds: entries.reduce(0) { $0 + $1.durationSeconds })
+    var sections: [QueueDiscSection] = []
+    var indices: [Int] = []
+    var start = 0
+    while start < entries.count {
+      let number = max(1, entries[start].discNumber ?? 1)
+      var end = start + 1
+      while end < entries.count, max(1, entries[end].discNumber ?? 1) == number { end += 1 }
+      let slice = entries[start..<end]
+      indices.append(contentsOf: repeatElement(sections.count, count: end - start))
+      sections.append(QueueDiscSection(
+        range: start..<end, number: number,
+        subtitle: slice.first { $0.discSubtitle?.nonEmptyGroupValue != nil }?.discSubtitle,
+        durationSeconds: slice.reduce(0) { $0 + $1.durationSeconds },
+        entryIDs: slice.map(\.id)
+      ))
+      start = end
+    }
+    discSections = sections
+    discSectionIndices = indices
+    showsDiscHeadings = Set(sections.map(\.number)).count > 1
+      || sections.contains { $0.subtitle != nil }
+  }
 
   var isStandalone: Bool { entries.count == 1 }
-  var entryIDs: [UUID] { entries.map(\.id) }
   var albumID: String? { AlbumSequenceResolver.normalizedAlbumID(entries.first?.albumID) }
-
   var albumTitle: String { entries.first?.album.nonEmptyGroupValue ?? "Unknown Album" }
   var artist: String { entries.first?.albumArtistName.nonEmptyGroupValue ?? "Unknown Artist" }
 
-  var showsDiscHeadings: Bool {
-    Set(entries.map(normalizedDiscNumber)).count > 1
-      || entries.contains { $0.discSubtitle?.nonEmptyGroupValue != nil }
-  }
-
-  var detail: String {
-    albumGroupDetail(year: entries.first?.year,
-                     durationSeconds: entries.reduce(0) { $0 + $1.durationSeconds })
+  func discSectionIndex(at offset: Int) -> Int? {
+    guard discSectionIndices.indices.contains(offset) else { return nil }
+    return discSectionIndices[offset]
   }
 
   func beginsDiscSection(at offset: Int) -> Bool {
-    guard showsDiscHeadings, entries.indices.contains(offset) else { return false }
-    guard offset > 0 else { return true }
-    return normalizedDiscNumber(entries[offset - 1]) != normalizedDiscNumber(entries[offset])
+    guard showsDiscHeadings, let section = discSection(at: offset) else { return false }
+    return section.range.lowerBound == offset
   }
 
-  func discNumber(at offset: Int) -> Int {
-    guard entries.indices.contains(offset) else { return 1 }
-    return normalizedDiscNumber(entries[offset])
-  }
+  func discNumber(at offset: Int) -> Int { discSection(at: offset)?.number ?? 1 }
+  func discSubtitle(at offset: Int) -> String? { discSection(at: offset)?.subtitle }
+  func discDuration(at offset: Int) -> Int { discSection(at: offset)?.durationSeconds ?? 0 }
+  func discEntryIDs(at offset: Int) -> [UUID] { discSection(at: offset)?.entryIDs ?? [] }
 
-  func discSubtitle(at offset: Int) -> String? {
-    discSection(at: offset).first {
-      $0.discSubtitle?.nonEmptyGroupValue != nil
-    }?.discSubtitle
-  }
-
-  func discDuration(at offset: Int) -> Int {
-    discSection(at: offset).reduce(0) { $0 + $1.durationSeconds }
-  }
-
-  func discEntryIDs(at offset: Int) -> [UUID] {
-    discSection(at: offset).map(\.id)
-  }
-
-  private func discSection(at offset: Int) -> ArraySlice<QueueEntry> {
-    guard entries.indices.contains(offset) else { return entries[0..<0] }
-    let number = discNumber(at: offset)
-    var start = offset
-    var end = offset + 1
-    while start > 0, normalizedDiscNumber(entries[start - 1]) == number { start -= 1 }
-    while end < entries.count, normalizedDiscNumber(entries[end]) == number { end += 1 }
-    return entries[start..<end]
-  }
-
-  private func normalizedDiscNumber(_ entry: QueueEntry) -> Int {
-    max(1, entry.discNumber ?? 1)
+  private func discSection(at offset: Int) -> QueueDiscSection? {
+    guard let index = discSectionIndex(at: offset) else { return nil }
+    return discSections[index]
   }
 }
 
