@@ -81,7 +81,7 @@ final class QueueSelectionShortcutMonitor: ObservableObject {
   init(selection: QueueSelectionModel, player: PlayerController, session: AppSession) {
     monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
       guard let keyWindow = NSApp.keyWindow else { return event }
-      let isMainPlaybackWindow = keyWindow.title != "Coda Status"
+      let isMainPlaybackWindow = keyWindow.title != codaStatusWindowTitle
         && keyWindow.sheetParent == nil
       let queueIsVisible = codaQueueIsVisible(
         windowWidth: keyWindow.contentView?.bounds.width ?? 0,

@@ -81,84 +81,17 @@ struct CodaPlaybackSpikeApp: App {
         playlistSaver: playlistSaver
       )
 
-      CommandGroup(after: .toolbar) {
-        Button(nowPlayingPresentation.isPresented ? "Hide Now Playing" : "Show Now Playing") {
-          if nowPlayingPresentation.isPresented {
-            nowPlayingPresentation.dismiss()
-          } else {
-            nowPlayingPresentation.present()
-          }
-        }
-        .keyboardShortcut("e", modifiers: [.command])
-        .disabled(
-          !nowPlayingPresentation.isPresented
-            && (player.currentEntry == nil || !session.hasEstablishedConnection)
-        )
-
-        Toggle(
-          "Automatically Show Now Playing",
-          isOn: $nowPlayingPresentation.automaticallyPresents
-        )
-
-        Divider()
-
-        Toggle(
-          "Show Album Rating Badges",
-          isOn: $artworkTreatments.showsAlbumRatingLabels
-        )
-      }
-
-      CommandMenu("Library") {
-        Button("Back") {
-          nowPlayingPresentation.dismiss()
-          session.goBack()
-        }
-        .keyboardShortcut("[", modifiers: [.command])
-        .disabled(session.path.isEmpty)
-
-        Divider()
-
-        Button("Search") {
-          nowPlayingPresentation.dismiss()
-          session.selectRoot(.search)
-        }
-        .keyboardShortcut("f", modifiers: [.command])
-      }
-
-      CommandMenu("Playback") {
-        Button(player.isPlaying ? "Pause" : "Play") {
-          player.togglePlayback()
-        }
-        .keyboardShortcut(.space, modifiers: [])
-        .disabled(player.currentEntry == nil)
-
-        Divider()
-
-        Button("Previous Track") { player.previous() }
-          .keyboardShortcut(.leftArrow, modifiers: [.command])
-          .disabled(!player.canGoPrevious)
-        Button("Next Track") { player.next() }
-          .keyboardShortcut(.rightArrow, modifiers: [.command])
-          .disabled(!player.canGoNext)
-
-        Divider()
-
-        Toggle("ReplayGain", isOn: Binding(
-          get: { player.replayGainEnabled },
-          set: { player.setReplayGainEnabled($0) }
-        ))
-        .help("Match playback loudness using ReplayGain tags, preserving album dynamics for consecutive tracks from the same album.")
-
-        Divider()
-
-        Button("Clear Queue", systemImage: "trash", role: .destructive) {
-          clearQueueOrEditText()
-        }
-        .keyboardShortcut(.delete, modifiers: [.command])
-      }
+      CodaViewCommands(
+        session: session,
+        player: player,
+        artworkTreatments: artworkTreatments,
+        nowPlayingPresentation: nowPlayingPresentation
+      )
+      CodaLibraryCommands(session: session, nowPlayingPresentation: nowPlayingPresentation)
+      CodaPlaybackCommands(player: player)
     }
 
-    Window("Coda Status", id: "coda-status") {
+    Window(codaStatusWindowTitle, id: "coda-status") {
       CodaStatusView()
         .environmentObject(session)
         .environmentObject(player)
@@ -166,6 +99,110 @@ struct CodaPlaybackSpikeApp: App {
     .defaultSize(width: 540, height: 700)
     .windowResizability(.contentSize)
     .defaultLaunchBehavior(.suppressed)
+  }
+
+}
+
+/// The status window's title, also used to exclude it from main-window behavior.
+let codaStatusWindowTitle = "Coda Status"
+
+// Menu contents live in Commands types that observe only what they show, so the App body
+// does not depend on every state object.
+private struct CodaViewCommands: Commands {
+  @ObservedObject var session: AppSession
+  @ObservedObject var player: PlayerController
+  @ObservedObject var artworkTreatments: ArtworkTreatmentSettings
+  @ObservedObject var nowPlayingPresentation: NowPlayingPresentationController
+
+  var body: some Commands {
+    CommandGroup(after: .toolbar) {
+      Button(nowPlayingPresentation.isPresented ? "Hide Now Playing" : "Show Now Playing") {
+        if nowPlayingPresentation.isPresented {
+          nowPlayingPresentation.dismiss()
+        } else {
+          nowPlayingPresentation.present()
+        }
+      }
+      .keyboardShortcut("e", modifiers: [.command])
+      .disabled(
+        !nowPlayingPresentation.isPresented
+          && (player.currentEntry == nil || !session.hasEstablishedConnection)
+      )
+
+      Toggle(
+        "Automatically Show Now Playing",
+        isOn: $nowPlayingPresentation.automaticallyPresents
+      )
+
+      Divider()
+
+      Toggle(
+        "Show Album Rating Badges",
+        isOn: $artworkTreatments.showsAlbumRatingLabels
+      )
+    }
+  }
+}
+
+private struct CodaLibraryCommands: Commands {
+  @ObservedObject var session: AppSession
+  let nowPlayingPresentation: NowPlayingPresentationController
+
+  var body: some Commands {
+    CommandMenu("Library") {
+      Button("Back") {
+        nowPlayingPresentation.dismiss()
+        session.goBack()
+      }
+      .keyboardShortcut("[", modifiers: [.command])
+      .disabled(session.path.isEmpty)
+
+      Divider()
+
+      Button("Search") {
+        nowPlayingPresentation.dismiss()
+        session.selectRoot(.search)
+      }
+      .keyboardShortcut("f", modifiers: [.command])
+    }
+  }
+}
+
+private struct CodaPlaybackCommands: Commands {
+  @ObservedObject var player: PlayerController
+
+  var body: some Commands {
+    CommandMenu("Playback") {
+      Button(player.isPlaying ? "Pause" : "Play") {
+        player.togglePlayback()
+      }
+      .keyboardShortcut(.space, modifiers: [])
+      .disabled(player.currentEntry == nil)
+
+      Divider()
+
+      Button("Previous Track") { player.previous() }
+        .keyboardShortcut(.leftArrow, modifiers: [.command])
+        .disabled(!player.canGoPrevious)
+      Button("Next Track") { player.next() }
+        .keyboardShortcut(.rightArrow, modifiers: [.command])
+        .disabled(!player.canGoNext)
+
+      Divider()
+
+      Toggle("ReplayGain", isOn: Binding(
+        get: { player.replayGainEnabled },
+        set: { player.setReplayGainEnabled($0) }
+      ))
+      .help("Match playback loudness using ReplayGain tags, preserving album dynamics for consecutive tracks from the same album.")
+
+      Divider()
+
+      Button("Clear Queue", systemImage: "trash", role: .destructive) {
+        clearQueueOrEditText()
+      }
+      .keyboardShortcut(.delete, modifiers: [.command])
+    }
   }
 
   private func clearQueueOrEditText() {
@@ -308,7 +345,7 @@ private final class CodaAppDelegate: NSObject, NSApplicationDelegate {
       guard let self,
         NSApp.isActive,
         event.window === NSApp.keyWindow,
-        event.window?.title != "Coda Status"
+        event.window?.title != codaStatusWindowTitle
       else { return event }
 
       let isBackEvent =
@@ -341,7 +378,7 @@ private final class CodaAppDelegate: NSObject, NSApplicationDelegate {
 
   private func configure(_ window: NSWindow) {
     window.tabbingMode = .disallowed
-    if window.title == "Coda Status" {
+    if window.title == codaStatusWindowTitle {
       window.styleMask.remove(.fullSizeContentView)
       window.titlebarAppearsTransparent = false
       window.titleVisibility = .visible

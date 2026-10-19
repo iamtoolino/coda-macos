@@ -1256,7 +1256,7 @@ struct AlbumDetailView: View {
     ) { notification in
       guard let window = notification.object as? NSWindow,
         window === NSApp.keyWindow,
-        window.title != "Coda Status"
+        window.title != codaStatusWindowTitle
       else { return }
       applyLoadedArtwork()
     }
