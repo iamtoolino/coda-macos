@@ -10,5 +10,5 @@ export function initialScene(random = Math.random) {
 }
 
 export function sceneAsset(index, view) {
-  return `assets/${scenes[index].id}${view === 'nps' ? '' : `-${view}`}.png`;
+  return `assets/${scenes[index].id}${view === 'nps' ? '' : `-${view}`}.webp`;
 }

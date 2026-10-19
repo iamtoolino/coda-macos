@@ -15,19 +15,28 @@
         const preload = document.createElement('link');
         preload.rel = 'preload';
         preload.as = 'image';
-        preload.href = `assets/${sceneIds[index]}${suffix}.png`;
+        preload.href = `assets/${sceneIds[index]}${suffix}.webp`;
         document.head.append(preload);
       }
       const initialStyle = document.createElement('style');
       initialStyle.textContent = `
-        .scene-pending [data-scene-view="nps"] { background-image: url("assets/${sceneIds[index]}.png"); background-position: center; background-size: 113.8958% auto; background-repeat: no-repeat; }
-        .scene-pending [data-scene-view="home"] { background-image: url("assets/${sceneIds[index]}-home.png"); background-position: center; background-size: 112.2004% auto; background-repeat: no-repeat; }
-        .scene-pending [data-scene-view="album"] { background-image: url("assets/${sceneIds[index]}-album.png"); background-position: center; background-size: 112.2004% auto; background-repeat: no-repeat; }
+        .scene-pending [data-scene-view="nps"] { background-image: url("assets/${sceneIds[index]}.webp"); background-position: center; background-size: 113.8958% auto; background-repeat: no-repeat; }
+        .scene-pending [data-scene-view="home"] { background-image: url("assets/${sceneIds[index]}-home.webp"); background-position: center; background-size: 112.2004% auto; background-repeat: no-repeat; }
+        .scene-pending [data-scene-view="album"] { background-image: url("assets/${sceneIds[index]}-album.webp"); background-position: center; background-size: 112.2004% auto; background-repeat: no-repeat; }
       `;
       document.head.append(initialStyle);
     })();
   </script>
+  <meta name="theme-color" content="#08090a">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Coda — An album-first Navidrome player for Mac">
+  <meta property="og:description" content="A native Mac player for Navidrome and OpenSubsonic. Albums, artwork, and your listening queue, with original-quality gapless playback.">
+  <meta property="og:image" content="assets/og-image.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" href="assets/CodaAppIcon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="stylesheet" href="site.css">
   <script type="module" src="site.mjs"></script>
 </head>
@@ -39,14 +48,14 @@
   <main>
     <section class="cinema-layout">
       <div class="cinema-copy">
-        <p class="eyebrow">Coda for macOS</p>
+        <p class="eyebrow">Navidrome player for Mac</p>
         <h1>Your music,<br>in full view.</h1>
-        <p class="intro-copy">Albums, artwork, and the queue.<br>A native player for your<br>Navidrome library.</p>
-        <a class="download" href="https://github.com/iamtoolino/coda-macos/releases/latest" target="_blank" rel="noopener">Download for Mac<span aria-hidden="true">↓</span></a>
-        <p class="requirements">macOS 26+ · Apple silicon · Your own music server</p>
+        <p class="intro-copy">Albums, artwork, and the queue. A native player for your Navidrome library.</p>
+        <a class="download" href="https://github.com/iamtoolino/coda-macos/releases/latest" target="_blank" rel="noopener">Download for Mac<span aria-hidden="true">↗</span></a>
+        <p class="requirements">macOS 26+ · Apple silicon<br>Navidrome or OpenSubsonic server<br>First launch? <a href="https://github.com/iamtoolino/coda-macos#install" target="_blank" rel="noopener">Installation help</a></p>
       </div>
       <div class="cinema-screen">
-        <div class="app-capture nps" data-scene-view="nps"><noscript><img src="assets/sigh.png" alt="Coda Now Playing with Goh-Ka artwork and the listening queue." width="1836" height="1572"></noscript></div>
+        <div class="app-capture nps" data-scene-view="nps"><noscript><img src="assets/sigh.webp" alt="Coda Now Playing with Goh-Ka artwork and the listening queue." width="1836" height="1572"></noscript></div>
         <div class="preview-controls"><button class="motion-button" type="button" data-motion hidden>Pause preview</button></div>
       </div>
     </section>
@@ -54,17 +63,25 @@
       <div class="section-heading">
         <p class="eyebrow">Made for listening</p>
         <h2>Pick an album. Stay awhile.</h2>
-        <p class="intro-copy">Original-quality, gapless playback. Navidrome and OpenSubsonic.</p>
+        <p class="intro-copy">Original-quality, gapless playback from your Navidrome or OpenSubsonic server.</p>
       </div>
       <div class="two-up">
-        <figure><div class="app-capture matched" data-scene-view="home"><noscript><img src="assets/sigh-home.png" alt="Coda Home with album artwork, artists, and a turquoise theme." width="2060" height="1606"></noscript></div><figcaption>Your collection, close by.</figcaption></figure>
-        <figure><div class="app-capture matched" data-scene-view="album"><noscript><img src="assets/sigh-album.png" alt="Coda album view for Goh-Ka, with the track list and queue." width="2060" height="1606"></noscript></div><figcaption>An album, and whatever comes next.</figcaption></figure>
+        <figure><div class="app-capture matched" data-scene-view="home"><noscript><img src="assets/sigh-home.webp" alt="Coda Home with album artwork, artists, and a turquoise theme." width="2060" height="1606"></noscript></div><figcaption>Your collection, close by.</figcaption></figure>
+        <figure><div class="app-capture matched" data-scene-view="album"><noscript><img src="assets/sigh-album.webp" alt="Coda album view for Goh-Ka, with the track list and queue." width="2060" height="1606"></noscript></div><figcaption>An album, and whatever comes next.</figcaption></figure>
       </div>
       <div class="preview-controls"><button class="motion-button" type="button" data-motion hidden>Pause preview</button></div>
+      <ul class="features" aria-label="Features">
+        <li><strong>Gapless, original quality.</strong> Your files play as they are, with no gaps between tracks.</li>
+        <li><strong>Picks up where you left off.</strong> Continue Listening remembers your place in each album.</li>
+        <li><strong>Colors from the cover.</strong> Every view takes on the artwork’s palette.</li>
+        <li><strong>ReplayGain, if you want it.</strong> Album or track gain, chosen automatically.</li>
+        <li><strong>Feels like a Mac app.</strong> Media keys, Now Playing, and Liquid Glass controls.</li>
+        <li><strong>Private by design.</strong> No analytics or tracking. Coda only talks to your server.</li>
+      </ul>
     </section>
   </main>
   <footer class="site-footer">
-    <span>Free & open source.<br><span class="secondary">An independent community project.</span></span>
+    <span>Free and open source (Apache 2.0).<br><span class="secondary">An independent community project, not affiliated with Navidrome.</span></span>
     <span class="footer-links"><a href="https://github.com/iamtoolino/coda-macos#install" target="_blank" rel="noopener">Installation help</a><a href="https://github.com/iamtoolino/coda-macos" target="_blank" rel="noopener">Source on GitHub</a></span>
   </footer>
 </body>

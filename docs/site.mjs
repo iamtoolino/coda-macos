@@ -15,7 +15,8 @@ let request = 0;
 function updateControls() {
   controls.forEach(button => {
     button.hidden = false;
-    button.textContent = paused ? 'Play preview' : 'Pause preview';
+    const icon = paused ? '<path d="M2 1l8 5-8 5z"/>' : '<path d="M2 1h2.5v10H2zM7.5 1H10v10H7.5z"/>';
+    button.innerHTML = `<svg viewBox="0 0 12 12" aria-hidden="true">${icon}</svg>${paused ? 'Play preview' : 'Pause preview'}`;
   });
 }
 
