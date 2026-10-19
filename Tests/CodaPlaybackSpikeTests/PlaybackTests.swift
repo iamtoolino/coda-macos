@@ -189,15 +189,34 @@ struct PlaybackTests {
     }
 
     backend.emit(.snapshot(PlaybackBackendSnapshot(
-      position: 1, duration: 100, bufferedUntil: 30, isPlaying: true)))
+      position: 1, duration: 100, isPlaying: true)))
     backend.emit(.snapshot(PlaybackBackendSnapshot(
-      position: 1.25, duration: 100, bufferedUntil: 31, isPlaying: true)))
+      position: 1.25, duration: 100, isPlaying: true)))
 
     #expect(playerUpdates == 0)
     #expect(timelineUpdates == 1)
     #expect(player.position == 1.25)
     #expect(player.duration == 100)
-    #expect(player.bufferedUntil == 31)
+  }
+
+  @Test("previous is available for the first track before position is published")
+  func previousIsAvailableForTheFirstTrackBeforePositionIsPublished() {
+    let backend = TestPlaybackBackend()
+    let player = PlayerController(backend: backend)
+    #expect(!player.canGoPrevious)
+
+    let entry = QueueEntry(
+      sourceID: "only", url: URL(string: "https://example.test/only")!, title: "Only")
+    player.replaceQueue([entry], startsPlaying: true)
+    #expect(player.canGoPrevious)
+
+    backend.emit(.snapshot(PlaybackBackendSnapshot(
+      position: 1, duration: 100, isPlaying: true)))
+    #expect(player.canGoPrevious)
+    player.previous()
+    #expect(player.currentIndex == 0)
+    #expect(player.position == 0)
+    #expect(backend.loadCalls.count == 1)
   }
 
   @Test("playback clock adapts its publication rate to window visibility")
@@ -221,7 +240,7 @@ struct PlaybackTests {
     player.replaceQueue([first, playing, other], startAt: 1, startsPlaying: true)
     let playbackOccurrence = player.playbackOccurrenceID
     backend.emit(.snapshot(PlaybackBackendSnapshot(
-      position: 31, duration: 120, bufferedUntil: 80, isPlaying: true)))
+      position: 31, duration: 120, isPlaying: true)))
 
     #expect(player.move(entryIDs: [first.id, playing.id], before: nil))
     #expect(player.queue.map(\.id) == [other.id, first.id, playing.id])

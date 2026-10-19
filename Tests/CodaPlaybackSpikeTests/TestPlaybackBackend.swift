@@ -32,10 +32,6 @@ final class TestPlaybackBackend: PlaybackBackend {
     updatedNextItems.append(next)
   }
 
-  func promoteAutomaticallyAdvancedItem(following: PlaybackBackendItem?) {
-    updateNext(following)
-  }
-
   func play() {}
   func pause() {}
   func seek(to seconds: Double) {}

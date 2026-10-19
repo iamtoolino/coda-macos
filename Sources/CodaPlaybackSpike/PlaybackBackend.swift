@@ -1,10 +1,10 @@
 import CMpv
 import Foundation
+import Synchronization
 
 struct PlaybackBackendSnapshot: Sendable {
   var position: Double = 0
   var duration: Double = 0
-  var bufferedUntil: Double = 0
   var isPlaying = false
   var isBuffering = false
 }
@@ -69,7 +69,6 @@ protocol PlaybackBackend: AnyObject {
 
   func load(current: PlaybackBackendItem, next: PlaybackBackendItem?, position: Double, autoplay: Bool)
   func updateNext(_ next: PlaybackBackendItem?)
-  func promoteAutomaticallyAdvancedItem(following: PlaybackBackendItem?)
   func setReplayGain(_ gainDb: Double)
   func play()
   func pause()
@@ -107,10 +106,15 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
   private var hasExpectedNext = false
   private var isLoadingItem = false
   private var intentionallyStopping = false
+  /// Set while a main-actor drain is pending, so a burst of mpv wakeups needs only one hop.
+  private nonisolated let drainIsScheduled = Atomic<Bool>(false)
 
   private nonisolated static let wakeupCallback: CodaMPVWakeupCallback = { context in
     guard let context else { return }
     let backend = Unmanaged<LibMPVPlaybackBackend>.fromOpaque(context).takeUnretainedValue()
+    guard backend.drainIsScheduled.compareExchange(
+      expected: false, desired: true, ordering: .acquiringAndReleasing
+    ).exchanged else { return }
     Task { @MainActor in
       backend.drainEvents()
     }
@@ -168,10 +172,6 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
     )
   }
 
-  func promoteAutomaticallyAdvancedItem(following: PlaybackBackendItem?) {
-    updateNext(following)
-  }
-
   func play() {
     coda_mpv_set_paused(engine, false)
   }
@@ -212,12 +212,13 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
   }
 
   private func drainEvents() {
+    // Clear before draining: a wakeup that arrives mid-drain schedules another pass.
+    drainIsScheduled.store(false, ordering: .releasing)
     var event = CodaMPVEvent(
       type: CODA_MPV_EVENT_NONE,
       playlist_entry_id: 0,
       position: 0,
       duration: 0,
-      buffered_until: 0,
       is_playing: false,
       is_buffering: false,
       is_idle: false
@@ -303,7 +304,6 @@ private final class LibMPVPlaybackBackend: PlaybackBackend {
     snapshot = PlaybackBackendSnapshot(
       position: event.position.isFinite ? max(0, event.position) : 0,
       duration: event.duration.isFinite ? max(0, event.duration) : 0,
-      bufferedUntil: event.buffered_until.isFinite ? max(0, event.buffered_until) : 0,
       isPlaying: hasLoadedItem && event.is_playing,
       isBuffering: event.is_buffering
     )

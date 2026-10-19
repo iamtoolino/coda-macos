@@ -22,7 +22,6 @@ typedef struct CodaMPVEvent {
   int64_t playlist_entry_id;
   double position;
   double duration;
-  double buffered_until;
   bool is_playing;
   bool is_buffering;
   bool is_idle;

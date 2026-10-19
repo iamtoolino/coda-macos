@@ -10,7 +10,6 @@ enum {
   PROPERTY_DURATION,
   PROPERTY_PAUSE,
   PROPERTY_BUFFERING,
-  PROPERTY_CACHE_DURATION,
   PROPERTY_IDLE,
 };
 
@@ -108,7 +107,6 @@ CodaMPV *coda_mpv_create(void) {
   observe(engine, PROPERTY_DURATION, "duration", MPV_FORMAT_DOUBLE);
   observe(engine, PROPERTY_PAUSE, "pause", MPV_FORMAT_FLAG);
   observe(engine, PROPERTY_BUFFERING, "paused-for-cache", MPV_FORMAT_FLAG);
-  observe(engine, PROPERTY_CACHE_DURATION, "demuxer-cache-duration", MPV_FORMAT_DOUBLE);
   observe(engine, PROPERTY_IDLE, "idle-active", MPV_FORMAT_FLAG);
   return engine;
 }
@@ -177,9 +175,6 @@ bool coda_mpv_next_event(CodaMPV *engine, CodaMPVEvent *output) {
     case PROPERTY_BUFFERING:
       engine->snapshot.is_buffering = *(int *)property->data;
       break;
-    case PROPERTY_CACHE_DURATION:
-      engine->snapshot.buffered_until = engine->snapshot.position + *(double *)property->data;
-      break;
     case PROPERTY_IDLE:
       engine->snapshot.is_idle = *(int *)property->data;
       *output = engine->snapshot;
@@ -222,6 +217,10 @@ CodaMPVPlaylistState coda_mpv_load(
   // with the previous item's state. The per-file `start` option is mpv's
   // native initial-seek path and completes before playback begins.
   set_flag_synchronously(engine, "pause", !autoplay);
+  // Property changes are only reported when values change, so a value cached
+  // from the previous file could otherwise be re-emitted with the next event.
+  engine->snapshot.position = position;
+  engine->snapshot.duration = 0;
   load_with_gain(engine, current_url, "replace", position, current_gain_db);
   if (next_url) {
     load_with_gain(engine, next_url, "append", 0, next_gain_db);

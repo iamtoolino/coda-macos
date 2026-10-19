@@ -85,7 +85,6 @@ final class PlayerController: ObservableObject {
   @Published private(set) var playbackEngineName = "Unknown"
   @Published private(set) var queueTopScrollRequest = 0
   @Published private(set) var queueCurrentScrollRequest = 0
-  private(set) var bufferedUntil: Double = 0
 
   let timeline = PlaybackTimeline()
 
@@ -111,9 +110,10 @@ final class PlayerController: ObservableObject {
     return queue[currentIndex + 1]
   }
 
+  /// Previous always has an effect on a loaded entry: it restarts the track at the first entry
+  /// or after the first few seconds, so it must not depend on the unpublished playback position.
   var canGoPrevious: Bool {
-    guard let currentIndex else { return false }
-    return currentIndex > 0 || position > 3
+    currentIndex != nil
   }
 
   var canGoNext: Bool {
@@ -423,7 +423,6 @@ final class PlayerController: ObservableObject {
     }
     prepareNextItem(after: index)
     timeline.reset(position: max(0, position))
-    bufferedUntil = 0
     errorMessage = nil
     isPlaying = autoplay
     status = autoplay ? "Playing" : "Ready"
@@ -480,7 +479,6 @@ final class PlayerController: ObservableObject {
         duration: snapshot.duration,
         publish: playingChanged || abs(previousDuration - snapshot.duration) > 0.5
       )
-      bufferedUntil = snapshot.bufferedUntil
       if playingChanged {
         isPlaying = snapshot.isPlaying
         restartTimelinePublicationTask()
@@ -524,10 +522,9 @@ final class PlayerController: ObservableObject {
       currentReplayGainDb = preparedNextItem?.replayGainDb ?? 0
       hasStartedCurrentOccurrence = true
       timeline.reset()
-      bufferedUntil = 0
       errorMessage = nil
       prepareNextItem(after: nextIndex)
-      backend.promoteAutomaticallyAdvancedItem(following: preparedNextItem)
+      backend.updateNext(preparedNextItem)
       status = isPlaying ? "Playing" : "Ready"
       restartTimelinePublicationTask()
       updateNowPlayingInfo()
@@ -569,7 +566,6 @@ final class PlayerController: ObservableObject {
       hasStartedCurrentOccurrence = false
       isPlaying = false
       timeline.reset()
-      bufferedUntil = 0
       status = "Finished"
       restartTimelinePublicationTask()
       MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
@@ -603,7 +599,6 @@ final class PlayerController: ObservableObject {
     isPlaying = false
     restartTimelinePublicationTask()
     timeline.reset()
-    bufferedUntil = 0
     status = "Nothing queued"
     errorMessage = nil
     MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
