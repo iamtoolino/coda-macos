@@ -46,8 +46,6 @@ enum NowPlayingAutomaticPresentationTiming {
 @MainActor
 final class NowPlayingPresentationController: ObservableObject {
   private static let automaticallyPresentsKey = "automatically-show-now-playing"
-  private static let experimentalAutomaticallyPresentsKey =
-    "automatically-shows-now-playing"
 
   @Published private(set) var handoffRevealRequest: UUID?
   @Published private(set) var isPresented = false
@@ -83,12 +81,7 @@ final class NowPlayingPresentationController: ObservableObject {
 
   init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
-    automaticallyPresents =
-      defaults.object(forKey: Self.automaticallyPresentsKey) as? Bool
-      ?? defaults.object(forKey: Self.experimentalAutomaticallyPresentsKey) as? Bool
-      ?? true
-    defaults.set(automaticallyPresents, forKey: Self.automaticallyPresentsKey)
-    defaults.removeObject(forKey: Self.experimentalAutomaticallyPresentsKey)
+    automaticallyPresents = defaults.object(forKey: Self.automaticallyPresentsKey) as? Bool ?? true
   }
 
   private var presentationAccent: ArtworkColor? {
@@ -272,13 +265,16 @@ final class NowPlayingPresentationController: ObservableObject {
   private func scheduleAutomaticPresentation(
     after delay: Duration? = nil
   ) {
-    cancelAutomaticPresentation()
     guard automaticallyPresents,
       !isPresented,
       hasEstablishedConnection,
       playbackKey != nil,
       isPlaying
-    else { return }
+    else {
+      cancelAutomaticPresentation()
+      return
+    }
+    cancelAutomaticPresentationRetry()
 
     let delay = delay ?? (
       isApplicationActive == false
@@ -287,26 +283,37 @@ final class NowPlayingPresentationController: ObservableObject {
     )
     let clock = ContinuousClock()
     let deadline = clock.now.advanced(by: delay)
+    let previousDeadline = automaticPresentationDeadline
     automaticPresentationDeadline = deadline
+    // Interaction only pushes the deadline later; the running task re-sleeps until it,
+    // so frequent scroll and drag events do not recreate the task.
+    if inactivityTask != nil, let previousDeadline, previousDeadline <= deadline { return }
 
+    inactivityTask?.cancel()
     inactivityTask = Task { @MainActor [weak self] in
-      do {
-        try await clock.sleep(until: deadline)
-      } catch {
+      while true {
+        guard let deadline = self?.automaticPresentationDeadline else { return }
+        if clock.now < deadline {
+          do {
+            try await clock.sleep(until: deadline)
+          } catch {
+            return
+          }
+          continue
+        }
+        guard let self else { return }
+        self.inactivityTask = nil
+        self.automaticPresentationDeadline = nil
+        guard self.automaticallyPresents,
+          !self.isPresented,
+          self.phase == .hidden,
+          self.hasEstablishedConnection,
+          self.playbackKey != nil,
+          self.isPlaying
+        else { return }
+        self.present(automatically: true)
         return
       }
-      guard let self,
-        self.automaticPresentationDeadline == deadline,
-        self.automaticallyPresents,
-        !self.isPresented,
-        self.phase == .hidden,
-        self.hasEstablishedConnection,
-        self.playbackKey != nil,
-        self.isPlaying
-      else { return }
-      self.inactivityTask = nil
-      self.automaticPresentationDeadline = nil
-      self.present(automatically: true)
     }
   }
 
@@ -324,6 +331,10 @@ final class NowPlayingPresentationController: ObservableObject {
     inactivityTask?.cancel()
     inactivityTask = nil
     automaticPresentationDeadline = nil
+    cancelAutomaticPresentationRetry()
+  }
+
+  private func cancelAutomaticPresentationRetry() {
     if presentationRetryIsAutomatic {
       presentationRetryTask?.cancel()
       presentationRetryTask = nil

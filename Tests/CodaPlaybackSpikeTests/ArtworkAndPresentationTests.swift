@@ -695,19 +695,6 @@ struct ArtworkAndPresentationTests {
     #expect(!NowPlayingPresentationController(defaults: defaults).automaticallyPresents)
   }
 
-  @Test("now playing preference migrates the experimental key")
-  func nowPlayingPreferenceMigratesTheExperimentalKey() throws {
-    let suiteName = "CodaTests-NowPlayingMigration-\(UUID().uuidString)"
-    let defaults = try #require(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
-    defaults.set(false, forKey: "automatically-shows-now-playing")
-
-    let presentation = NowPlayingPresentationController(defaults: defaults)
-    #expect(!presentation.automaticallyPresents)
-    #expect(defaults.object(forKey: "automatically-show-now-playing") as? Bool == false)
-    #expect(defaults.object(forKey: "automatically-shows-now-playing") == nil)
-  }
-
   @Test("manual now playing remains available when automatic presentation is off")
   func manualNowPlayingRemainsAvailableWhenAutomaticPresentationIsOff() throws {
     let suiteName = "CodaTests-ManualNowPlaying-\(UUID().uuidString)"
