@@ -479,8 +479,8 @@ struct ArtworkAndPresentationTests {
   }
 
   @Test("generated Coda cover extracts a warm tint")
-  func generatedCodaCoverExtractsAWarmTint() {
-    let accent = AlbumArtworkLoader.extractAccent(from: CodaPlaceholderArtwork.image)
+  func generatedCodaCoverExtractsAWarmTint() async {
+    let accent = await AlbumArtworkLoader.extractAccent(from: CodaPlaceholderArtwork.image)
     #expect(accent.red > accent.green)
     #expect(accent.green > accent.blue)
     #expect(accent.red - accent.blue > 0.01)

@@ -65,7 +65,7 @@ final class ArtworkTreatmentSettings: ObservableObject {
   private static let showsRatingLabelsKey = "shows-album-rating-labels"
 
   @Published var accent: ArtworkColor = .fallback
-  @Published var artwork: NSImage?
+  private(set) var artwork: NSImage?
   @Published private(set) var backgroundTheme = ArtworkBackgroundTheme(
     artwork: nil,
     accent: .fallback
@@ -302,48 +302,25 @@ final class AlbumArtworkLoader: ObservableObject {
 
     let artwork = await ArtworkImageCache.shared.image(for: url)
     guard loadedRequest == request else { return }
+    let extractedAccent = await Self.extractAccent(from: artwork)
+    guard loadedRequest == request else { return }
     image = artwork
-    accent = Self.extractAccent(from: artwork)
+    accent = extractedAccent
   }
 
-  static func extractAccent(from image: NSImage) -> ArtworkColor {
-    let dimension = 32
-    let size = NSSize(width: dimension, height: dimension)
-    guard let bitmap = NSBitmapImageRep(
-      bitmapDataPlanes: nil,
-      pixelsWide: dimension,
-      pixelsHigh: dimension,
-      bitsPerSample: 8,
-      samplesPerPixel: 4,
-      hasAlpha: true,
-      isPlanar: false,
-      colorSpaceName: .deviceRGB,
-      bytesPerRow: 0,
-      bitsPerPixel: 0
-    ) else { return .fallback }
-
-    bitmap.size = size
-    NSGraphicsContext.saveGraphicsState()
-    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: bitmap)
-    image.draw(in: NSRect(origin: .zero, size: size), from: .zero, operation: .copy, fraction: 1)
-    NSGraphicsContext.restoreGraphicsState()
-
-    var pixels: [ArtworkPixel] = []
-    pixels.reserveCapacity(dimension * dimension)
-    for y in 0..<dimension {
-      for x in 0..<dimension {
-        guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
-        pixels.append(
-          ArtworkPixel(
-            red: Double(color.redComponent),
-            green: Double(color.greenComponent),
-            blue: Double(color.blueComponent),
-            alpha: Double(color.alphaComponent)
-          )
-        )
-      }
+  /// Uses the accent computed while decoding when available; otherwise samples the image
+  /// away from the main actor.
+  static func extractAccent(from image: NSImage) async -> ArtworkColor {
+    if let accent = ArtworkImageCache.shared.cachedAccent(for: image) { return accent }
+    guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+      return .fallback
     }
-    return ArtworkAccentSelector.select(from: pixels).color
+    return await accent(from: cgImage)
+  }
+
+  @concurrent
+  private nonisolated static func accent(from image: CGImage) async -> ArtworkColor {
+    ArtworkAccentExtraction.accent(from: image)
   }
 }
 

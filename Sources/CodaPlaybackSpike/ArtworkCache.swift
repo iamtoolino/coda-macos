@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import ImageIO
 
 enum ArtworkURLCachePolicy {
   static let memoryCapacity = 256 * 1_024 * 1_024
@@ -39,6 +40,8 @@ final class ArtworkImageCache: ObservableObject {
   }
 
   private let images = NSCache<NSURL, NSImage>()
+  /// Accents computed while decoding, keyed weakly by the decoded image.
+  private let accents = NSMapTable<NSImage, ArtworkAccentBox>.weakToStrongObjects()
   private var loadingTasks: [LoadingRequest: Task<Data?, Never>] = [:]
   private let responseCache: URLCache
   private let session: URLSession
@@ -85,15 +88,41 @@ final class ArtworkImageCache: ObservableObject {
     guard loadingRequest.generation == generation else {
       return CodaPlaceholderArtwork.image
     }
-    guard let data, let image = NSImage(data: data) else {
+    guard let data, let decoded = await Self.decode(data) else {
       return CodaPlaceholderArtwork.image
     }
+    guard loadingRequest.generation == generation else {
+      return CodaPlaceholderArtwork.image
+    }
+    let image = NSImage(
+      cgImage: decoded.image,
+      size: NSSize(width: decoded.image.width, height: decoded.image.height)
+    )
+    accents.setObject(ArtworkAccentBox(decoded.accent), forKey: image)
     images.setObject(
       image,
       forKey: url as NSURL,
       cost: Self.decodedMemoryCost(of: image, fallback: data.count)
     )
     return image
+  }
+
+  func cachedAccent(for image: NSImage) -> ArtworkColor? {
+    accents.object(forKey: image)?.accent
+  }
+
+  /// Decodes fully and derives the accent away from the main actor, so drawing the
+  /// artwork later does not decode it on the main thread.
+  @concurrent
+  private nonisolated static func decode(_ data: Data) async -> DecodedArtwork? {
+    guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+      let image = CGImageSourceCreateImageAtIndex(
+        source,
+        0,
+        [kCGImageSourceShouldCacheImmediately: true] as CFDictionary
+      )
+    else { return nil }
+    return DecodedArtwork(image: image, accent: ArtworkAccentExtraction.accent(from: image))
   }
 
   func invalidate(urls: [URL]) async {
@@ -128,5 +157,66 @@ final class ArtworkImageCache: ObservableObject {
     }
     guard let largestRepresentation else { return fallback }
     return max(fallback, largestRepresentation.pixelsWide * largestRepresentation.pixelsHigh * 4)
+  }
+}
+
+private struct DecodedArtwork: Sendable {
+  let image: CGImage
+  let accent: ArtworkColor
+}
+
+private final class ArtworkAccentBox {
+  let accent: ArtworkColor
+
+  init(_ accent: ArtworkColor) {
+    self.accent = accent
+  }
+}
+
+enum ArtworkAccentExtraction {
+  static let sampleDimension = 32
+
+  /// Samples a small sRGB thumbnail; pure, so it can run on any thread.
+  static func accent(from image: CGImage) -> ArtworkColor {
+    let dimension = sampleDimension
+    let bytesPerRow = dimension * 4
+    var bytes = [UInt8](repeating: 0, count: dimension * bytesPerRow)
+    let drawn = bytes.withUnsafeMutableBytes { buffer -> Bool in
+      guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+        let context = CGContext(
+          data: buffer.baseAddress,
+          width: dimension,
+          height: dimension,
+          bitsPerComponent: 8,
+          bytesPerRow: bytesPerRow,
+          space: colorSpace,
+          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
+      else { return false }
+      context.interpolationQuality = .medium
+      context.draw(image, in: CGRect(x: 0, y: 0, width: dimension, height: dimension))
+      return true
+    }
+    guard drawn else { return .fallback }
+
+    var pixels: [ArtworkPixel] = []
+    pixels.reserveCapacity(dimension * dimension)
+    for offset in stride(from: 0, to: bytes.count, by: 4) {
+      let alpha = Double(bytes[offset + 3]) / 255
+      guard alpha > 0 else {
+        pixels.append(ArtworkPixel(red: 0, green: 0, blue: 0, alpha: 0))
+        continue
+      }
+      // Undo premultiplication so translucent pixels keep their hue.
+      pixels.append(
+        ArtworkPixel(
+          red: min(1, Double(bytes[offset]) / 255 / alpha),
+          green: min(1, Double(bytes[offset + 1]) / 255 / alpha),
+          blue: min(1, Double(bytes[offset + 2]) / 255 / alpha),
+          alpha: alpha
+        )
+      )
+    }
+    return ArtworkAccentSelector.select(from: pixels).color
   }
 }

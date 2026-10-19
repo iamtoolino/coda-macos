@@ -114,9 +114,11 @@ final class PlaybackArtworkCoordinator: ObservableObject {
       guard let self else { return }
       let image = await self.imageLoader(request.standardArtworkURL)
       guard !Task.isCancelled, self.currentRequest == request else { return }
+      let accent = await AlbumArtworkLoader.extractAccent(from: image)
+      guard !Task.isCancelled, self.currentRequest == request else { return }
       self.treatments.rememberPlaybackArtwork(
         image,
-        accent: AlbumArtworkLoader.extractAccent(from: image),
+        accent: accent,
         identity: standardIdentity
       )
       self.applyDisplayContext()
@@ -126,10 +128,12 @@ final class PlaybackArtworkCoordinator: ObservableObject {
       guard let self else { return }
       let image = await self.imageLoader(request.nowPlayingArtworkURL)
       guard !Task.isCancelled, self.currentRequest == request else { return }
+      let accent = await AlbumArtworkLoader.extractAccent(from: image)
+      guard !Task.isCancelled, self.currentRequest == request else { return }
       self.presentation.prepare(
         playbackKey: playbackKey,
         artwork: image,
-        accent: AlbumArtworkLoader.extractAccent(from: image)
+        accent: accent
       )
     }
   }
