@@ -1,0 +1,28 @@
+Trim the iTunSMPB end padding of MP4/M4A tracks without an edit list.
+
+Apple's AAC encoder (iTunes, Music, afconvert) records priming and trailing
+padding only in the iTunSMPB tag. FFmpeg 8.1 used the priming value but
+played the trailing padding, adding a gap at every gapless transition.
+Backported from FFmpeg 9.0's iTunSMPB handling; the priming path is unchanged.
+
+--- a/libavformat/mov.c
++++ b/libavformat/mov.c
+@@ -5462,6 +5462,18 @@
+             if(sscanf(val, "%*X %X %X %X", &priming, &remainder, &samples) == 3){
+                 if(priming>0 && priming<16384)
+                     sc->start_pad = priming;
++                if (remainder > 0) {
++                    int64_t duration = av_rescale_q(st->duration, st->time_base,
++                                                    (AVRational){ 1, st->codecpar->sample_rate });
++                    remainder = av_rescale_q(remainder, st->time_base,
++                                             (AVRational){ 1, st->codecpar->sample_rate });
++                    samples = av_rescale_q(samples, st->time_base,
++                                           (AVRational){ 1, st->codecpar->sample_rate });
++                    if (duration > remainder && duration > samples) {
++                        ffstream(st)->first_discard_sample = duration - remainder;
++                        ffstream(st)->last_discard_sample = duration;
++                    }
++                }
+             }
+         }
+         if (strcmp(key, "cdec") != 0) {

@@ -51,8 +51,18 @@ fetch \
   "$downloads/mpv-${mpv_version}.tar.gz" \
   "$mpv_sha"
 
-if [[ ! -d "$sources/ffmpeg-${ffmpeg_version}" ]]; then
+# Small upstream-style fixes for exact gapless track lengths; see the patch headers.
+ffmpeg_patches=("$root"/scripts/patches/ffmpeg/*.patch(N))
+ffmpeg_patch_fingerprint="$(cat "${ffmpeg_patches[@]}" </dev/null | shasum -a 256 | awk '{ print $1 }')"
+ffmpeg_source="$sources/ffmpeg-${ffmpeg_version}"
+ffmpeg_patch_stamp="$ffmpeg_source/.coda-patches"
+if [[ ! -f "$ffmpeg_patch_stamp" || "$(<"$ffmpeg_patch_stamp")" != "$ffmpeg_patch_fingerprint" ]]; then
+  rm -rf "$ffmpeg_source"
   tar -xf "$downloads/ffmpeg-${ffmpeg_version}.tar.xz" -C "$sources"
+  for patch_file in "${ffmpeg_patches[@]}"; do
+    patch -d "$ffmpeg_source" -p1 --forward --quiet < "$patch_file"
+  done
+  print -rn -- "$ffmpeg_patch_fingerprint" > "$ffmpeg_patch_stamp"
 fi
 if [[ ! -d "$sources/libass-${libass_version}" ]]; then
   tar -xf "$downloads/libass-${libass_version}.tar.xz" -C "$sources"
@@ -83,7 +93,7 @@ architecture $(uname -m)
 SDK $(xcrun --sdk macosx --show-sdk-version)
 compiler $(clang --version | head -1)
 mpv ${mpv_version} ${mpv_sha}
-FFmpeg ${ffmpeg_version} ${ffmpeg_sha}
+FFmpeg ${ffmpeg_version} ${ffmpeg_sha} patches ${ffmpeg_patch_fingerprint}
 libass ${libass_version} ${libass_sha}
 libplacebo ${libplacebo_version} ${libplacebo_sha}
 ${brew_dependency_versions}"
@@ -288,7 +298,7 @@ mkdir -p "${dependency_manifest:h}"
   print "Components"
   print -r -- "----------"
   print "mpv ${mpv_version} | LGPL-2.1-or-later | dynamic | https://github.com/mpv-player/mpv"
-  print "FFmpeg ${ffmpeg_version} | LGPL-2.1-or-later | static | https://ffmpeg.org"
+  print "FFmpeg ${ffmpeg_version} with Coda's scripts/patches/ffmpeg | LGPL-2.1-or-later | static | https://ffmpeg.org"
   print "libass ${libass_version} | ISC | static | https://github.com/libass/libass"
   print "libplacebo ${libplacebo_version} | LGPL-2.1-or-later | static | https://code.videolan.org/videolan/libplacebo"
   print "libunibreak $(brew_version libunibreak) | Zlib | static | https://github.com/adah1972/libunibreak"

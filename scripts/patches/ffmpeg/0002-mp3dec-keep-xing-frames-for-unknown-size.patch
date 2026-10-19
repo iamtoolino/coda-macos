@@ -1,0 +1,23 @@
+Keep MP3 gapless metadata when the stream size is unknown.
+
+avio_size() is negative for an HTTP response without Content-Length. Stored
+in a uint64_t it became a huge file size, so the Xing/LAME frame count was
+discarded as an "invalid concatenated file" and the encoder padding at the
+end of each track was played.
+
+--- a/libavformat/mp3dec.c
++++ b/libavformat/mp3dec.c
+@@ -173,9 +173,11 @@
+ 
+     MP3DecContext *mp3 = s->priv_data;
+     static const int64_t xing_offtbl[2][2] = {{32, 17}, {17,9}};
+-    uint64_t fsize = avio_size(s->pb);
++    int64_t size = avio_size(s->pb);
+     int64_t pos = avio_tell(s->pb);
+-    fsize = fsize >= pos ? fsize - pos : 0;
++    /* An unknown size (for example an HTTP stream without Content-Length) is
++     * negative; it must not be compared as a huge unsigned file size. */
++    uint64_t fsize = size >= pos ? size - pos : 0;
+ 
+     /* Check for Xing / Info tag */
+     avio_skip(s->pb, xing_offtbl[c->lsf == 1][c->nb_channels == 1]);

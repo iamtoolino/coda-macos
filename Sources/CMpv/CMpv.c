@@ -93,6 +93,9 @@ CodaMPV *coda_mpv_create(void) {
     {"volume-gain-min", "-150"},
     {"volume-gain-max", "150"},
     {"network-timeout", "10"},
+    // mpv skips stream probing for MP4 by default; without it FFmpeg does not
+    // know the AAC frame size and cannot trim the encoder padding at track end.
+    {"demuxer-lavf-probe-info", "yes"},
   };
   for (size_t index = 0; index < sizeof(options) / sizeof(options[0]); index++)
     mpv_set_option_string(engine->handle, options[index][0], options[index][1]);
@@ -196,7 +199,12 @@ static void load_with_gain(CodaMPV *engine, const char *url, const char *mode,
                            double position, double gain_db) {
   char options[160];
   // Per-file options are applied inside mpv before audio initialization, including prefetch.
-  snprintf(options, sizeof(options), "start=%.9f,volume-gain=%.9f", position, gain_db);
+  // A start from the beginning omits `start`: an explicit initial seek to zero
+  // drops the first Vorbis samples of HTTP streams and breaks gapless playback.
+  if (position > 0)
+    snprintf(options, sizeof(options), "start=%.9f,volume-gain=%.9f", position, gain_db);
+  else
+    snprintf(options, sizeof(options), "volume-gain=%.9f", gain_db);
   const char *load[] = {"loadfile", url, mode, "-1", options, NULL};
   playlist_command(engine, load);
 }
@@ -214,8 +222,9 @@ CodaMPVPlaylistState coda_mpv_load(
     return (CodaMPVPlaylistState){.current_entry_id = -1, .next_entry_id = -1};
 
   // Apply the initial pause state before loading so mpv cannot begin decoding
-  // with the previous item's state. The per-file `start` option is mpv's
-  // native initial-seek path and completes before playback begins.
+  // with the previous item's state. A nonzero resume position uses the per-file
+  // `start` option, mpv's native initial-seek path, which completes before
+  // playback begins.
   set_flag_synchronously(engine, "pause", !autoplay);
   // Property changes are only reported when values change, so a value cached
   // from the previous file could otherwise be re-emitted with the next event.

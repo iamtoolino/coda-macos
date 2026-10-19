@@ -98,6 +98,20 @@ bundled libmpv to WAV files under `.build/replaygain-output-check/`, and checks 
 per-file transitions, updated same-URL next gain and disabling gain. It uses no server,
 credentials or audio device. Policy and occurrence-state checks remain in `swift test`.
 
+Run the offline gapless audio-output check after building libmpv:
+
+```sh
+python3 scripts/check-gapless-output.py
+```
+
+It encodes synthetic tracks with odd sample counts as FLAC, Opus, MP3, AAC/M4A (FFmpeg and,
+when `afconvert` is present, Apple's encoder) and Ogg Vorbis, then renders queues through the
+production C bridge and bundled libmpv. Each case serves the files locally, over HTTP with
+ranges, and over HTTP without a length, and requires exactly the encoded number of samples with
+no shifted or missing audio at any transition. It needs the `ffmpeg` command-line tool; formats
+whose encoder Homebrew's FFmpeg lacks (for example `libvorbis`) are skipped. Bundled FFmpeg
+carries the small gapless fixes in `scripts/patches/ffmpeg/`.
+
 The platform-independent ReplayGain behaviour is specified in
 [docs/replaygain.md](docs/replaygain.md).
 

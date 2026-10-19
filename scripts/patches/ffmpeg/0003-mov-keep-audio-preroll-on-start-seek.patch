@@ -1,0 +1,31 @@
+Keep the AAC priming when seeking an MP4/M4A track to its start.
+
+A seek to the start of an AAC track landed on the first presented packet,
+after the encoder priming (an edit list's discarded pre-roll, or the start
+padding recorded only in iTunSMPB). The decoder then started without its
+overlap frame and the first ~20-40 ms of the track faded in from silence.
+mpv performs such a seek when it opens the first file of a playback session.
+Step back to the first packet in that case, so the seek matches a read from
+the beginning; the existing start-padding skip removes the priming again.
+
+--- a/libavformat/mov.c
++++ b/libavformat/mov.c
+@@ -11685,6 +11685,18 @@
+             break;
+ 
+         timestamp = next_ts;
++    }
++
++    /* Seeking to the start must include the encoder priming (an edit list's
++     * discarded pre-roll or the iTunSMPB start padding), exactly as when reading
++     * from the beginning; otherwise the first decoded frame lacks its overlap
++     * and fades in. The start padding skip then removes the priming again. */
++    if (st->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
++        while (sample > 0 &&
++               ((sti->index_entries[sample - 1].flags & AVINDEX_DISCARD_FRAME) ||
++                av_rescale_q(sti->index_entries[sample].timestamp - sti->index_entries[0].timestamp,
++                             st->time_base, (AVRational){ 1, st->codecpar->sample_rate }) < sc->start_pad))
++            sample--;
+     }
+ 
+     mov_current_sample_set(sc, sample);
