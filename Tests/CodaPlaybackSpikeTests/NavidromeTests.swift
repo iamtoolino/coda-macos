@@ -11,10 +11,9 @@ import Testing
 struct NavidromeTests {
   @Test("stale session generations are rejected")
   func staleSessionGenerationsAreRejected() {
-    let requested = UUID()
-    #expect(AppSession.requestMatchesCurrentGeneration(requested, current: requested))
-    #expect(!AppSession.requestMatchesCurrentGeneration(requested, current: UUID()))
-    #expect(!AppSession.requestMatchesCurrentGeneration(requested, current: nil))
+    let session = AppSession(loadCredentials: false)
+    #expect(session.activeSessionID == nil)
+    #expect(!session.isCurrentSession(UUID()))
   }
 
   @Test("termination deadline does not wait for a cancellation-resistant save")

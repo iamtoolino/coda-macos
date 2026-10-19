@@ -152,19 +152,16 @@ final class AppSession: ObservableObject {
     connectionState = .connecting
     do {
       guard let login = try await Self.loadStoredLogin() else {
-        guard Self.requestMatchesCurrentGeneration(attemptID, current: connectionAttemptID)
-        else { return }
+        guard attemptID == connectionAttemptID else { return }
         resetConnectionState(to: .disconnected)
         return
       }
-      guard Self.requestMatchesCurrentGeneration(attemptID, current: connectionAttemptID)
-      else { return }
+      guard attemptID == connectionAttemptID else { return }
       try await establishConnection(configuration: login.configuration, attemptID: attemptID)
     } catch is CancellationError {
       return
     } catch {
-      guard Self.requestMatchesCurrentGeneration(attemptID, current: connectionAttemptID)
-      else { return }
+      guard attemptID == connectionAttemptID else { return }
       handleConnectionFailure(error, configuration: configuration)
     }
   }
@@ -188,8 +185,7 @@ final class AppSession: ObservableObject {
     } catch is CancellationError {
       return
     } catch {
-      guard Self.requestMatchesCurrentGeneration(attemptID, current: connectionAttemptID)
-      else { return }
+      guard attemptID == connectionAttemptID else { return }
       handleConnectionFailure(error, configuration: configuration)
     }
   }
@@ -228,8 +224,7 @@ final class AppSession: ObservableObject {
   ) async throws {
     let attemptID = requestedAttemptID ?? UUID()
     if requestedAttemptID != nil {
-      guard Self.requestMatchesCurrentGeneration(attemptID, current: connectionAttemptID)
-      else { throw CancellationError() }
+      guard attemptID == connectionAttemptID else { throw CancellationError() }
     }
     prepareForConnection(
       configuration: configuration,
@@ -239,16 +234,14 @@ final class AppSession: ObservableObject {
     let client = NavidromeClient(configuration: configuration)
     let serverDetails = try await client.ping()
     try Task.checkCancellation()
-    guard Self.requestMatchesCurrentGeneration(attemptID, current: connectionAttemptID)
-    else { throw CancellationError() }
+    guard attemptID == connectionAttemptID else { throw CancellationError() }
     if let loginToStore {
       // Do not publish a connected session while Sign Out could race an older save.
       try await Task.detached(priority: .userInitiated) {
         try CredentialStore.save(loginToStore)
       }.value
       try Task.checkCancellation()
-      guard Self.requestMatchesCurrentGeneration(attemptID, current: connectionAttemptID)
-      else { throw CancellationError() }
+      guard attemptID == connectionAttemptID else { throw CancellationError() }
     }
     self.client = client
     self.serverDetails = serverDetails
@@ -320,12 +313,8 @@ final class AppSession: ObservableObject {
     rootToken = UUID()
   }
 
-  static func requestMatchesCurrentGeneration(_ requested: UUID, current: UUID?) -> Bool {
-    requested == current
-  }
-
   func isCurrentSession(_ sessionID: UUID) -> Bool {
-    Self.requestMatchesCurrentGeneration(sessionID, current: activeSessionID)
+    sessionID == activeSessionID
   }
 
   func sessionRequestContext() -> SessionRequestContext? {
