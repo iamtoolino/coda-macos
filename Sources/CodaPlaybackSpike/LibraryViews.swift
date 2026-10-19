@@ -235,6 +235,7 @@ struct SearchView: View {
       }
       .padding(.vertical, 20)
       .padding(.bottom, floatingPlaybackDockScrollClearance)
+      .background(NativeScrollIndicators())
     }
     .navigationTitle("Search")
     .focusedSceneValue(
@@ -465,7 +466,7 @@ struct ArtistsView: View {
           .padding(.top, 18)
           .padding(.bottom, 22)
           .padding(.bottom, floatingPlaybackDockScrollClearance)
-          .background(NativeScrollIndicators(visibility: .inherited))
+          .background(NativeScrollIndicators())
         }
       }
     }
@@ -583,7 +584,7 @@ struct AlbumsView: View {
           .padding(.top, 18)
           .padding(.bottom, 22)
           .padding(.bottom, floatingPlaybackDockScrollClearance)
-          .background(NativeScrollIndicators(visibility: .inherited))
+          .background(NativeScrollIndicators())
         }
       }
     }
@@ -829,7 +830,7 @@ struct ArtistDetailView: View {
     title: String,
     availableWidth: CGFloat
   ) -> some View {
-    let leadingInset: CGFloat = 37
+    let leadingInset: CGFloat = 22
     let trailingInset: CGFloat = 22
     let columns: [GridItem]
     let spacing: CGFloat = 18
@@ -855,8 +856,9 @@ struct ArtistDetailView: View {
 
     return VStack(alignment: .leading, spacing: 18) {
       Text(title)
-        .font(.system(size: 18, weight: .semibold))
-        .foregroundStyle(.primary.opacity(0.78))
+        .font(.title2.bold())
+        .foregroundStyle(.primary)
+        .accessibilityAddTraits(.isHeader)
 
       LazyVGrid(
         columns: columns,
@@ -950,15 +952,17 @@ private struct ArtistCodaHero: View {
           .frame(maxWidth: .infinity, alignment: .leading)
           .layoutPriority(1)
 
-        if page.artist.isVariousArtists {
-          Text("Compilation collection")
-            .font(.callout)
+        if let subtitle {
+          Text(subtitle)
+            .font(.title3)
             .foregroundStyle(.secondary)
+            .lineLimit(1)
         }
 
-        Text("\(page.albums.count) albums")
+        Text(summary)
           .font(.callout)
           .foregroundStyle(.secondary)
+          .lineLimit(1)
 
         CollectionPlaybackControls(
           collectionKind: page.artist.isVariousArtists ? "compilation collection" : "artist",
@@ -971,7 +975,7 @@ private struct ArtistCodaHero: View {
       }
       .frame(maxWidth: .infinity, alignment: .leading)
     }
-    .padding(.leading, 22)
+    .padding(.leading, metrics.leadingPadding)
     .padding(.trailing, metrics.trailingPadding)
     .padding(.bottom, 10)
     .frame(height: metrics.height)
@@ -980,6 +984,19 @@ private struct ArtistCodaHero: View {
 
   private var metrics: CollectionHeroMetrics {
     CollectionHeroMetrics(width: availableWidth)
+  }
+
+  private var subtitle: String? {
+    if page.artist.isVariousArtists { return "Compilation collection" }
+    let genres = page.topGenres(limit: 2)
+    return genres.isEmpty ? nil : genres.joined(separator: " · ")
+  }
+
+  /// A compact career line: "1983–2016 · 10 albums".
+  private var summary: String {
+    [page.releaseYearSpan, countLabel(page.albums.count, "album")]
+      .compactMap { $0 }
+      .joined(separator: " · ")
   }
 
   private var discographyLift: CGFloat {
@@ -1243,7 +1260,7 @@ struct AlbumDetailView: View {
         ) {
           LibraryDragPreview(
             title: page.album.name,
-            detail: "\(remainingIDs.count) remaining tracks"
+            detail: countLabel(remainingIDs.count, "remaining track")
           )
         }
         .dragConfiguration(.codaInternal())
@@ -1442,7 +1459,7 @@ struct PlaylistDetailView: View {
                     Text(playlist.name)
                       .font(.system(size: 30, weight: .bold))
                     Text(
-                      "\(playlist.songs.count) tracks · \(formatCollectionDuration(playlist.duration ?? playlist.songs.compactMap(\.duration).reduce(0, +)))"
+                      "\(countLabel(playlist.songs.count, "track")) · \(formatCollectionDuration(playlist.duration ?? playlist.songs.compactMap(\.duration).reduce(0, +)))"
                     )
                     .foregroundStyle(.secondary)
                   }
@@ -1914,7 +1931,7 @@ private struct ArtistCard: View {
           .font(.subheadline.weight(.medium))
           .lineLimit(1)
         if let count = artist.albumCount {
-          Text("\(count) albums")
+          Text(countLabel(count, "album"))
             .font(.caption)
             .foregroundStyle(.secondary)
         }
@@ -1939,7 +1956,7 @@ private struct PlaylistHomeRow: View {
         VStack(alignment: .leading, spacing: 2) {
           Text(playlist.name)
             .font(.headline)
-          Text("\(playlist.songCount ?? 0) tracks")
+          Text(countLabel(playlist.songCount ?? 0, "track"))
             .font(.caption)
             .foregroundStyle(.secondary)
         }
@@ -1955,7 +1972,7 @@ private struct PlaylistHomeRow: View {
     .draggable(QueueDropItem.library(.playlist(playlist.id))) {
       LibraryDragPreview(
         title: playlist.name,
-        detail: "\(playlist.songCount ?? 0) tracks"
+        detail: countLabel(playlist.songCount ?? 0, "track")
       )
     }
     .dragConfiguration(.codaInternal())
@@ -1986,7 +2003,7 @@ private struct ContinuePlayingCard: View {
           Text(currentSong?.title ?? "Saved Queue")
             .foregroundStyle(.secondary)
             .lineLimit(1)
-          Text("\(queue.songs.count) tracks")
+          Text(countLabel(queue.songs.count, "track"))
             .font(.caption)
             .foregroundStyle(.tertiary)
         }
@@ -2334,7 +2351,7 @@ func recentArtists(
 
 private func albumMetadata(_ page: AlbumPage) -> String {
   let year = page.album.releaseYear.map(String.init)
-  let tracks = "\(page.songs.count) tracks"
+  let tracks = countLabel(page.songs.count, "track")
   let duration = formatCollectionDuration(
     page.album.duration ?? page.songs.compactMap(\.duration).reduce(0, +))
   return [year, tracks, duration.nonEmpty].compactMap { $0 }.joined(separator: " · ")

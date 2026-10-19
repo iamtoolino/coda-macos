@@ -372,6 +372,38 @@ struct LibraryInteractionTests {
     #expect(!routes(compactVisible: true, textEditing: true))
   }
 
+  @Test("Escape leaves Now Playing from the main window outside text editing")
+  func escapeDismissesNowPlayingOutsideTextEditing() {
+    let route = {
+      (presented: Bool, mainWindow: Bool, textEditing: Bool, compactQueue: Bool) in
+      shouldRouteNowPlayingDismissShortcut(
+        modifiers: [],
+        charactersIgnoringModifiers: "\u{1B}",
+        appIsActive: true,
+        mainPlaybackWindowIsKey: mainWindow,
+        isTextEditing: textEditing,
+        compactQueueIsPresented: compactQueue,
+        nowPlayingIsPresented: presented
+      )
+    }
+
+    #expect(route(true, true, false, false))
+    #expect(!route(false, true, false, false))
+    #expect(!route(true, false, false, false))
+    #expect(!route(true, true, true, false))
+    #expect(!route(true, true, false, true))
+    #expect(
+      !shouldRouteNowPlayingDismissShortcut(
+        modifiers: .command,
+        charactersIgnoringModifiers: "\u{1B}",
+        appIsActive: true,
+        mainPlaybackWindowIsKey: true,
+        isTextEditing: false,
+        compactQueueIsPresented: false,
+        nowPlayingIsPresented: true
+      ))
+  }
+
   @Test("queue Escape clears only a visible main-window selection")
   func queueEscapeClearsOnlyAVisibleMainWindowSelection() {
     let route = {

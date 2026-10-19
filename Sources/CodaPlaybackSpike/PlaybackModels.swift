@@ -280,6 +280,7 @@ struct RemoteAlbum: Decodable, Identifiable, Hashable, Sendable {
   var playCount: Int? = nil
   var userRating: Int? = nil
   var discTitles: [RemoteDiscTitle]? = nil
+  var genre: String? = nil
 
   var artistName: String { displayArtist?.nonEmpty ?? artist ?? "" }
   var artistCredit: ArtistCredit {
@@ -432,6 +433,28 @@ struct AlbumDiscSection: Identifiable, Hashable, Sendable {
 struct ArtistPage: Hashable, Sendable {
   let artist: RemoteArtist
   let albums: [RemoteAlbum]
+
+  /// "1995–2020", or a single year when every dated release shares it.
+  var releaseYearSpan: String? {
+    let years = albums.compactMap(\.releaseYear).filter { $0 > 0 }
+    guard let first = years.min(), let last = years.max() else { return nil }
+    return first == last ? "\(first)" : "\(first)–\(last)"
+  }
+
+  /// The most common album genres, most frequent first.
+  func topGenres(limit: Int = 3) -> [String] {
+    var counts: [String: (name: String, count: Int)] = [:]
+    for album in albums {
+      guard let genre = album.genre?.trimmingCharacters(in: .whitespacesAndNewlines),
+        !genre.isEmpty
+      else { continue }
+      counts[genre.lowercased(), default: (name: genre, count: 0)].count += 1
+    }
+    return counts.values
+      .sorted { $0.count != $1.count ? $0.count > $1.count : $0.name < $1.name }
+      .prefix(limit)
+      .map { $0.name }
+  }
 }
 
 struct LibrarySearchResults: Hashable, Sendable {

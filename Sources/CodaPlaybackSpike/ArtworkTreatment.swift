@@ -202,6 +202,12 @@ struct CollectionHeroMetrics: Equatable {
     height = max(224, artworkSize + 52)
   }
 
+  /// Puts the visible artwork on the 22 pt content edge used by track lists and grids. The
+  /// artwork sits centred in a frame 30 pt wider than the image and is drawn at 98 % scale.
+  var leadingPadding: CGFloat {
+    22 - 15 - artworkSize * 0.01
+  }
+
   private static func interpolatedValue(
     for width: CGFloat,
     minimum: CGFloat,
@@ -355,7 +361,7 @@ struct AlbumMockupHero: View {
       albumInfo
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-    .padding(.leading, 22)
+    .padding(.leading, metrics.leadingPadding)
     .padding(.trailing, metrics.trailingPadding)
     .padding(.bottom, 10)
   }
@@ -696,8 +702,47 @@ enum FloatingPanelStyle {
   static let border = 0.07
   static let shadow = 0.37
   static let cornerRadius = 11.95
+  static let materialDarkness = 0.68
+  static let tintDarkness = 0.36
+  static let tintAccent = 0.05
+  static let tintBorder = 0.06
 
   static let darkOverlayOpacity = darkness * (1 - transparency)
+}
+
+/// How a floating panel separates itself from the artwork background behind it.
+enum FloatingPanelSurface {
+  /// Liquid Glass over a dark wash, for controls such as the playback dock.
+  case glass
+  /// Blurred material, for panels that float over scrolling library content.
+  case material
+  /// A translucent darkening of the background, for the docked queue. Nothing scrolls beneath
+  /// it, so the artwork tint shows through instead of being flattened by a material.
+  case tint
+
+  fileprivate var shadowOpacity: Double {
+    switch self {
+    case .glass: FloatingPanelStyle.shadow
+    case .material: 0.22
+    case .tint: 0
+    }
+  }
+
+  fileprivate var shadowRadius: CGFloat {
+    switch self {
+    case .glass: 18
+    case .material: 12
+    case .tint: 0
+    }
+  }
+
+  fileprivate var shadowY: CGFloat {
+    switch self {
+    case .glass: 8
+    case .material: 5
+    case .tint: 0
+    }
+  }
 }
 
 private enum RatingPromptPhase: CaseIterable {
@@ -733,8 +778,8 @@ private struct RatingPromptEffectModifier: ViewModifier {
 struct FloatingPanelModifier: ViewModifier {
   @Environment(\.controlActiveState) private var controlActiveState
   @EnvironmentObject private var settings: ArtworkTreatmentSettings
-  let material: Bool
-  let materialAccent: Color?
+  let surface: FloatingPanelSurface
+  let accent: Color?
   let capsule: Bool
 
   @ViewBuilder
@@ -752,54 +797,72 @@ struct FloatingPanelModifier: ViewModifier {
     }
   }
 
+  private var accentFill: Color {
+    accent ?? settings.accent.color
+  }
+
+  private var windowIsInactive: Bool {
+    controlActiveState == .inactive
+  }
+
   private func styledPanel<S: InsettableShape>(content: Content, shape: S) -> some View {
     content
       .background {
         Group {
-          if material {
-            ZStack {
-              shape.fill(.ultraThinMaterial)
-              shape.fill(Color.black.opacity(0.68))
-              shape.fill(
-                (materialAccent ?? settings.accent.color).opacity(
-                  controlActiveState == .inactive ? 0.012 : 0.040
-                )
-              )
-            }
-          } else {
+          switch surface {
+          case .glass:
             shape
               .fill(Color.black.opacity(FloatingPanelStyle.darkOverlayOpacity))
               .glassEffect(.regular, in: shape)
+          case .material:
+            ZStack {
+              shape.fill(.ultraThinMaterial)
+              shape.fill(Color.black.opacity(FloatingPanelStyle.materialDarkness))
+              shape.fill(accentFill.opacity(windowIsInactive ? 0.012 : 0.040))
+            }
+          case .tint:
+            ZStack {
+              shape.fill(Color.black.opacity(FloatingPanelStyle.tintDarkness))
+              shape.fill(
+                accentFill.opacity(windowIsInactive ? 0.02 : FloatingPanelStyle.tintAccent)
+              )
+            }
           }
         }
         .allowsHitTesting(false)
       }
       .clipShape(shape)
       .overlay {
-        shape
-          .strokeBorder(
-            LinearGradient(
-              colors: [
-                Color.white.opacity(FloatingPanelStyle.border * 1.45),
-                Color.white.opacity(FloatingPanelStyle.border * 0.34),
-              ],
-              startPoint: .topLeading,
-              endPoint: .bottomTrailing
-            ),
-            lineWidth: 0.8
-          )
-          .allowsHitTesting(false)
+        Group {
+          if surface == .tint {
+            shape.strokeBorder(
+              Color.white.opacity(FloatingPanelStyle.tintBorder),
+              lineWidth: 0.8
+            )
+          } else {
+            shape.strokeBorder(
+              LinearGradient(
+                colors: [
+                  Color.white.opacity(FloatingPanelStyle.border * 1.45),
+                  Color.white.opacity(FloatingPanelStyle.border * 0.34),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+              ),
+              lineWidth: 0.8
+            )
+          }
+        }
+        .allowsHitTesting(false)
       }
       .shadow(
-        color: .black.opacity(
-          material ? 0.22 : FloatingPanelStyle.shadow
-        ),
-        radius: material ? 12 : 18,
-        y: material ? 5 : 8
+        color: .black.opacity(surface.shadowOpacity),
+        radius: surface.shadowRadius,
+        y: surface.shadowY
       )
       .animation(
         .easeInOut(duration: 0.20),
-        value: material ? controlActiveState : .key
+        value: surface == .glass ? .key : controlActiveState
       )
   }
 }
@@ -813,14 +876,14 @@ extension View {
   }
 
   func floatingPanel(
-    material: Bool = false,
-    materialAccent: Color? = nil,
+    surface: FloatingPanelSurface = .glass,
+    accent: Color? = nil,
     capsule: Bool = false
   ) -> some View {
     modifier(
       FloatingPanelModifier(
-        material: material,
-        materialAccent: materialAccent,
+        surface: surface,
+        accent: accent,
         capsule: capsule
       )
     )

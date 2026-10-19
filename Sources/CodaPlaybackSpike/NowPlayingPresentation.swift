@@ -17,11 +17,6 @@ enum NowPlayingPresentationPhase: Equatable {
   var isTransitioning: Bool { self == .presenting || self == .dismissing }
 }
 
-enum NowPlayingPresentationHoverRegion: Hashable {
-  case background
-  case cover
-}
-
 struct NowPlayingPreparedTheme: Identifiable {
   let id = UUID()
   let playbackKey: String
@@ -46,12 +41,19 @@ enum NowPlayingAutomaticPresentationTiming {
 @MainActor
 final class NowPlayingPresentationController: ObservableObject {
   private static let automaticallyPresentsKey = "automatically-show-now-playing"
+  static let userDismissalCountKey = "coda-now-playing-user-dismissals"
+  /// The dismiss hint teaches the way out until the user has left Now Playing this often.
+  static let dismissHintUserDismissalLimit = 3
+
+  static func dismissHintIsDue(userDismissals: Int) -> Bool {
+    userDismissals < dismissHintUserDismissalLimit
+  }
 
   @Published private(set) var handoffRevealRequest: UUID?
   @Published private(set) var isPresented = false
   @Published private(set) var phase = NowPlayingPresentationPhase.hidden
   @Published private(set) var preparedTheme: NowPlayingPreparedTheme?
-  @Published private(set) var isPointerInsidePresentation = false
+  @Published private(set) var showsDismissHint = false
   @Published var automaticallyPresents: Bool {
     didSet {
       defaults.set(automaticallyPresents, forKey: Self.automaticallyPresentsKey)
@@ -77,7 +79,7 @@ final class NowPlayingPresentationController: ObservableObject {
   private var presentationRetryTask: Task<Void, Never>?
   private var presentationRetryIsAutomatic = false
   private var phaseTask: Task<Void, Never>?
-  private var hoveredRegions: Set<NowPlayingPresentationHoverRegion> = []
+  private var dismissHintTask: Task<Void, Never>?
 
   init(defaults: UserDefaults = .standard) {
     self.defaults = defaults
@@ -135,7 +137,7 @@ final class NowPlayingPresentationController: ObservableObject {
     }
 
     guard hasEstablishedConnection, playbackKey != nil else {
-      dismiss(restartsTimer: false)
+      dismiss(restartsTimer: false, isUserDismissal: false)
       return
     }
 
@@ -159,23 +161,6 @@ final class NowPlayingPresentationController: ObservableObject {
   func noteMeaningfulInteraction() {
     guard !isPresented else { return }
     scheduleAutomaticPresentation()
-  }
-
-  func updatePointerInsidePresentation(
-    _ region: NowPlayingPresentationHoverRegion,
-    isInside: Bool
-  ) {
-    guard isPresented else {
-      hoveredRegions.removeAll()
-      isPointerInsidePresentation = false
-      return
-    }
-    if isInside {
-      hoveredRegions.insert(region)
-    } else {
-      hoveredRegions.remove(region)
-    }
-    isPointerInsidePresentation = !hoveredRegions.isEmpty
   }
 
   func present() {
@@ -207,6 +192,31 @@ final class NowPlayingPresentationController: ObservableObject {
       isPresented = true
     }
     settlePhase(forPresentedState: true)
+    scheduleDismissHint()
+  }
+
+  private func scheduleDismissHint() {
+    dismissHintTask?.cancel()
+    guard Self.dismissHintIsDue(
+      userDismissals: defaults.integer(forKey: Self.userDismissalCountKey)
+    ) else { return }
+    dismissHintTask = Task { @MainActor [weak self] in
+      do {
+        try await Task.sleep(
+          for: .milliseconds(Int64(NowPlayingPresentationMotion.duration * 1_000) + 400)
+        )
+        guard let self, self.phase == .visible else { return }
+        withAnimation(.easeOut(duration: 0.35)) { self.showsDismissHint = true }
+        try await Task.sleep(for: .seconds(4))
+        withAnimation(.easeIn(duration: 0.5)) { self.showsDismissHint = false }
+      } catch {}
+    }
+  }
+
+  private func hideDismissHint() {
+    dismissHintTask?.cancel()
+    dismissHintTask = nil
+    showsDismissHint = false
   }
 
   @discardableResult
@@ -218,7 +228,7 @@ final class NowPlayingPresentationController: ObservableObject {
 
   func completeHandoffReveal(_ request: UUID) {
     guard handoffRevealRequest == request else { return }
-    dismiss()
+    dismiss(isUserDismissal: false)
   }
 
   func cancelHandoffReveal() {
@@ -226,7 +236,7 @@ final class NowPlayingPresentationController: ObservableObject {
     handoffRevealRequest = nil
   }
 
-  func dismiss(restartsTimer: Bool = true) {
+  func dismiss(restartsTimer: Bool = true, isUserDismissal: Bool = true) {
     cancelHandoffReveal()
     cancelAutomaticPresentation()
     presentationRetryTask?.cancel()
@@ -239,8 +249,13 @@ final class NowPlayingPresentationController: ObservableObject {
 
     phaseTask?.cancel()
     phase = .dismissing
-    hoveredRegions.removeAll()
-    isPointerInsidePresentation = false
+    hideDismissHint()
+    if isUserDismissal {
+      defaults.set(
+        defaults.integer(forKey: Self.userDismissalCountKey) + 1,
+        forKey: Self.userDismissalCountKey
+      )
+    }
     withAnimation(.easeInOut(duration: NowPlayingPresentationMotion.duration)) {
       isPresented = false
     }
@@ -476,6 +491,7 @@ struct NowPlayingPresentationView: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
   @EnvironmentObject private var presentation: NowPlayingPresentationController
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var album: RemoteAlbum?
 
   private struct AlbumMetadataRequest: Hashable {
@@ -495,15 +511,19 @@ struct NowPlayingPresentationView: View {
               .frame(width: layout.coverSize, height: layout.coverSize)
               .shadow(color: .black.opacity(0.34), radius: 24, y: 14)
               .contentShape(Rectangle())
-              .onHover { isInside in
-                withAnimation(.easeInOut(duration: 0.16)) {
-                  presentation.updatePointerInsidePresentation(
-                    .cover,
-                    isInside: isInside
-                  )
+              .onTapGesture { presentation.dismiss() }
+              // Like the full-screen video hint: over the cover's top edge, where there is
+              // always room; it passes clicks through to the cover.
+              .overlay(alignment: .top) {
+                if presentation.showsDismissHint {
+                  dismissHint
+                    .padding(.top, 14)
+                    .transition(
+                      reduceMotion
+                        ? .opacity : .opacity.combined(with: .offset(y: -6))
+                    )
                 }
               }
-              .onTapGesture { presentation.dismiss() }
 
             VStack(spacing: 8) {
               Text(entry.title)
@@ -561,23 +581,6 @@ struct NowPlayingPresentationView: View {
             }
           }
           .frame(maxWidth: .infinity)
-          .overlay(alignment: .top) {
-            Button { presentation.dismiss() } label: {
-              Image(systemName: "chevron.down")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 30, height: 22)
-            }
-            .buttonStyle(.plain)
-            .focusable(false)
-            .focusEffectDisabled()
-            .help("Back to Browsing")
-            .accessibilityLabel("Back to Browsing")
-            .opacity(presentation.isPointerInsidePresentation ? 0.72 : 0)
-            .scaleEffect(presentation.isPointerInsidePresentation ? 1 : 0.94)
-            .offset(y: -18)
-            .allowsHitTesting(presentation.isPointerInsidePresentation)
-          }
 
           Spacer(minLength: 0)
         }
@@ -626,6 +629,19 @@ struct NowPlayingPresentationView: View {
       }
     }
     .animation(.easeInOut(duration: 0.45), value: preparedArtworkIdentity)
+  }
+
+  private var dismissHint: some View {
+    Label("Click the cover or press Esc to go back", systemImage: "chevron.down")
+      .font(.callout)
+      .foregroundStyle(.secondary)
+      .lineLimit(1)
+      .fixedSize()
+      .padding(.horizontal, 14)
+      .padding(.vertical, 7)
+      .glassEffect(.regular, in: Capsule())
+      .allowsHitTesting(false)
+      .accessibilityHidden(true)
   }
 
   private var preparedArtworkIdentity: ObjectIdentifier? {

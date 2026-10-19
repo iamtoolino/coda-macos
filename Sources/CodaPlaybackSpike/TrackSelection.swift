@@ -78,7 +78,12 @@ final class QueueSelectionModel: ObservableObject {
 final class QueueSelectionShortcutMonitor: ObservableObject {
   nonisolated(unsafe) private var monitor: Any?
 
-  init(selection: QueueSelectionModel, player: PlayerController, session: AppSession) {
+  init(
+    selection: QueueSelectionModel,
+    player: PlayerController,
+    session: AppSession,
+    nowPlayingPresentation: NowPlayingPresentationController
+  ) {
     monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
       guard let keyWindow = NSApp.keyWindow else { return event }
       let isMainPlaybackWindow = keyWindow.title != codaStatusWindowTitle
@@ -113,6 +118,19 @@ final class QueueSelectionShortcutMonitor: ObservableObject {
         hasSelection: selection.selectedEntryIDs != nil
       ) {
         selection.clear()
+        return nil
+      }
+
+      if shouldRouteNowPlayingDismissShortcut(
+        modifiers: event.modifierFlags,
+        charactersIgnoringModifiers: event.charactersIgnoringModifiers,
+        appIsActive: appIsActive,
+        mainPlaybackWindowIsKey: isMainPlaybackWindow,
+        isTextEditing: isTextEditing,
+        compactQueueIsPresented: selection.isCompactQueuePresented,
+        nowPlayingIsPresented: nowPlayingPresentation.isPresented
+      ) {
+        nowPlayingPresentation.dismiss()
         return nil
       }
 
@@ -163,6 +181,26 @@ func shouldRouteQueueClearSelectionShortcut(
       queueIsVisible: queueIsVisible,
       isTextEditing: isTextEditing
     )
+}
+
+/// Esc leaves Now Playing from anywhere in the main window, after queue selection
+/// and the compact queue have had their turn and outside text editing.
+func shouldRouteNowPlayingDismissShortcut(
+  modifiers: NSEvent.ModifierFlags,
+  charactersIgnoringModifiers: String?,
+  appIsActive: Bool,
+  mainPlaybackWindowIsKey: Bool,
+  isTextEditing: Bool,
+  compactQueueIsPresented: Bool,
+  nowPlayingIsPresented: Bool
+) -> Bool {
+  queueSelectionActionModifiers(modifiers).isEmpty
+    && charactersIgnoringModifiers == "\u{1B}"
+    && nowPlayingIsPresented
+    && !compactQueueIsPresented
+    && appIsActive
+    && mainPlaybackWindowIsKey
+    && !isTextEditing
 }
 
 private func queueSelectionActionModifiers(
