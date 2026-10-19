@@ -164,8 +164,8 @@ struct ContentView: View {
                 .frame(width: queueWidth)
                 .frame(maxHeight: .infinity, alignment: .top)
                 .floatingPanel(
-                  material: true,
-                  materialAccent: nowPlayingPresentation
+                  surface: .tint,
+                  accent: nowPlayingPresentation
                     .resolvedAccent(artworkTreatments.accent).color
                 )
             }
@@ -306,8 +306,8 @@ private struct CompactQueuePeek: View {
           .frame(width: queueWidth)
           .frame(maxHeight: .infinity)
           .floatingPanel(
-            material: true,
-            materialAccent: nowPlayingPresentation
+            surface: .material,
+            accent: nowPlayingPresentation
               .resolvedAccent(artworkTreatments.accent).color
           )
           .padding(.trailing, 10)
@@ -2251,6 +2251,11 @@ func formatCollectionDuration(_ seconds: Int) -> String {
   let minutes = (seconds % 3_600) / 60
   if hours > 0 { return "\(hours)h \(minutes)m" }
   return "\(minutes)m"
+}
+
+/// "1 album", "3 albums".
+func countLabel(_ count: Int, _ singular: String, plural: String? = nil) -> String {
+  "\(count) \(count == 1 ? singular : plural ?? singular + "s")"
 }
 
 extension String {
