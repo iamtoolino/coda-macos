@@ -219,6 +219,29 @@ struct PlaybackTests {
     #expect(backend.loadCalls.count == 1)
   }
 
+  @Test("periodic timeline ticks publish only when the displayed second changes")
+  func periodicTimelineTicksPublishOnlyWhenTheDisplayedSecondChanges() {
+    let timeline = PlaybackTimeline()
+    timeline.update(position: 10.1, duration: 200)
+    var updates = 0
+    let token = timeline.objectWillChange.sink { updates += 1 }
+    defer { token.cancel() }
+
+    timeline.update(position: 10.6, duration: 200, publish: false)
+    timeline.publishIfDisplayedSecondChanged()
+    #expect(updates == 0)
+    #expect(timeline.snapshot.position == 10.1)
+
+    timeline.update(position: 11.05, duration: 200, publish: false)
+    timeline.publishIfDisplayedSecondChanged()
+    #expect(updates == 1)
+    #expect(timeline.snapshot.position == 11.05)
+
+    // Explicit publication (seek, pause, track change) is still immediate.
+    timeline.update(position: 11.3, duration: 200)
+    #expect(updates == 2)
+  }
+
   @Test("playback clock adapts its publication rate to window visibility")
   func playbackClockAdaptsItsPublicationRateToWindowVisibility() {
     #expect(playbackTimelinePublicationInterval(windowIsVisible: true) == .milliseconds(250))

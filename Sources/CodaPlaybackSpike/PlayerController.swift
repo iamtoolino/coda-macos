@@ -46,6 +46,16 @@ final class PlaybackTimeline: ObservableObject {
     snapshot = latestSnapshot
   }
 
+  /// Periodic ticks publish only when the displayed second changes. Sampling stays at
+  /// 4 Hz so the time label changes no later than before, while the redraws in between
+  /// (which changed nothing visible) are skipped.
+  func publishIfDisplayedSecondChanged() {
+    guard Int(latestSnapshot.position) != Int(snapshot.position)
+      || Int(latestSnapshot.duration) != Int(snapshot.duration)
+    else { return }
+    snapshot = latestSnapshot
+  }
+
   func setPosition(_ position: Double) {
     update(
       position: position,
@@ -640,7 +650,7 @@ final class PlayerController: ObservableObject {
         )
         try? await Task.sleep(for: interval)
         guard !Task.isCancelled, self.isPlaying else { return }
-        self.timeline.publishLatest()
+        self.timeline.publishIfDisplayedSecondChanged()
       }
     }
   }
