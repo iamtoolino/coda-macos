@@ -9,11 +9,6 @@ struct TrackSelectionModifiers: OptionSet {
   static let command = Self(rawValue: 1 << 1)
 }
 
-struct OrderedTrackSelection<ID: Hashable> {
-  let ids: [ID]
-  let anchor: ID?
-}
-
 struct OrderedQueueSelection<ID: Hashable> {
   let ids: [ID]
   let anchorIDs: [ID]
@@ -220,8 +215,12 @@ func updatedQueueSelection<ID: Hashable>(
   }
 
   if modifiers.contains(.shift) {
-    let anchorIndices = anchorIDs.compactMap(ordered.firstIndex)
-    let clickedIndices = orderedClicked.compactMap(ordered.firstIndex)
+    let indexByID = Dictionary(
+      ordered.enumerated().map { ($1, $0) },
+      uniquingKeysWith: { first, _ in first }
+    )
+    let anchorIndices = anchorIDs.compactMap { indexByID[$0] }
+    let clickedIndices = orderedClicked.compactMap { indexByID[$0] }
     if let anchorStart = anchorIndices.min(), let anchorEnd = anchorIndices.max(),
       let clickedStart = clickedIndices.min(), let clickedEnd = clickedIndices.max()
     {
@@ -251,45 +250,6 @@ func updatedQueueSelection<ID: Hashable>(
   }
 
   return OrderedQueueSelection(ids: orderedClicked, anchorIDs: orderedClicked)
-}
-
-func updatedTrackSelection<ID: Hashable>(
-  current: [ID],
-  anchor: ID?,
-  clicked: ID,
-  ordered: [ID],
-  modifiers: TrackSelectionModifiers
-) -> OrderedTrackSelection<ID> {
-  if modifiers.contains(.shift),
-    let anchor,
-    let anchorIndex = ordered.firstIndex(of: anchor),
-    let clickedIndex = ordered.firstIndex(of: clicked)
-  {
-    let bounds = min(anchorIndex, clickedIndex)...max(anchorIndex, clickedIndex)
-    let range = Set(ordered[bounds])
-    let selected = modifiers.contains(.command)
-      ? Set(current).union(range)
-      : range
-    return OrderedTrackSelection(
-      ids: ordered.filter(selected.contains),
-      anchor: anchor
-    )
-  }
-
-  if modifiers.contains(.command) {
-    var selected = Set(current)
-    if selected.contains(clicked) {
-      selected.remove(clicked)
-    } else {
-      selected.insert(clicked)
-    }
-    return OrderedTrackSelection(
-      ids: ordered.filter(selected.contains),
-      anchor: clicked
-    )
-  }
-
-  return OrderedTrackSelection(ids: [clicked], anchor: clicked)
 }
 
 @MainActor

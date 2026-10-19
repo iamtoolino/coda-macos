@@ -10,7 +10,6 @@ private enum CodaWindowLayout {
 struct ContentView: View {
   @EnvironmentObject private var session: AppSession
   @EnvironmentObject private var player: PlayerController
-  @EnvironmentObject private var queueSelection: QueueSelectionModel
   @EnvironmentObject private var artworkTreatments: ArtworkTreatmentSettings
   @EnvironmentObject private var queueHandoff: QueueHandoffCoordinator
   @EnvironmentObject private var playlistSaver: QueuePlaylistSaveCoordinator
@@ -26,6 +25,8 @@ struct ContentView: View {
       PlaybackWindowVisibilityObserver()
         .frame(width: 0, height: 0)
       NowPlayingActivityObserver()
+        .frame(width: 0, height: 0)
+      QueueSelectionReconciler()
         .frame(width: 0, height: 0)
 
       GeometryReader { geometry in
@@ -252,9 +253,6 @@ struct ContentView: View {
       applyArtworkDisplayContext()
       volumePresentation.dismiss()
     }
-    .onChange(of: player.queueRevision) {
-      queueSelection.reconcile(with: player.queueEntryIDs)
-    }
     .onChange(of: queueHandoff.continueQueueIdentity) {
       revealContinueOfferIfNeeded()
     }
@@ -362,6 +360,19 @@ func codaQueueIsVisible(
 
 func codaQueueWidth(windowWidth: CGFloat) -> CGFloat {
   min(330, max(285, windowWidth * 0.22))
+}
+
+/// Keeps the queue selection valid without making the root view depend on selection changes.
+private struct QueueSelectionReconciler: View {
+  @EnvironmentObject private var player: PlayerController
+  @EnvironmentObject private var queueSelection: QueueSelectionModel
+
+  var body: some View {
+    Color.clear
+      .onChange(of: player.queueRevision) {
+        queueSelection.reconcile(with: player.queueEntryIDs)
+      }
+  }
 }
 
 private struct PlaybackWindowVisibilityObserver: NSViewRepresentable {

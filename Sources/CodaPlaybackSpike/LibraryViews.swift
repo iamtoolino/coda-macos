@@ -1361,15 +1361,15 @@ struct AlbumDetailView: View {
     in page: AlbumPage,
     modifiers: TrackSelectionModifiers
   ) {
-    let selection = updatedTrackSelection(
+    let selection = updatedQueueSelection(
       current: selectedSongIDs,
-      anchor: selectionAnchorSongID,
-      clicked: songID,
+      anchorIDs: selectionAnchorSongID.map { [$0] } ?? [],
+      clickedIDs: [songID],
       ordered: page.songs.map(\.id),
       modifiers: modifiers
     )
     selectedSongIDs = selection.ids
-    selectionAnchorSongID = selection.anchor
+    selectionAnchorSongID = selection.anchorIDs.first
   }
 
   private func clearTrackSelection() {
@@ -1472,6 +1472,7 @@ struct PlaylistDetailView: View {
   let playlistID: String
 
   @State private var playlist: RemotePlaylist?
+  @State private var groups: [PlaylistGroup] = []
   @State private var albumMetadata: [String: RemoteAlbum] = [:]
   @State private var errorMessage: String?
   @State private var selectedSongIndices: [Int] = []
@@ -1518,7 +1519,8 @@ struct PlaylistDetailView: View {
                 .padding(.top, 18)
                 .padding(.bottom, 20)
 
-                ForEach(playlistGroups(playlist.songs)) { group in
+                let selectedIndexSet = Set(selectedSongIndices)
+                ForEach(groups) { group in
                   VStack(alignment: .leading, spacing: 5) {
                     if !group.isStandalone {
                       PlaylistAlbumHeader(group: group, album: albumMetadata[group.albumID ?? ""])
@@ -1531,8 +1533,8 @@ struct PlaylistDetailView: View {
                         isStandalone: group.isStandalone,
                         isCompilation: albumMetadata[group.albumID ?? ""]?.isCompilation
                           ?? indexed.song.isCompilation ?? false,
-                        isSelected: selectedSongIndices.contains(indexed.index),
-                        dragSongIDs: selectedSongIndices.contains(indexed.index)
+                        isSelected: selectedIndexSet.contains(indexed.index),
+                        dragSongIDs: selectedIndexSet.contains(indexed.index)
                           ? selectedSongIndices.compactMap { index in
                             playlist.songs[safe: index]?.id
                           }
@@ -1606,15 +1608,15 @@ struct PlaylistDetailView: View {
     in playlist: RemotePlaylist,
     modifiers: TrackSelectionModifiers
   ) {
-    let selection = updatedTrackSelection(
+    let selection = updatedQueueSelection(
       current: selectedSongIndices,
-      anchor: selectionAnchorSongIndex,
-      clicked: songIndex,
+      anchorIDs: selectionAnchorSongIndex.map { [$0] } ?? [],
+      clickedIDs: [songIndex],
       ordered: Array(playlist.songs.indices),
       modifiers: modifiers
     )
     selectedSongIndices = selection.ids
-    selectionAnchorSongIndex = selection.anchor
+    selectionAnchorSongIndex = selection.anchorIDs.first
   }
 
   private func clearTrackSelection() {
@@ -1635,7 +1637,9 @@ struct PlaylistDetailView: View {
     guard let client = session.client else { return }
     errorMessage = nil
     do {
-      playlist = try await client.playlist(id: playlistID)
+      let loadedPlaylist = try await client.playlist(id: playlistID)
+      playlist = loadedPlaylist
+      groups = playlistGroups(loadedPlaylist.songs)
     } catch {
       errorMessage = error.localizedDescription
     }

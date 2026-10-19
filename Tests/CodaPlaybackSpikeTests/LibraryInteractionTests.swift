@@ -219,36 +219,40 @@ struct LibraryInteractionTests {
   @Test("track selection follows macOS modifier semantics")
   func trackSelectionFollowsMacosModifierSemantics() {
     let ids = ["one", "two", "three", "four", "five"]
-    let plain = updatedTrackSelection(
-      current: [], anchor: nil, clicked: "two", ordered: ids, modifiers: [])
-    let shifted = updatedTrackSelection(
+    let plain = updatedQueueSelection(
+      current: [], anchorIDs: [], clickedIDs: ["two"], ordered: ids, modifiers: [])
+    let shifted = updatedQueueSelection(
       current: plain.ids,
-      anchor: plain.anchor,
-      clicked: "four",
+      anchorIDs: plain.anchorIDs,
+      clickedIDs: ["four"],
       ordered: ids,
       modifiers: [.shift]
     )
-    let extended = updatedTrackSelection(
+    let extended = updatedQueueSelection(
       current: shifted.ids,
-      anchor: shifted.anchor,
-      clicked: "five",
+      anchorIDs: shifted.anchorIDs,
+      clickedIDs: ["five"],
       ordered: ids,
       modifiers: [.command, .shift]
     )
-    let toggled = updatedTrackSelection(
+    let toggled = updatedQueueSelection(
       current: extended.ids,
-      anchor: extended.anchor,
-      clicked: "three",
+      anchorIDs: extended.anchorIDs,
+      clickedIDs: ["three"],
       ordered: ids,
       modifiers: [.command]
     )
+    let shiftedWithoutAnchor = updatedQueueSelection(
+      current: [], anchorIDs: [], clickedIDs: ["four"], ordered: ids, modifiers: [.shift])
 
     #expect(plain.ids == ["two"])
     #expect(shifted.ids == ["two", "three", "four"])
-    #expect(shifted.anchor == "two")
+    #expect(shifted.anchorIDs == ["two"])
     #expect(extended.ids == ["two", "three", "four", "five"])
     #expect(toggled.ids == ["two", "four", "five"])
-    #expect(toggled.anchor == "three")
+    #expect(toggled.anchorIDs == ["three"])
+    #expect(shiftedWithoutAnchor.ids == ["four"])
+    #expect(shiftedWithoutAnchor.anchorIDs == ["four"])
   }
 
   @Test("queue collection selection follows macOS modifier semantics")
