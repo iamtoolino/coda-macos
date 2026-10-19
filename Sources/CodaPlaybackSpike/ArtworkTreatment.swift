@@ -259,24 +259,35 @@ enum CodaPlaceholderArtwork {
     let size = NSSize(width: 1_024, height: 1_024)
     let image = NSImage(size: size)
     image.lockFocus()
-    NSColor(calibratedRed: 0.025, green: 0.030, blue: 0.034, alpha: 1).setFill()
+    NSColor(calibratedRed: 0x21 / 255, green: 0x1F / 255, blue: 0x1C / 255, alpha: 1).setFill()
     NSBezierPath(rect: NSRect(origin: .zero, size: size)).fill()
 
-    let recordRect = NSRect(x: 82, y: 82, width: 860, height: 860)
-    NSColor(calibratedWhite: 0.055, alpha: 1).setFill()
-    NSBezierPath(ovalIn: recordRect).fill()
-    NSColor(calibratedRed: 0.72, green: 0.47, blue: 0.20, alpha: 0.92).setStroke()
-    let arc = NSBezierPath()
-    arc.appendArc(
-      withCenter: NSPoint(x: 512, y: 512),
-      radius: 280,
-      startAngle: 42,
-      endAngle: 318,
-      clockwise: false
-    )
-    arc.lineWidth = 34
-    arc.lineCapStyle = .round
-    arc.stroke()
+    // The E2 barred "C" from Support/CodaPlaceholderCover.svg, as flat
+    // muted amber pills: (centre x, [(top, bottom)]) in SVG coordinates.
+    let bars: [(CGFloat, [(CGFloat, CGFloat)])] = [
+      (342.07, [(406.85, 621.15)]),
+      (384.55, [(335.93, 692.07)]),
+      (427.03, [(297.75, 477.79), (550.21, 730.25)]),
+      (469.52, [(276.13, 423.05), (604.95, 751.87)]),
+      (512.00, [(266.72, 406.91), (621.09, 761.28)]),
+      (554.48, [(268.13, 409.20), (618.80, 759.87)]),
+      (596.97, [(280.55, 431.50), (596.50, 747.45)]),
+      (639.45, [(305.93, 443.25), (584.75, 722.07)]),
+      (681.93, [(350.12, 443.25), (584.75, 677.88)]),
+    ]
+    let barWidth: CGFloat = 28.89
+    NSColor(calibratedRed: 0x5B / 255, green: 0x4A / 255, blue: 0x33 / 255, alpha: 1).setFill()
+    for (centerX, segments) in bars {
+      for (top, bottom) in segments {
+        let rect = NSRect(
+          x: centerX - barWidth / 2,
+          y: size.height - bottom,
+          width: barWidth,
+          height: bottom - top
+        )
+        NSBezierPath(roundedRect: rect, xRadius: barWidth / 2, yRadius: barWidth / 2).fill()
+      }
+    }
     image.unlockFocus()
     return image
   }()
