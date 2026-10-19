@@ -37,6 +37,7 @@ struct CodaStatusView: View {
       }
       .padding(26)
     }
+    .background(NativeScrollIndicators())
     .frame(width: 540, height: 700)
   }
 

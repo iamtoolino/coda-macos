@@ -11,18 +11,16 @@ struct TrackListAlbumLabel: View {
   var body: some View {
     HStack(spacing: compact ? 10 : 12) {
       ArtworkImage(url: artworkURL, cornerRadius: compact ? 6 : 8)
-        .frame(width: compact ? 48 : 62, height: compact ? 48 : 62)
+        // Headers match standalone rows of the same list: same cover size, two lines.
+        .frame(width: compact ? 36 : 44, height: compact ? 36 : 44)
       VStack(alignment: .leading, spacing: 2) {
         Text(title)
           .font(compact ? .subheadline.weight(.semibold) : .headline)
-          .lineLimit(compact ? 1 : nil)
-        Text(artist)
-          .font(compact ? .caption : .body)
+          .lineLimit(1)
+        Text([artist, detail].filter { !$0.isEmpty }.joined(separator: " · "))
+          .font((compact ? Font.caption : Font.subheadline).monospacedDigit())
           .foregroundStyle(.secondary)
-          .lineLimit(compact ? 1 : nil)
-        Text(detail)
-          .font((compact ? Font.caption2 : Font.caption).monospacedDigit())
-          .foregroundStyle(.tertiary)
+          .lineLimit(1)
       }
       Spacer(minLength: compact ? 0 : nil)
     }

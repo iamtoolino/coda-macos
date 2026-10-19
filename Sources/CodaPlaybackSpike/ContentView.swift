@@ -1399,8 +1399,11 @@ private struct QueuePanel: View {
                 }
               }
               .padding(12)
+              // Room for the floating Remove and Return to Playing buttons.
+              .padding(.bottom, 40)
             }
-            .background(NativeScrollIndicators(visibility: .inherited))
+            // Overlay scrollers keep the duration column fixed with "always show scroll bars".
+            .background(NativeScrollIndicators(visibility: .transient))
           }
           .onGeometryChange(for: CGFloat.self) { geometry in
             geometry.size.height
@@ -1520,7 +1523,9 @@ private struct QueuePanel: View {
         }
         .allowsHitTesting(false)
       }
-      .overlay(alignment: .topTrailing) {
+      .overlay(alignment: .bottomTrailing) {
+        // One glass container, so the buttons morph together as they appear and disappear.
+        GlassEffectContainer(spacing: 7) {
         HStack(spacing: 7) {
           if shouldShowReturnToPlaying {
             Button("Return to Playing Track", systemImage: "scope") {
@@ -1530,26 +1535,34 @@ private struct QueuePanel: View {
             .buttonStyle(.plain)
             .frame(width: 24, height: 24)
             .padding(5)
-            .glassEffect(.regular, in: Circle())
+            .glassEffect(.regular.interactive(), in: Circle())
             .help("Return to Playing Track")
             .transition(.opacity)
           }
 
           if selectedEntryIDs?.isEmpty == false {
-            Button(selectionRemovalHelp, systemImage: "trash", role: .destructive) {
-              removeSelection()
+            // Deselect sits next to Remove, since Esc alone is easy to miss.
+            HStack(spacing: 0) {
+              Button("Deselect All", systemImage: "xmark") {
+                clearSelection()
+              }
+              .help("Deselect All (Esc)")
+              Divider()
+                .frame(height: 16)
+              Button(selectionRemovalHelp, systemImage: "trash", role: .destructive) {
+                removeSelection()
+              }
+              .help("\(selectionRemovalHelp) (⌫)")
             }
             .labelStyle(.iconOnly)
-            .buttonStyle(.plain)
-            .frame(width: 24, height: 24)
-            .padding(5)
-            .glassEffect(.regular, in: Circle())
-            .help(selectionRemovalHelp)
+            .buttonStyle(QueueCapsuleSegmentStyle())
+            .glassEffect(.regular.interactive(), in: Capsule())
             .transition(.opacity)
           }
         }
-        .padding(.top, 19)
-        .padding(.trailing, 34)
+        }
+        .padding(.bottom, 12)
+        .padding(.trailing, 16)
       }
       .animation(.easeOut(duration: 0.14), value: shouldShowReturnToPlaying)
       .animation(.easeOut(duration: 0.14), value: selectedEntryIDs?.isEmpty == false)
@@ -1596,7 +1609,7 @@ private struct QueuePanel: View {
 
   private var selectionRemovalHelp: String {
     let count = selectedEntryIDs?.count ?? 0
-    return count == 1 ? "Remove Selected Track" : "Remove \(count) Selected Tracks"
+    return count == 1 ? "Remove Track" : "Remove \(countLabel(count, "Track"))"
   }
 
   private func select(_ entryIDs: [UUID], modifiers: TrackSelectionModifiers) {
@@ -1920,6 +1933,7 @@ private struct QueueAlbumBlock: View {
   let entryFrameAction: (UUID, Int, CGRect) -> Void
   let dragStateAction: (QueueReorderDragItem, Bool) -> Void
   let visibilityAction: (UUID, Bool) -> Void
+  @Environment(\.appearsActive) private var appearsActive
 
   private var interfaceAccent: Color {
     nowPlayingPresentation.resolvedAccent(artworkTreatments.accent).color
@@ -1930,6 +1944,8 @@ private struct QueueAlbumBlock: View {
       group.discSections[$0].entryIDs.allSatisfy(selectedEntryIDSet.contains)
     })
     let isGroupSelected = group.entryIDs.allSatisfy(selectedEntryIDSet.contains)
+    // A selected album is filled once as a block; standalone tracks fill their own row.
+    let fillsBlock = isGroupSelected && !group.isStandalone
     VStack(alignment: .leading, spacing: 5) {
       if !group.isStandalone {
         QueueAlbumHeader(
@@ -1951,7 +1967,8 @@ private struct QueueAlbumBlock: View {
             number: group.discNumber(at: offset),
             subtitle: group.discSubtitle(at: offset),
             durationSeconds: group.discDuration(at: offset),
-            isSelected: group.discSectionIndex(at: offset).map(selectedDiscSections.contains) ?? false,
+            isSelected: !fillsBlock
+              && (group.discSectionIndex(at: offset).map(selectedDiscSections.contains) ?? false),
             selectAction: { modifiers in selectAction(discEntryIDs, modifiers) },
             deleteAction: { deleteAction(discEntryIDs) }
           )
@@ -1964,8 +1981,8 @@ private struct QueueAlbumBlock: View {
           isStandalone: group.isStandalone,
           isCurrent: currentIndex == group.startIndex + offset,
           isPlaying: isPlaying,
-          isTrackSelected: selectedEntryIDSet.contains(entry.id),
-          isCollectionSelected: group.showsDiscHeadings
+          isTrackSelected: !fillsBlock && selectedEntryIDSet.contains(entry.id),
+          isCollectionSelected: !fillsBlock && group.showsDiscHeadings
             && (group.discSectionIndex(at: offset).map(selectedDiscSections.contains) ?? false),
           dragEntryIDs: selectedEntryIDSet.contains(entry.id)
             ? selectedEntryIDs ?? [entry.id] : [entry.id],
@@ -1984,7 +2001,9 @@ private struct QueueAlbumBlock: View {
         .id(entry.id)
       }
     }
-    .padding(6)
+    .padding(.horizontal, 6)
+    // Consecutive standalone tracks sit closer together than album blocks.
+    .padding(.vertical, group.isStandalone ? 3 : 6)
     .contentShape(Rectangle())
     .onGeometryChange(for: QueueDropGeometryMeasurement.self) { geometry in
       QueueDropGeometryMeasurement(generation: geometryGeneration, geometry: geometry)
@@ -1992,17 +2011,9 @@ private struct QueueAlbumBlock: View {
       groupFrameAction(measurement.generation, measurement.frame)
     }
     .background {
-      if isGroupSelected {
-        RoundedRectangle(cornerRadius: 9, style: .continuous)
-          .fill(interfaceAccent.opacity(0.12))
+      if fillsBlock {
+        QueueSelectionBackground(accent: interfaceAccent, appearsActive: appearsActive, cornerRadius: 9)
       }
-    }
-    .overlay {
-      if isGroupSelected {
-        RoundedRectangle(cornerRadius: 9, style: .continuous)
-          .strokeBorder(interfaceAccent.opacity(0.42), lineWidth: 1)
-          .allowsHitTesting(false)
-        }
     }
     .task(id: albumID) {
       await loadAlbum()
@@ -2075,6 +2086,15 @@ private struct QueueAlbumHeader: View {
   }
 }
 
+private struct QueueCapsuleSegmentStyle: ButtonStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .frame(width: 34, height: 34)
+      .contentShape(Rectangle())
+      .opacity(configuration.isPressed ? 0.6 : 1)
+  }
+}
+
 private struct NoPressEffectButtonStyle: ButtonStyle {
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
@@ -2117,6 +2137,7 @@ private struct QueueDiscHeader: View {
   let subtitle: String?
   let durationSeconds: Int
   let isSelected: Bool
+  @Environment(\.appearsActive) private var appearsActive
   let selectAction: (TrackSelectionModifiers) -> Void
   let deleteAction: () -> Void
 
@@ -2144,15 +2165,9 @@ private struct QueueDiscHeader: View {
     .padding(.vertical, 4)
     .background {
       if isSelected {
-        RoundedRectangle(cornerRadius: 6, style: .continuous)
-          .fill(interfaceAccent.opacity(0.14))
-      }
-    }
-    .overlay {
-      if isSelected {
-        RoundedRectangle(cornerRadius: 6, style: .continuous)
-          .strokeBorder(interfaceAccent.opacity(0.42), lineWidth: 1)
-          .allowsHitTesting(false)
+        QueueSelectionBackground(accent: interfaceAccent, appearsActive: appearsActive, cornerRadius: 9)
+          // Reach the album block's edges, so every selection shares one extent and radius.
+          .padding(.horizontal, -8)
       }
     }
     .contextMenu {
@@ -2172,6 +2187,7 @@ private struct QueueTrackRow: View {
   let isTrackSelected: Bool
   let isCollectionSelected: Bool
   let dragEntryIDs: [UUID]
+  @Environment(\.appearsActive) private var appearsActive
   let selectAction: (TrackSelectionModifiers) -> Void
   let playAction: () -> Void
   let removeAction: () -> Void
@@ -2231,12 +2247,10 @@ private struct QueueTrackRow: View {
     .contentShape(Rectangle())
     .padding(.vertical, 3)
     .background {
-      if isTrackSelected {
-        RoundedRectangle(cornerRadius: 5, style: .continuous)
-          .fill(Color.primary.opacity(0.075))
-      } else if isCollectionSelected {
-        RoundedRectangle(cornerRadius: 5, style: .continuous)
-          .fill(activeAccent.opacity(0.14))
+      if isTrackSelected || isCollectionSelected {
+        QueueSelectionBackground(accent: activeAccent, appearsActive: appearsActive, cornerRadius: 9)
+          // Reach the album block's edges, so every selection shares one extent and radius.
+          .padding(.horizontal, -6)
       }
     }
     .onTapGesture {
@@ -2295,6 +2309,25 @@ func formatCollectionDuration(_ seconds: Int) -> String {
   let minutes = (seconds % 3_600) / 60
   if hours > 0 { return "\(hours)h \(minutes)m" }
   return "\(minutes)m"
+}
+
+/// The queue's one selection style, drawn once per selected item: an accent fill and outline
+/// while the window is key, neutral grey otherwise.
+struct QueueSelectionBackground: View {
+  let accent: Color
+  let appearsActive: Bool
+  let cornerRadius: CGFloat
+
+  var body: some View {
+    let tint = appearsActive ? accent : Color.secondary
+    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+      .fill(tint.opacity(appearsActive ? 0.15 : 0.10))
+      .overlay {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+          .strokeBorder(tint.opacity(0.42), lineWidth: 1)
+      }
+      .allowsHitTesting(false)
+  }
 }
 
 /// "1 album", "3 albums".
