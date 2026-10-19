@@ -231,18 +231,8 @@ struct ContentView: View {
       session.startAutomaticConnection()
       applyArtworkDisplayContext()
     }
-    .onChange(of: session.path) {
-      if !isRevealingContinueOffer || session.selectedRoot != .home || !session.path.isEmpty {
-        nowPlayingPresentation.dismiss()
-      }
-      applyArtworkDisplayContext()
-    }
-    .onChange(of: session.selectedRoot) {
-      if !isRevealingContinueOffer || session.selectedRoot != .home || !session.path.isEmpty {
-        nowPlayingPresentation.dismiss()
-      }
-      applyArtworkDisplayContext()
-    }
+    .onChange(of: session.path) { handleNavigationChange() }
+    .onChange(of: session.selectedRoot) { handleNavigationChange() }
     .onChange(of: session.hasEstablishedConnection) {
       applyArtworkDisplayContext()
     }
@@ -256,6 +246,13 @@ struct ContentView: View {
     .onChange(of: queueHandoff.continueQueueIdentity) {
       revealContinueOfferIfNeeded()
     }
+  }
+
+  private func handleNavigationChange() {
+    if !isRevealingContinueOffer || session.selectedRoot != .home || !session.path.isEmpty {
+      nowPlayingPresentation.dismiss()
+    }
+    applyArtworkDisplayContext()
   }
 
   private func revealContinueOfferIfNeeded() {
@@ -2290,8 +2287,4 @@ func formatCollectionDuration(_ seconds: Int) -> String {
   let minutes = (seconds % 3_600) / 60
   if hours > 0 { return "\(hours)h \(minutes)m" }
   return "\(minutes)m"
-}
-
-extension String {
-  fileprivate var nonEmpty: String? { isEmpty ? nil : self }
 }

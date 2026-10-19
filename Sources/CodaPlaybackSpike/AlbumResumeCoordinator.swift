@@ -104,7 +104,7 @@ func albumResumeCompletionAction(
 ) -> AlbumResumeCompletionAction {
   guard albumResumeRecordingAlbumID(for: completion) == album.album.id,
     let completedIndex = album.songs.firstIndex(where: { $0.id == completion.sourceID }),
-    let anchorSongID = album.songs.first?.id.nonEmptyValue
+    let anchorSongID = album.songs.first?.id.nonEmpty
   else { return .none }
 
   let nextIndex = album.songs.index(after: completedIndex)
@@ -149,7 +149,7 @@ private func albumResumeBuckets(from bookmarks: [RemoteBookmark]) -> [AlbumResum
     let album = RemoteAlbum(
       id: albumID,
       name: song.albumName,
-      artist: song.albumArtistName.nonEmptyValue,
+      artist: song.albumArtistName.nonEmpty,
       artists: song.albumArtists,
       isCompilation: song.isCompilation,
       coverArt: song.albumArtworkID,
@@ -402,8 +402,4 @@ final class AlbumResumeCoordinator: ObservableObject {
     workQueue.cancel()
     items = []
   }
-}
-
-private extension String {
-  var nonEmptyValue: String? { isEmpty ? nil : self }
 }

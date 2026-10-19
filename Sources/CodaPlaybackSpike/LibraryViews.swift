@@ -78,7 +78,11 @@ struct HomeView: View {
           }
 
           if !albumResume.items.isEmpty {
-            ContinueAlbumShelf(items: albumResume.items)
+            AlbumShelf(
+              title: "Continue Listening",
+              albums: albumResume.items.map(\.album),
+              onMore: nil
+            )
           }
 
           if let playlists = data?.playlists, !playlists.isEmpty {
@@ -440,7 +444,11 @@ struct ArtistsView: View {
               Text(selectedKind.title)
                 .font(.title2.bold())
               Spacer(minLength: 12)
-              artistOrderMenu
+              LibrarySortMenu(
+                selection: $selectedKind,
+                collectionName: "Artists",
+                itemName: "Artist"
+              )
             }
 
             LazyVGrid(
@@ -471,32 +479,6 @@ struct ArtistsView: View {
     .task(id: ArtistsLoadRequest(kind: selectedKind, resetToken: resetToken)) {
       await load(selectedKind)
     }
-  }
-
-  private var artistOrderMenu: some View {
-    Menu {
-      ForEach(ArtistCollectionKind.allCases, id: \.self) { kind in
-        Button {
-          selectedKind = kind
-        } label: {
-          if selectedKind == kind {
-            Label(kind.sortTitle, systemImage: "checkmark")
-          } else {
-            Text(kind.sortTitle)
-          }
-        }
-      }
-    } label: {
-      Image(systemName: "line.3.horizontal.decrease")
-        .font(.system(size: 18, weight: .semibold))
-        .frame(width: 32, height: 32)
-        .contentShape(Rectangle())
-    }
-    .menuStyle(.borderlessButton)
-    .menuIndicator(.hidden)
-    .fixedSize()
-    .help("Sort Artists — \(selectedKind.sortTitle)")
-    .accessibilityLabel("Artist order: \(selectedKind.sortTitle)")
   }
 
   @MainActor
@@ -580,7 +562,11 @@ struct AlbumsView: View {
               Text(selectedKind.title)
                 .font(.title2.bold())
               Spacer(minLength: 12)
-              albumOrderMenu
+              LibrarySortMenu(
+                selection: $selectedKind,
+                collectionName: "Albums",
+                itemName: "Album"
+              )
             }
 
             LazyVGrid(
@@ -611,32 +597,6 @@ struct AlbumsView: View {
     .task(id: AlbumsLoadRequest(kind: selectedKind, resetToken: resetToken)) {
       await load(selectedKind)
     }
-  }
-
-  private var albumOrderMenu: some View {
-    Menu {
-      ForEach(AlbumCollectionKind.allCases, id: \.self) { kind in
-        Button {
-          selectedKind = kind
-        } label: {
-          if selectedKind == kind {
-            Label(kind.sortTitle, systemImage: "checkmark")
-          } else {
-            Text(kind.sortTitle)
-          }
-        }
-      }
-    } label: {
-      Image(systemName: "line.3.horizontal.decrease")
-        .font(.system(size: 18, weight: .semibold))
-        .frame(width: 32, height: 32)
-        .contentShape(Rectangle())
-    }
-    .menuStyle(.borderlessButton)
-    .menuIndicator(.hidden)
-    .fixedSize()
-    .help("Sort Albums — \(selectedKind.sortTitle)")
-    .accessibilityLabel("Album order: \(selectedKind.sortTitle)")
   }
 
   @MainActor
@@ -867,39 +827,31 @@ struct ArtistDetailView: View {
   private func discographyGrid(
     _ albums: [RemoteAlbum],
     title: String,
-    minimumWidth: CGFloat = 145,
-    maximumWidth: CGFloat = 200,
-    availableWidth: CGFloat? = nil
+    availableWidth: CGFloat
   ) -> some View {
     let leadingInset: CGFloat = 37
     let trailingInset: CGFloat = 22
     let columns: [GridItem]
-    if let availableWidth {
-      let spacing: CGFloat = 18
-      let maximumCardWidth: CGFloat = 200
-      let contentWidth = max(0, availableWidth - leadingInset - trailingInset)
-      let fittedColumnCount = max(
-        1,
-        Int((contentWidth + spacing) / (maximumCardWidth + spacing))
-      )
-      let minimumColumnCount = min(albums.count, 3)
-      let columnCount = min(
-        albums.count,
-        max(minimumColumnCount, fittedColumnCount)
-      )
-      let cardWidth = min(
-        maximumCardWidth,
-        (contentWidth - (CGFloat(columnCount - 1) * spacing)) / CGFloat(columnCount)
-      )
-      columns = Array(
-        repeating: GridItem(.fixed(cardWidth), spacing: spacing),
-        count: columnCount
-      )
-    } else {
-      columns = [
-        GridItem(.adaptive(minimum: minimumWidth, maximum: maximumWidth), spacing: 18)
-      ]
-    }
+    let spacing: CGFloat = 18
+    let maximumCardWidth: CGFloat = 200
+    let contentWidth = max(0, availableWidth - leadingInset - trailingInset)
+    let fittedColumnCount = max(
+      1,
+      Int((contentWidth + spacing) / (maximumCardWidth + spacing))
+    )
+    let minimumColumnCount = min(albums.count, 3)
+    let columnCount = min(
+      albums.count,
+      max(minimumColumnCount, fittedColumnCount)
+    )
+    let cardWidth = min(
+      maximumCardWidth,
+      (contentWidth - (CGFloat(columnCount - 1) * spacing)) / CGFloat(columnCount)
+    )
+    columns = Array(
+      repeating: GridItem(.fixed(cardWidth), spacing: spacing),
+      count: columnCount
+    )
 
     return VStack(alignment: .leading, spacing: 18) {
       Text(title)
@@ -1057,7 +1009,7 @@ private struct ArtistCodaHero: View {
             }
             .accessibilityLabel("Compilation collection")
         } else {
-          ArtistContainedImage(url: artworkURL, cornerRadius: 13)
+          ArtworkImage(url: artworkURL, cornerRadius: 13, showsBorder: true)
         }
       }
       .frame(width: size, height: size)
@@ -1078,16 +1030,6 @@ private extension View {
   func artistDragSource(_ artistID: String) -> some View {
     draggable(QueueDropItem.library(.artist(artistID)))
       .dragConfiguration(.codaInternal())
-      .help("Drag artist discography to queue")
-  }
-}
-
-private struct ArtistContainedImage: View {
-  let url: URL?
-  let cornerRadius: CGFloat
-
-  var body: some View {
-    ArtworkImage(url: url, cornerRadius: cornerRadius, showsBorder: true)
   }
 }
 
@@ -1646,6 +1588,45 @@ struct PlaylistDetailView: View {
   }
 }
 
+protocol LibrarySortOrder: CaseIterable, Hashable where AllCases: RandomAccessCollection {
+  var sortTitle: String { get }
+}
+
+extension ArtistCollectionKind: LibrarySortOrder {}
+extension AlbumCollectionKind: LibrarySortOrder {}
+
+private struct LibrarySortMenu<Order: LibrarySortOrder>: View {
+  @Binding var selection: Order
+  let collectionName: String
+  let itemName: String
+
+  var body: some View {
+    Menu {
+      ForEach(Array(Order.allCases), id: \.self) { order in
+        Button {
+          selection = order
+        } label: {
+          if selection == order {
+            Label(order.sortTitle, systemImage: "checkmark")
+          } else {
+            Text(order.sortTitle)
+          }
+        }
+      }
+    } label: {
+      Image(systemName: "line.3.horizontal.decrease")
+        .font(.system(size: 18, weight: .semibold))
+        .frame(width: 32, height: 32)
+        .contentShape(Rectangle())
+    }
+    .menuStyle(.borderlessButton)
+    .menuIndicator(.hidden)
+    .fixedSize()
+    .help("Sort \(collectionName) — \(selection.sortTitle)")
+    .accessibilityLabel("\(itemName) order: \(selection.sortTitle)")
+  }
+}
+
 private struct SectionHeading: View {
   let title: String
   var action: (() -> Void)?
@@ -1689,20 +1670,6 @@ private struct AlbumShelf: View {
       SectionHeading(title: title, action: onMore)
       PagedHorizontalShelf(items: albums, itemWidth: 154) { album in
         AlbumCard(album: album)
-          .frame(width: 154)
-      }
-    }
-  }
-}
-
-private struct ContinueAlbumShelf: View {
-  let items: [AlbumResumeItem]
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      SectionHeading(title: "Continue Listening")
-      PagedHorizontalShelf(items: items, itemWidth: 154) { item in
-        AlbumCard(album: item.album)
           .frame(width: 154)
       }
     }
@@ -1935,13 +1902,13 @@ private struct ArtistCard: View {
       session.open(.artist(artist.id))
     } label: {
       VStack(alignment: .leading, spacing: 6) {
-        ArtistContainedImage(
+        ArtworkImage(
           url: session.artworkURL(id: artist.coverArt),
-          cornerRadius: 10
+          cornerRadius: 10,
+          showsBorder: true
         )
           .aspectRatio(1, contentMode: .fit)
-          .draggable(QueueDropItem.library(.artist(artist.id)))
-          .dragConfiguration(.codaInternal())
+          .artistDragSource(artist.id)
           .help("Drag artist discography to queue")
         Text(artist.name)
           .font(.subheadline.weight(.medium))
@@ -2370,11 +2337,7 @@ private func albumMetadata(_ page: AlbumPage) -> String {
   let tracks = "\(page.songs.count) tracks"
   let duration = formatCollectionDuration(
     page.album.duration ?? page.songs.compactMap(\.duration).reduce(0, +))
-  return [year, tracks, duration.nonEmptyValue].compactMap { $0 }.joined(separator: " · ")
-}
-
-extension String {
-  fileprivate var nonEmptyValue: String? { isEmpty ? nil : self }
+  return [year, tracks, duration.nonEmpty].compactMap { $0 }.joined(separator: " · ")
 }
 
 extension Collection {

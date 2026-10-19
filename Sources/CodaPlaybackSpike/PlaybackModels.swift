@@ -149,7 +149,7 @@ struct QueueEntry: Identifiable, Hashable, Sendable {
   // Narrow intent hint for Resume actions whose remaining queue may contain just one song.
   var albumContinuationID: String? = nil
 
-  var albumArtistName: String { albumArtist?.nonEmptyValue ?? artist }
+  var albumArtistName: String { albumArtist?.nonEmpty ?? artist }
   var artistCredit: ArtistCredit { ArtistCredit(name: artist, artists: artists) }
 
   init(
@@ -225,15 +225,15 @@ struct RemoteSong: Decodable, Identifiable, Hashable, Sendable {
   @LossyReplayGain var replayGain: ReplayGainMetadata? = nil
 
   var albumName: String { album ?? "" }
-  var artistName: String { displayArtist?.nonEmptyValue ?? artist ?? "" }
-  var albumArtistName: String { displayAlbumArtist?.nonEmptyValue ?? artistName }
+  var artistName: String { displayArtist?.nonEmpty ?? artist ?? "" }
+  var albumArtistName: String { displayAlbumArtist?.nonEmpty ?? artistName }
   var artistCredit: ArtistCredit {
     ArtistCredit(name: artistName, artists: artists ?? [], legacyArtistID: artistId)
   }
 
   func applyingAlbum(_ album: RemoteAlbum) -> RemoteSong {
     var song = self
-    song.displayAlbumArtist = album.artistName.nonEmptyValue ?? displayAlbumArtist
+    song.displayAlbumArtist = album.artistName.nonEmpty ?? displayAlbumArtist
     song.albumArtists = album.artists ?? albumArtists
     song.isCompilation = album.isCompilation ?? isCompilation
     return song
@@ -281,7 +281,7 @@ struct RemoteAlbum: Decodable, Identifiable, Hashable, Sendable {
   var userRating: Int? = nil
   var discTitles: [RemoteDiscTitle]? = nil
 
-  var artistName: String { displayArtist?.nonEmptyValue ?? artist ?? "" }
+  var artistName: String { displayArtist?.nonEmpty ?? artist ?? "" }
   var artistCredit: ArtistCredit {
     ArtistCredit(name: artistName, artists: artists ?? [], legacyArtistID: artistId)
   }
@@ -410,7 +410,7 @@ struct AlbumPage: Hashable, Sendable {
         sections.append(
           AlbumDiscSection(
             number: number,
-            subtitle: subtitles[number]?.nonEmptyValue ?? song.discSubtitle?.nonEmptyValue,
+            subtitle: subtitles[number]?.nonEmpty ?? song.discSubtitle?.nonEmpty,
             songs: [song]
           )
         )
@@ -534,6 +534,7 @@ extension QueueEntry {
   }
 }
 
-private extension String {
-  var nonEmptyValue: String? { isEmpty ? nil : self }
+extension String {
+  /// The string, or nil when it is empty.
+  var nonEmpty: String? { isEmpty ? nil : self }
 }

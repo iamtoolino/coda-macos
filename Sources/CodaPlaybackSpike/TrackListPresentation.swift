@@ -36,7 +36,7 @@ struct QueueGroup: Identifiable {
       indices.append(contentsOf: repeatElement(sections.count, count: end - start))
       sections.append(QueueDiscSection(
         range: start..<end, number: number,
-        subtitle: slice.first { $0.discSubtitle?.nonEmptyGroupValue != nil }?.discSubtitle,
+        subtitle: slice.first { $0.discSubtitle?.nonEmpty != nil }?.discSubtitle,
         durationSeconds: slice.reduce(0) { $0 + $1.durationSeconds },
         entryIDs: slice.map(\.id)
       ))
@@ -50,8 +50,8 @@ struct QueueGroup: Identifiable {
 
   var isStandalone: Bool { entries.count == 1 }
   var albumID: String? { AlbumSequenceResolver.normalizedAlbumID(entries.first?.albumID) }
-  var albumTitle: String { entries.first?.album.nonEmptyGroupValue ?? "Unknown Album" }
-  var artist: String { entries.first?.albumArtistName.nonEmptyGroupValue ?? "Unknown Artist" }
+  var albumTitle: String { entries.first?.album.nonEmpty ?? "Unknown Album" }
+  var artist: String { entries.first?.albumArtistName.nonEmpty ?? "Unknown Artist" }
 
   func discSectionIndex(at offset: Int) -> Int? {
     guard discSectionIndices.indices.contains(offset) else { return nil }
@@ -86,8 +86,8 @@ struct PlaylistGroup: Identifiable {
   var isStandalone: Bool { songs.count == 1 }
   var albumID: String? { AlbumSequenceResolver.normalizedAlbumID(songs.first?.song.albumId) }
 
-  var albumTitle: String { songs.first?.song.albumName.nonEmptyGroupValue ?? "Unknown Album" }
-  var artist: String { songs.first?.song.albumArtistName.nonEmptyGroupValue ?? "Unknown Artist" }
+  var albumTitle: String { songs.first?.song.albumName.nonEmpty ?? "Unknown Album" }
+  var artist: String { songs.first?.song.albumArtistName.nonEmpty ?? "Unknown Artist" }
   var detail: String {
     albumGroupDetail(year: songs.first?.song.year,
                      durationSeconds: songs.compactMap { $0.song.duration }.reduce(0, +))
@@ -109,10 +109,6 @@ func playlistGroups(_ songs: [RemoteSong]) -> [PlaylistGroup] {
 }
 
 private func albumGroupDetail(year: Int?, durationSeconds: Int) -> String {
-  [year.map(String.init), formatCollectionDuration(durationSeconds).nonEmptyGroupValue]
+  [year.map(String.init), formatCollectionDuration(durationSeconds).nonEmpty]
     .compactMap { $0 }.joined(separator: " · ")
-}
-
-private extension String {
-  var nonEmptyGroupValue: String? { isEmpty ? nil : self }
 }

@@ -647,56 +647,11 @@ final class PlayerController: ObservableObject {
 
   private func configureRemoteCommands() {
     let commands = MPRemoteCommandCenter.shared()
-
-    commands.playCommand.isEnabled = true
-    remoteCommandTokens.append(
-      (
-        commands.playCommand,
-        commands.playCommand.addTarget { [weak self] _ in
-          Task { @MainActor [weak self] in self?.play() }
-          return .success
-        }
-      ))
-
-    commands.pauseCommand.isEnabled = true
-    remoteCommandTokens.append(
-      (
-        commands.pauseCommand,
-        commands.pauseCommand.addTarget { [weak self] _ in
-          Task { @MainActor [weak self] in self?.pause() }
-          return .success
-        }
-      ))
-
-    commands.togglePlayPauseCommand.isEnabled = true
-    remoteCommandTokens.append(
-      (
-        commands.togglePlayPauseCommand,
-        commands.togglePlayPauseCommand.addTarget { [weak self] _ in
-          Task { @MainActor [weak self] in self?.togglePlayback() }
-          return .success
-        }
-      ))
-
-    commands.nextTrackCommand.isEnabled = true
-    remoteCommandTokens.append(
-      (
-        commands.nextTrackCommand,
-        commands.nextTrackCommand.addTarget { [weak self] _ in
-          Task { @MainActor [weak self] in self?.next() }
-          return .success
-        }
-      ))
-
-    commands.previousTrackCommand.isEnabled = true
-    remoteCommandTokens.append(
-      (
-        commands.previousTrackCommand,
-        commands.previousTrackCommand.addTarget { [weak self] _ in
-          Task { @MainActor [weak self] in self?.previous() }
-          return .success
-        }
-      ))
+    registerRemoteCommand(commands.playCommand) { $0.play() }
+    registerRemoteCommand(commands.pauseCommand) { $0.pause() }
+    registerRemoteCommand(commands.togglePlayPauseCommand) { $0.togglePlayback() }
+    registerRemoteCommand(commands.nextTrackCommand) { $0.next() }
+    registerRemoteCommand(commands.previousTrackCommand) { $0.previous() }
 
     commands.changePlaybackPositionCommand.isEnabled = true
     remoteCommandTokens.append(
@@ -710,6 +665,21 @@ final class PlayerController: ObservableObject {
           return .success
         }
       ))
+  }
+
+  private func registerRemoteCommand(
+    _ command: MPRemoteCommand,
+    action: @escaping @MainActor (PlayerController) -> Void
+  ) {
+    command.isEnabled = true
+    let token = command.addTarget { [weak self] _ in
+      Task { @MainActor [weak self] in
+        guard let self else { return }
+        action(self)
+      }
+      return .success
+    }
+    remoteCommandTokens.append((command, token))
   }
 
   private func updateNowPlayingInfo() {
