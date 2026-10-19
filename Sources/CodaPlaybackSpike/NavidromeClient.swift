@@ -47,15 +47,7 @@ struct NavidromeConfiguration: Sendable {
       throw NavidromeError.invalidConfiguration("Could not construct the server URL.")
     }
 
-    components.queryItems =
-      [
-        URLQueryItem(name: "u", value: username),
-        URLQueryItem(name: "t", value: Self.md5(password + salt)),
-        URLQueryItem(name: "s", value: salt),
-        URLQueryItem(name: "v", value: "1.16.1"),
-        URLQueryItem(name: "c", value: Self.clientName),
-        URLQueryItem(name: "f", value: "json"),
-      ] + parameters
+    components.queryItems = authenticationItems(salt: salt) + parameters
 
     guard let url = components.url else {
       throw NavidromeError.invalidConfiguration("Could not construct the server URL.")
@@ -69,28 +61,19 @@ struct NavidromeConfiguration: Sendable {
     positionMilliseconds: Int64,
     salt: String = Self.makeSalt()
   ) throws -> URLRequest {
-    var formItems = authenticationItems(salt: salt)
-    formItems.append(contentsOf: songIDs.map { URLQueryItem(name: "id", value: $0) })
+    var parameters = songIDs.map { URLQueryItem(name: "id", value: $0) }
     if !songIDs.isEmpty {
       let boundedIndex = max(0, min(currentIndex, songIDs.count - 1))
-      formItems.append(URLQueryItem(name: "current", value: songIDs[boundedIndex]))
-      formItems.append(
+      parameters.append(URLQueryItem(name: "current", value: songIDs[boundedIndex]))
+      parameters.append(
         URLQueryItem(name: "position", value: String(max(0, positionMilliseconds))))
     }
-
-    var formComponents = URLComponents()
-    formComponents.queryItems = formItems
-
-    var request = URLRequest(url: try restEndpointURL("savePlayQueue"))
-    request.httpMethod = "POST"
-    request.httpBody = Data((formComponents.percentEncodedQuery ?? "").utf8)
-    request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-    request.timeoutInterval = 30
-    request.cachePolicy = .reloadIgnoringLocalCacheData
-    return request
+    return try formPostRequest(endpoint: "savePlayQueue", parameters: parameters, salt: salt)
   }
 
-  func playlistMutationRequest(
+  /// A POST with authentication and parameters in a form body, for requests whose
+  /// parameter lists can be too long for a URL.
+  func formPostRequest(
     endpoint: String,
     parameters: [URLQueryItem],
     salt: String = Self.makeSalt()
@@ -126,16 +109,7 @@ struct NavidromeConfiguration: Sendable {
     if let comment {
       parameters.append(URLQueryItem(name: "comment", value: comment))
     }
-    var formComponents = URLComponents()
-    formComponents.queryItems = authenticationItems(salt: salt) + parameters
-
-    var request = URLRequest(url: try restEndpointURL(endpoint))
-    request.httpMethod = "POST"
-    request.httpBody = Data((formComponents.percentEncodedQuery ?? "").utf8)
-    request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-    request.timeoutInterval = 30
-    request.cachePolicy = .reloadIgnoringLocalCacheData
-    return request
+    return try formPostRequest(endpoint: endpoint, parameters: parameters, salt: salt)
   }
 
   func originalStreamURL(songID: String, salt: String = Self.makeSalt()) throws -> URL {
@@ -430,7 +404,7 @@ struct NavidromeClient: Sendable {
     guard !trimmedName.isEmpty else {
       throw NavidromeError.invalidConfiguration("Enter a playlist name.")
     }
-    let request = try configuration.playlistMutationRequest(
+    let request = try configuration.formPostRequest(
       endpoint: "createPlaylist",
       parameters:
         [URLQueryItem(name: "name", value: trimmedName)]
@@ -448,7 +422,7 @@ struct NavidromeClient: Sendable {
       URLQueryItem(name: "songIndexToRemove", value: String($0))
     }
     let additionItems = songIDs.map { URLQueryItem(name: "songIdToAdd", value: $0) }
-    let request = try configuration.playlistMutationRequest(
+    let request = try configuration.formPostRequest(
       endpoint: "updatePlaylist",
       parameters:
         [URLQueryItem(name: "playlistId", value: trimmedID)]
@@ -558,27 +532,14 @@ struct NavidromeClient: Sendable {
     var request = URLRequest(url: url)
     request.timeoutInterval = 30
     request.cachePolicy = .reloadIgnoringLocalCacheData
-    let result = try await responseWithHTTPMetadata(for: request)
-    guard result.response.status == "ok" else {
-      throw NavidromeError.server(
-        result.response.error?.message ?? "The server rejected the request.")
-    }
-    return result
+    return try await checkedResponseWithHTTPMetadata(for: request)
   }
 
   private func checkedResponse(_ request: URLRequest) async throws -> SubsonicResponse {
-    let response = try await response(for: request)
-    guard response.status == "ok" else {
-      throw NavidromeError.server(response.error?.message ?? "The server rejected the request.")
-    }
-    return response
+    try await checkedResponseWithHTTPMetadata(for: request).response
   }
 
-  private func response(for request: URLRequest) async throws -> SubsonicResponse {
-    try await responseWithHTTPMetadata(for: request).response
-  }
-
-  private func responseWithHTTPMetadata(
+  private func checkedResponseWithHTTPMetadata(
     for request: URLRequest
   ) async throws -> (response: SubsonicResponse, httpResponse: HTTPURLResponse) {
     let (data, urlResponse) = try await session.data(for: request)
@@ -589,14 +550,16 @@ struct NavidromeClient: Sendable {
       throw NavidromeError.httpStatus(httpResponse.statusCode)
     }
 
+    let response: SubsonicResponse
     do {
-      return (
-        try JSONDecoder().decode(SubsonicEnvelope.self, from: data).response,
-        httpResponse
-      )
+      response = try JSONDecoder().decode(SubsonicEnvelope.self, from: data).response
     } catch {
       throw NavidromeError.decoding(error.localizedDescription)
     }
+    guard response.status == "ok" else {
+      throw NavidromeError.server(response.error?.message ?? "The server rejected the request.")
+    }
+    return (response, httpResponse)
   }
 }
 
