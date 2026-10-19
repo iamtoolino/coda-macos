@@ -7,7 +7,6 @@ private let trackHighlightHorizontalInset: CGFloat = 12
 private struct HomeData {
   let newest: [RemoteAlbum]
   let recentReleases: [RemoteAlbum]
-  let recentArtists: [RemoteArtist]
   let recentlyPlayed: [RemoteAlbum]
   let playlists: [RemotePlaylist]
 }
@@ -50,12 +49,6 @@ struct HomeView: View {
           } else if let errorMessage, data == nil {
             LibraryErrorView(title: "Could Not Load Home", message: errorMessage) {
               Task { await load() }
-            }
-          }
-
-          if let artists = data?.recentArtists, !artists.isEmpty {
-            ArtistShelf(title: "Recently Added Artists", artists: artists) {
-              session.open(.artistsCollection(.recentlyAdded))
             }
           }
 
@@ -146,16 +139,12 @@ struct HomeView: View {
     do {
       async let newestTask = request.client.albums(.recentlyAdded, size: 24)
       async let releasesTask = request.client.albums(.recentReleases, size: 24)
-      async let artistsTask = request.client.artists()
       async let recentTask = request.client.albums(.recentlyPlayed, size: 20)
       async let playlistsTask = request.client.playlists()
 
-      let newest = try await newestTask
-      let artists = try await artistsTask
       let loadedData = HomeData(
-        newest: newest,
+        newest: try await newestTask,
         recentReleases: try await releasesTask,
-        recentArtists: recentArtists(newestAlbums: newest, artists: artists),
         recentlyPlayed: try await recentTask,
         playlists: try await playlistsTask
       )
