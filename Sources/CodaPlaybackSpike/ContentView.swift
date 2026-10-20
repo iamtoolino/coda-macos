@@ -391,7 +391,10 @@ private struct PlaybackWindowVisibilityObserver: NSViewRepresentable {
 
   func updateNSView(_ nsView: PlaybackWindowVisibilityView, context: Context) {
     nsView.onVisibilityChange = player.setPlaybackWindowVisible
-    nsView.reportVisibility()
+    // Report after the view update, never from inside it.
+    DispatchQueue.main.async { [weak nsView] in
+      MainActor.assumeIsolated { nsView?.reportVisibility() }
+    }
   }
 
   static func dismantleNSView(_ nsView: PlaybackWindowVisibilityView, coordinator: ()) {

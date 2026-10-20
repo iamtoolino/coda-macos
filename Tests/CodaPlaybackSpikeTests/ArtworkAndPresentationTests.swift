@@ -350,6 +350,107 @@ struct ArtworkAndPresentationTests {
     withExtendedLifetime(coordinator) {}
   }
 
+  @Test("advancing to another album prepares that album's Now Playing artwork")
+  func advancingToAnotherAlbumPreparesItsArtwork() async throws {
+    let nowPlayingAURL = URL(string: "https://example.test/a?size=1440")!
+    let nowPlayingBURL = URL(string: "https://example.test/b?size=1440")!
+    let artworkA = NSImage(size: NSSize(width: 10, height: 10))
+    let artworkB = NSImage(size: NSSize(width: 20, height: 20))
+    let session = AppSession(loadCredentials: false)
+    let backend = TestPlaybackBackend()
+    let player = PlayerController(backend: backend)
+    let treatments = ArtworkTreatmentSettings()
+    let suiteName = "CodaTests-AdvanceTheme-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let presentation = NowPlayingPresentationController(defaults: defaults)
+    let coordinator = PlaybackArtworkCoordinator(
+      session: session,
+      player: player,
+      treatments: treatments,
+      presentation: presentation,
+      imageLoader: { url in url == nowPlayingBURL ? artworkB : artworkA }
+    )
+    let a = QueueEntry(
+      sourceID: "a", url: URL(string: "https://example.test/a-song")!,
+      nowPlayingArtworkURL: nowPlayingAURL, title: "A", albumID: "album-a")
+    let b = QueueEntry(
+      sourceID: "b", url: URL(string: "https://example.test/b-song")!,
+      nowPlayingArtworkURL: nowPlayingBURL, title: "B", albumID: "album-b")
+
+    player.replaceQueue([a, b], startsPlaying: true)
+    for _ in 0..<50 where presentation.preparedTheme?.playbackKey != "album:album-a" {
+      await Task.yield()
+    }
+    #expect(presentation.preparedTheme?.artwork === artworkA)
+
+    backend.emit(.automaticallyAdvanced)
+    for _ in 0..<50 where presentation.preparedTheme?.playbackKey != "album:album-b" {
+      await Task.yield()
+    }
+    #expect(player.currentEntry?.sourceID == "b")
+    #expect(presentation.preparedTheme?.playbackKey == "album:album-b")
+    #expect(presentation.preparedTheme?.artwork === artworkB)
+    withExtendedLifetime(coordinator) {}
+  }
+
+  private static func centerColor(_ image: NSImage) -> (Double, Double, Double)? {
+    guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+    let rep = NSBitmapImageRep(cgImage: cg)
+    guard let color = rep.colorAt(x: rep.pixelsWide / 2, y: rep.pixelsHigh / 2)?.usingColorSpace(.sRGB)
+    else { return nil }
+    return (Double(color.redComponent), Double(color.greenComponent), Double(color.blueComponent))
+  }
+
+  @Test("advancing with the real artwork cache prepares the new album's artwork")
+  func advancingWithRealCachePreparesNewArtwork() async throws {
+    func pngURL(_ name: String, _ color: NSColor) throws -> URL {
+      let image = NSImage(size: NSSize(width: 64, height: 64))
+      image.lockFocus(); color.setFill(); NSRect(x: 0, y: 0, width: 64, height: 64).fill()
+      image.unlockFocus()
+      let tiff = try #require(image.tiffRepresentation)
+      let rep = try #require(NSBitmapImageRep(data: tiff))
+      let data = try #require(rep.representation(using: .png, properties: [:]))
+      let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("coda-test-\(name)-\(UUID().uuidString).png")
+      try data.write(to: url)
+      return url
+    }
+    let urlA = try pngURL("a", NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1))
+    let urlB = try pngURL("b", NSColor(srgbRed: 0, green: 0, blue: 1, alpha: 1))
+    let urlC = try pngURL("c", NSColor(srgbRed: 0, green: 1, blue: 0, alpha: 1))
+    let session = AppSession(loadCredentials: false)
+    let backend = TestPlaybackBackend()
+    let player = PlayerController(backend: backend)
+    let treatments = ArtworkTreatmentSettings()
+    let suiteName = "CodaTests-RealCacheTheme-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let presentation = NowPlayingPresentationController(defaults: defaults)
+    let coordinator = PlaybackArtworkCoordinator(
+      session: session, player: player, treatments: treatments, presentation: presentation)
+    let entries = [("a", urlA), ("b", urlB), ("c", urlC)].map { id, url in
+      QueueEntry(
+        sourceID: id, url: URL(string: "https://example.test/\(id)-song")!,
+        artworkURL: url, nowPlayingArtworkURL: url, title: id, albumID: "album-\(id)")
+    }
+
+    player.replaceQueue(entries, startsPlaying: true)
+    for step in ["a", "b", "c"] {
+      if step != "a" { backend.emit(.automaticallyAdvanced) }
+      for _ in 0..<200 where presentation.preparedTheme?.playbackKey != "album:album-\(step)" {
+        try await Task.sleep(for: .milliseconds(5))
+      }
+      #expect(player.currentEntry?.sourceID == step)
+      #expect(presentation.preparedTheme?.playbackKey == "album:album-\(step)")
+      // Compare the dominant channel; colour-space conversion shifts exact values.
+      let shownColor = presentation.preparedTheme?.artwork.flatMap(Self.centerColor)
+      let dominant = shownColor.map { c in c.0 >= max(c.1, c.2) ? "a" : c.2 >= c.1 ? "b" : "c" }
+      #expect(dominant == step, "step \(step) showed \(String(describing: shownColor))")
+    }
+    withExtendedLifetime(coordinator) {}
+  }
+
   @Test("same album identity can repair stale artwork treatment")
   func sameAlbumIdentityCanRepairStaleArtworkTreatment() {
     let treatments = ArtworkTreatmentSettings()
@@ -574,6 +675,26 @@ struct ArtworkAndPresentationTests {
       presentation.updateContext(
         window: nil, isApplicationActive: true, hasEstablishedConnection: false,
         playbackKey: nil, isPlaying: false)
+    }
+    #expect(changeCount == 0)
+    withExtendedLifetime(observation) {}
+  }
+
+  @Test("repeated identical context while presented does not publish")
+  func repeatedPresentedContextIsStable() {
+    let presentation = NowPlayingPresentationController()
+    presentation.prepare(playbackKey: "album:steady", artwork: nil, accent: .fallback)
+    presentation.updateContext(
+      window: nil, isApplicationActive: true, hasEstablishedConnection: true,
+      playbackKey: "album:steady", isPlaying: true)
+    presentation.present()
+    #expect(presentation.isPresented)
+    var changeCount = 0
+    let observation = presentation.objectWillChange.sink { changeCount += 1 }
+    for _ in 0..<3 {
+      presentation.updateContext(
+        window: nil, isApplicationActive: true, hasEstablishedConnection: true,
+        playbackKey: "album:steady", isPlaying: true)
     }
     #expect(changeCount == 0)
     withExtendedLifetime(observation) {}

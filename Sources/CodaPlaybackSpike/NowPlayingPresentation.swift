@@ -104,6 +104,13 @@ final class NowPlayingPresentationController: ObservableObject {
       artwork: artwork,
       accent: accent
     )
+    // @Published announces in willSet, before the new theme exists. When that lands inside
+    // an update pass already in flight, SwiftUI can re-render some observers with the old
+    // theme and never revisit them. A second announcement on the next main-queue turn, once
+    // the value is stored, guarantees every observer renders the prepared theme.
+    DispatchQueue.main.async { [weak self] in
+      MainActor.assumeIsolated { self?.objectWillChange.send() }
+    }
   }
 
   func clearPreparedTheme() {
@@ -124,6 +131,8 @@ final class NowPlayingPresentationController: ObservableObject {
       || self.playbackKey != playbackKey
       || self.isPlaying != isPlaying
     let applicationActivityChanged = self.isApplicationActive != isApplicationActive
+    // Repeated identical reports are common (every view update); they must not republish.
+    guard playbackContextChanged || applicationActivityChanged else { return }
 
     observedWindow = window
     self.isApplicationActive = isApplicationActive
@@ -216,7 +225,7 @@ final class NowPlayingPresentationController: ObservableObject {
   private func hideDismissHint() {
     dismissHintTask?.cancel()
     dismissHintTask = nil
-    showsDismissHint = false
+    if showsDismissHint { showsDismissHint = false }
   }
 
   @discardableResult
@@ -425,14 +434,25 @@ final class NowPlayingActivityView: NSView {
     reportContext()
   }
 
+  /// Called from SwiftUI view updates, so the controller is updated just after the update
+  /// instead of publishing during it (which SwiftUI treats as undefined behaviour and can
+  /// answer by dropping a later refresh). The main queue keeps reports in order.
   func reportContext() {
-    presentation?.updateContext(
-      window: observedWindow,
-      isApplicationActive: NSApp.isActive,
-      hasEstablishedConnection: hasEstablishedConnection,
-      playbackKey: playbackKey,
-      isPlaying: isPlaying
-    )
+    let window = observedWindow
+    let hasEstablishedConnection = hasEstablishedConnection
+    let playbackKey = playbackKey
+    let isPlaying = isPlaying
+    DispatchQueue.main.async { [weak self] in
+      MainActor.assumeIsolated {
+        self?.presentation?.updateContext(
+          window: window,
+          isApplicationActive: NSApp.isActive,
+          hasEstablishedConnection: hasEstablishedConnection,
+          playbackKey: playbackKey,
+          isPlaying: isPlaying
+        )
+      }
+    }
   }
 
   func stopObserving() {
@@ -507,7 +527,7 @@ struct NowPlayingPresentationView: View {
           Spacer(minLength: 0)
 
           VStack(spacing: 0) {
-            preparedArtwork(for: entry)
+            NowPlayingPreparedArtwork(fallbackURL: entry.nowPlayingArtworkURL ?? entry.artworkURL)
               .frame(width: layout.coverSize, height: layout.coverSize)
               .shadow(color: .black.opacity(0.34), radius: 24, y: 14)
               .contentShape(Rectangle())
@@ -536,12 +556,7 @@ struct NowPlayingPresentationView: View {
                 .onTapGesture { presentation.dismiss() }
 
               if !entry.artist.isEmpty {
-                ArtistCreditView(credit: entry.artistCredit, openArtist: showArtist)
-                  .font(.title3.weight(.medium))
-                  .foregroundStyle(presentationAccent)
-                  .tint(presentationAccent)
-                  .animation(.easeInOut(duration: 0.85), value: preparedThemeID)
-                  .lineLimit(1)
+                NowPlayingArtistLine(credit: entry.artistCredit, openArtist: showArtist)
               }
 
               if !entry.album.isEmpty {
@@ -573,10 +588,8 @@ struct NowPlayingPresentationView: View {
               NowPlayingAlbumRating(
                 albumID: albumID,
                 isLoaded: album?.id == albumID,
-                fallbackRating: album?.id == albumID ? album?.userRating : nil,
-                accent: presentationAccent
+                fallbackRating: album?.id == albumID ? album?.userRating : nil
               )
-              .animation(.easeInOut(duration: 0.85), value: preparedThemeID)
               .padding(.top, 18)
             }
           }
@@ -611,26 +624,6 @@ struct NowPlayingPresentationView: View {
     .accessibilityLabel("Now Playing")
   }
 
-  @ViewBuilder
-  private func preparedArtwork(for entry: QueueEntry) -> some View {
-    ZStack {
-      if let artwork = presentation.preparedTheme?.artwork {
-        Image(nsImage: artwork)
-          .resizable()
-          .scaledToFill()
-          .clipShape(RoundedRectangle(cornerRadius: 16))
-          .id(ObjectIdentifier(artwork))
-          .transition(.opacity.combined(with: .scale(scale: 0.985)))
-      } else {
-        ArtworkImage(
-          url: entry.nowPlayingArtworkURL ?? entry.artworkURL,
-          cornerRadius: 16
-        )
-      }
-    }
-    .animation(.easeInOut(duration: 0.45), value: preparedArtworkIdentity)
-  }
-
   private var dismissHint: some View {
     Label("Click the cover or press Esc to go back", systemImage: "chevron.down")
       .font(.callout)
@@ -642,18 +635,6 @@ struct NowPlayingPresentationView: View {
       .glassEffect(.regular, in: Capsule())
       .allowsHitTesting(false)
       .accessibilityHidden(true)
-  }
-
-  private var preparedArtworkIdentity: ObjectIdentifier? {
-    presentation.preparedTheme?.artwork.map(ObjectIdentifier.init)
-  }
-
-  private var presentationAccent: Color {
-    presentation.preparedTheme?.accent.color ?? ArtworkColor.fallback.color
-  }
-
-  private var preparedThemeID: UUID? {
-    presentation.preparedTheme?.id
   }
 
   private func showArtist(_ artistID: String) {
@@ -701,13 +682,59 @@ struct NowPlayingPresentationView: View {
   }
 }
 
+/// The views below read the prepared theme through their own subscription, like the
+/// background: a theme published right after the parent's update cannot be missed by them.
+private struct NowPlayingPreparedArtwork: View {
+  @EnvironmentObject private var presentation: NowPlayingPresentationController
+  let fallbackURL: URL?
+
+  var body: some View {
+    ZStack {
+      if let artwork = presentation.preparedTheme?.artwork {
+        Image(nsImage: artwork)
+          .resizable()
+          .scaledToFill()
+          .clipShape(RoundedRectangle(cornerRadius: 16))
+          .id(ObjectIdentifier(artwork))
+          .transition(.opacity.combined(with: .scale(scale: 0.985)))
+      } else {
+        ArtworkImage(url: fallbackURL, cornerRadius: 16)
+      }
+    }
+    .animation(
+      .easeInOut(duration: 0.45),
+      value: presentation.preparedTheme?.artwork.map(ObjectIdentifier.init)
+    )
+  }
+}
+
+private struct NowPlayingArtistLine: View {
+  @EnvironmentObject private var presentation: NowPlayingPresentationController
+  let credit: ArtistCredit
+  let openArtist: (String) -> Void
+
+  var body: some View {
+    let accent = presentation.preparedTheme?.accent.color ?? ArtworkColor.fallback.color
+    ArtistCreditView(credit: credit, openArtist: openArtist)
+      .font(.title3.weight(.medium))
+      .foregroundStyle(accent)
+      .tint(accent)
+      .animation(.easeInOut(duration: 0.85), value: presentation.preparedTheme?.id)
+      .lineLimit(1)
+  }
+}
+
 private struct NowPlayingAlbumRating: View {
   @EnvironmentObject private var session: AppSession
+  @EnvironmentObject private var presentation: NowPlayingPresentationController
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   let albumID: String
   let isLoaded: Bool
   let fallbackRating: Int?
-  let accent: Color
+
+  private var accent: Color {
+    presentation.preparedTheme?.accent.color ?? ArtworkColor.fallback.color
+  }
 
   @State private var hoveredRating: Int?
   @State private var presentedRating = 0

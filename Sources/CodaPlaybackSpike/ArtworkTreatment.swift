@@ -656,41 +656,55 @@ private struct ArtworkBackgroundLayer: View {
 struct ArtworkBackgroundTransition: View {
   let theme: ArtworkBackgroundTheme
 
-  @State private var displayedTheme: ArtworkBackgroundTheme
+  /// The theme last faded in; only used to know what to fade out.
+  @State private var lastTheme: ArtworkBackgroundTheme
   @State private var outgoingTheme: ArtworkBackgroundTheme?
   @State private var incomingOpacity = 1.0
   @State private var transitionTask: Task<Void, Never>?
 
   init(theme: ArtworkBackgroundTheme) {
     self.theme = theme
-    _displayedTheme = State(initialValue: theme)
+    _lastTheme = State(initialValue: theme)
   }
 
   var body: some View {
+    // The top layer always renders the current theme, so a missed change can only skip the
+    // cross-fade, never leave the previous track's background on screen.
+    // Until the change is processed, keep showing the last theme under a transparent new one,
+    // so the cross-fade never starts with a one-frame flash of the new background.
+    let isPending = outgoingTheme == nil && lastTheme.id != theme.id
     ZStack {
-      if let outgoingTheme {
-        ArtworkBackgroundLayer(theme: outgoingTheme)
+      if let fadingTheme = outgoingTheme ?? (isPending ? lastTheme : nil) {
+        ArtworkBackgroundLayer(theme: fadingTheme)
       }
-      ArtworkBackgroundLayer(theme: displayedTheme)
-        .opacity(incomingOpacity)
+      ArtworkBackgroundLayer(theme: theme)
+        .opacity(isPending ? 0 : outgoingTheme == nil ? 1 : incomingOpacity)
     }
     .onChange(of: theme.id) { _, _ in
+      transition(to: theme)
+    }
+    // A second, identity-driven trigger: if the change notification is missed, this still
+    // starts the fade, so the pending state above cannot persist.
+    .task(id: theme.id) {
       transition(to: theme)
     }
     .onDisappear {
       transitionTask?.cancel()
       transitionTask = nil
+      outgoingTheme = nil
+      incomingOpacity = 1
+      lastTheme = theme
     }
   }
 
   private func transition(to newTheme: ArtworkBackgroundTheme) {
-    guard displayedTheme.id != newTheme.id else { return }
+    guard lastTheme.id != newTheme.id else { return }
     transitionTask?.cancel()
     var transaction = Transaction()
     transaction.disablesAnimations = true
     withTransaction(transaction) {
-      outgoingTheme = displayedTheme
-      displayedTheme = newTheme
+      outgoingTheme = lastTheme
+      lastTheme = newTheme
       incomingOpacity = 0
     }
     transitionTask = Task { @MainActor in
