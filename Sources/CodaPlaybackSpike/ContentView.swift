@@ -1348,11 +1348,25 @@ private struct QueuePanel: View {
     ScrollViewReader { proxy in
       VStack(spacing: 0) {
         if player.queue.isEmpty {
-          ContentUnavailableView(
-            "Queue Is Empty",
-            systemImage: "music.note.list",
-            description: Text("Play something, or drag an album, disc, or artist here.")
-          )
+          // Quiet on purpose: the queue is often empty, and the library beside it is the focus.
+          VStack(spacing: 6) {
+            Image(systemName: "music.note.list")
+              .font(.system(size: 22, weight: .regular))
+              .foregroundStyle(.tertiary)
+              .padding(.bottom, 2)
+            Text("Queue Is Empty")
+              .font(.headline)
+              .foregroundStyle(.secondary)
+            Text("Drag albums, discs or artists here")
+              .font(.footnote)
+              .foregroundStyle(.tertiary)
+          }
+          .multilineTextAlignment(.center)
+          .padding(.horizontal, 20)
+          // Slightly above centre reads as optically centred.
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .padding(.bottom, 60)
+          .accessibilityElement(children: .combine)
         } else {
           ScrollView {
             ZStack(alignment: .top) {
