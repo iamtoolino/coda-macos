@@ -4,7 +4,5 @@ dist/
 .swiftpm/
 DerivedData/
 __pycache__/
-navidrome-artist-picture-*.csv
-navidrome-artists-missing-pictures.csv
 *.xcuserstate
 xcuserdata/

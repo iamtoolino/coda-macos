@@ -8,7 +8,7 @@ preparation and packaging.
 
 - A clean `main` checkout containing every intended release commit.
 - The version in `Support/Info.plist` set to the release version.
-- Xcode Command Line Tools, Swift, and the dependencies listed in `README.md`.
+- Xcode Command Line Tools, Swift, and the dependencies listed in `docs/development.md`.
 - The long-lived `Coda Local Development` code-signing identity with SHA-1 fingerprint
   `C0265B406C5DB49A5C626DDA5D1B12EADA89752C` in the login keychain.
 - An authenticated GitHub CLI session for the final publish step.
