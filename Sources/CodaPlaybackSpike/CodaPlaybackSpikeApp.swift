@@ -210,7 +210,7 @@ private struct CodaPlaybackCommands: Commands {
     if let textView = NSApp.keyWindow?.firstResponder as? NSTextView {
       textView.deleteToBeginningOfLine(nil)
     } else {
-      player.clear()
+      player.clearQueue(undoManager: NSApp.keyWindow?.undoManager)
     }
   }
 }

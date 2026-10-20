@@ -391,6 +391,46 @@ final class PlayerController: ObservableObject {
     resetPublishedState()
   }
 
+  /// Everything needed to put a cleared queue back exactly as it was.
+  struct QueueSnapshot {
+    let entries: [QueueEntry]
+    let currentIndex: Int?
+    let positionSeconds: Double
+    let wasPlaying: Bool
+  }
+
+  /// Clears the queue as one undoable action ("Undo Clear Queue"), so the one-keystroke
+  /// clear needs no confirmation.
+  func clearQueue(undoManager: UndoManager?) {
+    guard !queue.isEmpty else { return }
+    let snapshot = QueueSnapshot(
+      entries: queue,
+      currentIndex: currentIndex,
+      positionSeconds: position,
+      wasPlaying: isPlaying
+    )
+    clear()
+    undoManager?.registerUndo(withTarget: self) { player in
+      MainActor.assumeIsolated { player.restoreQueue(snapshot, undoManager: undoManager) }
+    }
+    undoManager?.setActionName("Clear Queue")
+  }
+
+  private func restoreQueue(_ snapshot: QueueSnapshot, undoManager: UndoManager?) {
+    replaceQueue(
+      snapshot.entries,
+      startAt: snapshot.currentIndex ?? 0,
+      positionSeconds: snapshot.positionSeconds,
+      startsPlaying: snapshot.wasPlaying,
+      scrollQueueToCurrent: true
+    )
+    // Registering the clear again while undoing makes it available as Redo.
+    undoManager?.registerUndo(withTarget: self) { player in
+      MainActor.assumeIsolated { player.clearQueue(undoManager: undoManager) }
+    }
+    undoManager?.setActionName("Clear Queue")
+  }
+
   func setReplayGainEnabled(_ enabled: Bool) {
     guard replayGainEnabled != enabled else { return }
     replayGainEnabled = enabled

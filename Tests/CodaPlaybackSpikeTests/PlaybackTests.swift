@@ -9,6 +9,43 @@ import Testing
 @Suite("Playback")
 @MainActor
 struct PlaybackTests {
+  @Test("clearing the queue can be undone and redone")
+  func clearingTheQueueCanBeUndoneAndRedone() {
+    let player = PlayerController(backend: TestPlaybackBackend())
+    let undoManager = UndoManager()
+    undoManager.groupsByEvent = false
+    let entries = (0..<3).map { index in
+      QueueEntry(
+        sourceID: "song-\(index)",
+        url: URL(string: "https://example.test/song-\(index)")!,
+        title: "Song \(index)"
+      )
+    }
+    player.replaceQueue(entries, startAt: 1, startsPlaying: false)
+
+    undoManager.beginUndoGrouping()
+    player.clearQueue(undoManager: undoManager)
+    undoManager.endUndoGrouping()
+    #expect(player.queue.isEmpty)
+    #expect(undoManager.undoActionName == "Clear Queue")
+
+    undoManager.undo()
+    #expect(player.queue.map(\.sourceID) == ["song-0", "song-1", "song-2"])
+    #expect(player.currentEntry?.sourceID == "song-1")
+    #expect(!player.isPlaying)
+
+    undoManager.redo()
+    #expect(player.queue.isEmpty)
+  }
+
+  @Test("clearing an empty queue registers nothing to undo")
+  func clearingAnEmptyQueueRegistersNoUndo() {
+    let player = PlayerController(backend: TestPlaybackBackend())
+    let undoManager = UndoManager()
+    player.clearQueue(undoManager: undoManager)
+    #expect(!undoManager.canUndo)
+  }
+
   @Test("mpv advances Coda only when the current file ends")
   func mpvAdvancesCodaOnlyWhenTheCurrentFileEnds() {
     var tracker = MPVPlaylistAdvanceTracker()

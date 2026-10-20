@@ -1365,10 +1365,7 @@ private struct QueuePanel: View {
                   queueHasFocus = true
                 }
                 .contextMenu {
-                  Button("Clear Queue", systemImage: "trash", role: .destructive) {
-                    clearSelection()
-                    player.clear()
-                  }
+                  QueueClearButton(beforeClearing: clearSelection)
                 }
 
               let selectedEntryIDSet = Set(selectedEntryIDs ?? [])
@@ -1607,7 +1604,7 @@ private struct QueuePanel: View {
     let duration = formatCollectionDuration(player.queueDurationSeconds)
     let count = "\(trackCount) \(trackCount == 1 ? "track" : "tracks")"
     let summary = duration.isEmpty ? count : "\(count) · \(duration)"
-    return "Queue: \(summary)"
+    return "Queue: \(summary) · Clear with ⌘⌫"
   }
 
   private var selectionRemovalHelp: String {
@@ -2134,6 +2131,27 @@ private struct QueueItemContextMenu: View {
     Button(role: .destructive, action: deleteAction) {
       Label(removalTitle, systemImage: "trash")
     }
+
+    Divider()
+
+    QueueClearButton()
+  }
+}
+
+/// "Clear Queue" for every queue context menu; undoable, with the ⌘⌫ shortcut shown.
+private struct QueueClearButton: View {
+  @EnvironmentObject private var player: PlayerController
+  @EnvironmentObject private var queueSelection: QueueSelectionModel
+  @Environment(\.undoManager) private var undoManager
+  var beforeClearing: (() -> Void)? = nil
+
+  var body: some View {
+    Button("Clear Queue", systemImage: "trash", role: .destructive) {
+      beforeClearing?()
+      queueSelection.clear()
+      player.clearQueue(undoManager: undoManager)
+    }
+    .keyboardShortcut(.delete, modifiers: [.command])
   }
 }
 
@@ -2179,6 +2197,8 @@ private struct QueueDiscHeader: View {
     }
     .contextMenu {
       Button("Remove Disc from Queue", role: .destructive, action: deleteAction)
+      Divider()
+      QueueClearButton()
     }
   }
 }
