@@ -11,6 +11,7 @@
 ## Git workflow
 
 - Work on the current branch. Do not create or switch branches unless the user explicitly asks.
+- Coda has a single developer: commit directly to `main`. Do not open pull requests unless the user explicitly asks for one.
 - After completing and verifying a normal requested code change, create a commit unless the user explicitly says not to commit it.
 - When the user explicitly creates or requests a prototype or experimental branch, commit each stable, working iteration as a checkpoint so experiments are easy to compare and revert.
 - Leave an iteration uncommitted when the user explicitly calls it an experiment or prototype and asks not to commit it.
@@ -84,6 +85,9 @@
 ### Documentation and build workflow
 
 - Verify documentation against the scripts and current runtime behavior, especially prerequisites, bundled libmpv, signing, debug versus release credential storage, `.build/Coda.app`, and available automated tests.
+- Keep `README.md` a short introduction to Coda: what it is, the features in the current release, install, and screenshots. Add notable new features there briefly as they ship.
+- Put specifications, design notes, function or subsystem details, and developer setup in `docs/` (for example `docs/development.md`, `docs/replaygain.md`), not in the README.
+- Do not document local testing or experiments against a Navidrome server in the README or `docs/`; keep such tooling out of the repository unless the user explicitly asks for it.
 - Update documentation in the same change when user-facing behavior, required setup, build commands, or verification commands change.
 - Keep build instructions reproducible for a fresh checkout. Do not preserve obsolete commands merely because they once worked.
 
