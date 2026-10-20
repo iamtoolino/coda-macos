@@ -52,7 +52,7 @@ enum ConnectionState: Equatable, Sendable {
 
 enum ArtworkPurpose: Int, Sendable {
   case standard = 472
-  case nowPlaying = 1_200
+  case nowPlaying = 1_440
 }
 
 struct PreparedQueueSongs: Sendable {

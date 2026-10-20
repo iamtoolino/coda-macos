@@ -42,7 +42,7 @@ struct ArtworkAndPresentationTests {
   @Test("artwork purposes use one browsing size and one Retina presentation size")
   func artworkPurposesUseOneBrowsingSizeAndOneRetinaPresentationSize() {
     #expect(ArtworkPurpose.standard.rawValue == 472)
-    #expect(ArtworkPurpose.nowPlaying.rawValue == 1_200)
+    #expect(ArtworkPurpose.nowPlaying.rawValue == 1_440)
   }
 
   @Test("artwork invalidation advances the shared cache generation")
@@ -831,6 +831,6 @@ struct ArtworkAndPresentationTests {
     #expect(browsingParameters.first(where: { $0.name == "id" })?.value == resolvedID)
     #expect(nowPlayingParameters.first(where: { $0.name == "id" })?.value == resolvedID)
     #expect(browsingParameters.first(where: { $0.name == "size" })?.value == "472")
-    #expect(nowPlayingParameters.first(where: { $0.name == "size" })?.value == "1200")
+    #expect(nowPlayingParameters.first(where: { $0.name == "size" })?.value == "1440")
   }
 }
