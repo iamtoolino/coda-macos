@@ -682,6 +682,9 @@ struct NowPlayingPresentationView: View {
   }
 }
 
+/// Shared by every accent-coloured Now Playing element, so they change colour as one.
+private let nowPlayingAccentAnimation = Animation.easeInOut(duration: 0.85)
+
 /// The views below read the prepared theme through their own subscription, like the
 /// background: a theme published right after the parent's update cannot be missed by them.
 private struct NowPlayingPreparedArtwork: View {
@@ -719,7 +722,7 @@ private struct NowPlayingArtistLine: View {
       .font(.title3.weight(.medium))
       .foregroundStyle(accent)
       .tint(accent)
-      .animation(.easeInOut(duration: 0.85), value: presentation.preparedTheme?.id)
+      .animation(nowPlayingAccentAnimation, value: presentation.preparedTheme?.id)
       .lineLimit(1)
   }
 }
@@ -829,6 +832,8 @@ private struct NowPlayingAlbumRating: View {
       guard !Task.isCancelled else { return }
       starsVisible = false
     }
+    // Same curve and key as the artist line, so the accent changes on both together.
+    .animation(nowPlayingAccentAnimation, value: presentation.preparedTheme?.id)
   }
 
   private var displayedRating: Int {

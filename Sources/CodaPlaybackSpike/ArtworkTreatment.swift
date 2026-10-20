@@ -674,11 +674,16 @@ struct ArtworkBackgroundTransition: View {
     // so the cross-fade never starts with a one-frame flash of the new background.
     let isPending = outgoingTheme == nil && lastTheme.id != theme.id
     ZStack {
+      // The fading layer is always fully opaque and appears or leaves without a transition:
+      // an ambient animation (such as a navigation change) must never fade it in, or both
+      // layers would be partly transparent at once and the window would show through.
       if let fadingTheme = outgoingTheme ?? (isPending ? lastTheme : nil) {
         ArtworkBackgroundLayer(theme: fadingTheme)
+          .transition(.identity)
       }
       ArtworkBackgroundLayer(theme: theme)
         .opacity(isPending ? 0 : outgoingTheme == nil ? 1 : incomingOpacity)
+        .transition(.identity)
     }
     .onChange(of: theme.id) { _, _ in
       transition(to: theme)
