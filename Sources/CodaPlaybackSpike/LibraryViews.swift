@@ -783,33 +783,48 @@ private struct LibraryRangeToolbar: ViewModifier {
 
   func body(content: Content) -> some View {
     content.toolbar {
-      if !nowPlayingPresentation.isPresented {
-        ToolbarItem(placement: .navigation) {
-          LibraryRangeStatus(text: text)
-        }
-        .sharedBackgroundVisibility(.hidden)
+      // The item always stays so the line can fade with Now Playing instead of vanishing.
+      ToolbarItem(placement: .navigation) {
+        LibraryRangeStatus(text: text, isCovered: nowPlayingPresentation.isPresented)
       }
+      .sharedBackgroundVisibility(.hidden)
     }
   }
 }
 
-/// The item stays in place with no text so the toolbar does not shift when it appears.
+/// Fades in with a slight rise when a range appears, cross-fades when it changes, and fades out
+/// keeping its last words. Its width stays reserved so the toolbar never shifts.
 private struct LibraryRangeStatus: View {
+  private static let fade = Animation.easeInOut(duration: 0.22)
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   let text: String?
+  /// Now Playing covers the library; the line follows its transition.
+  let isCovered: Bool
+  @State private var shownText = ""
+
+  private var isVisible: Bool { text != nil && !isCovered }
 
   var body: some View {
-    Text(text ?? "")
+    Text(shownText)
       .font(.system(size: 13))
       .monospacedDigit()
       .foregroundStyle(.white.opacity(0.5))
       .lineLimit(1)
       .truncationMode(.tail)
-      .id(text)
-      .transition(.opacity)
-      .animation(.easeOut(duration: 0.2), value: text)
+      .contentTransition(.opacity)
+      .opacity(isVisible ? 1 : 0)
+      .offset(y: isVisible || reduceMotion ? 0 : 3)
+      .animation(Self.fade, value: text == nil)
+      .animation(
+        .easeInOut(duration: NowPlayingPresentationMotion.duration), value: isCovered)
       .frame(minWidth: 120, alignment: .leading)
       .padding(.leading, 12)
-      .accessibilityHidden(text == nil)
+      .allowsHitTesting(false)
+      .accessibilityHidden(!isVisible)
+      .onChange(of: text, initial: true) { _, newText in
+        guard let newText else { return }
+        withAnimation(Self.fade) { shownText = newText }
+      }
   }
 }
 
