@@ -91,7 +91,15 @@ struct LibraryRangeLabelTests {
     func plays(_ counts: Int...) -> [RemoteAlbum] {
       counts.map { RemoteAlbum(id: "\($0)", name: "A", playCount: $0) }
     }
-    #expect(label(plays(310, 120, 37), .mostPlayed) == "37+ plays")
+    #expect(label(plays(310, 120, 37), .mostPlayed) == "35+ plays")
+    #expect(label(plays(89), .mostPlayed) == "85+ plays")
+    #expect(label(plays(123), .mostPlayed) == "120+ plays")
+    #expect(label(plays(137), .mostPlayed) == "130+ plays")
+    #expect(label(plays(100), .mostPlayed) == "100+ plays")
+    #expect(label(plays(14), .mostPlayed) == "10+ plays")
+    #expect(label(plays(10), .mostPlayed) == "10+ plays")
+    #expect(label(plays(7), .mostPlayed) == "7+ plays")
+    #expect(label(plays(3), .mostPlayed) == "3+ plays")
     #expect(label(plays(1), .mostPlayed) == "1+ plays")
     #expect(label(plays(3, 0), .mostPlayed) == "Not played")
 

@@ -31,13 +31,22 @@ enum LibraryRangeLabel {
       // The list runs from most to fewest plays, so everything on screen has at least as many as
       // the last album. Navidrome counts an album's plays as the sum of its track plays.
       let plays = last.playCount ?? 0
-      return plays > 0 ? "\(plays.formatted())+ plays" : "Not played"
+      return plays > 0 ? "\(roundedDown(plays).formatted())+ plays" : "Not played"
     case .topRated:
       let ratings = visible.map { $0.userRating ?? 0 }.filter { (1...5).contains($0) }
       guard let low = ratings.min(), let high = ratings.max() else { return "Unrated" }
       let hasUnrated = ratings.count < visible.count
       if hasUnrated { return "Up to \(countLabel(high, "star"))" }
       return low == high ? countLabel(low, "star") : "\(low) – \(countLabel(high, "star"))"
+    }
+  }
+
+  /// Rounded down so "X+" stays true: exact below 10, then to fives, then to tens from 100.
+  private static func roundedDown(_ count: Int) -> Int {
+    switch count {
+    case ..<10: count
+    case ..<100: count / 5 * 5
+    default: count / 10 * 10
     }
   }
 
