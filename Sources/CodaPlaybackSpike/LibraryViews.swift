@@ -778,14 +778,13 @@ extension View {
 }
 
 private struct LibraryRangeToolbar: ViewModifier {
-  @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   let text: String?
 
   func body(content: Content) -> some View {
     content.toolbar {
       // The item always stays so the line can fade with Now Playing instead of vanishing.
       ToolbarItem(placement: .navigation) {
-        LibraryRangeStatus(text: text, isCovered: nowPlayingPresentation.isPresented)
+        LibraryRangeStatus(text: text)
       }
       .sharedBackgroundVisibility(.hidden)
     }
@@ -796,12 +795,17 @@ private struct LibraryRangeToolbar: ViewModifier {
 /// keeping its last words. Its width stays reserved so the toolbar never shifts.
 private struct LibraryRangeStatus: View {
   private static let fade = Animation.easeInOut(duration: 0.22)
+  /// Starts with Now Playing and is done before it covers the toolbar area.
+  private static let coverFade = Animation.easeInOut(
+    duration: NowPlayingPresentationMotion.duration * 0.6)
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  // Observed here rather than passed in: toolbar content applies values handed down from the
+  // page only on a later update, which made the line trail the Now Playing transition.
+  @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
   let text: String?
-  /// Now Playing covers the library; the line follows its transition.
-  let isCovered: Bool
   @State private var shownText = ""
 
+  private var isCovered: Bool { nowPlayingPresentation.isPresented }
   private var isVisible: Bool { text != nil && !isCovered }
 
   var body: some View {
@@ -815,8 +819,7 @@ private struct LibraryRangeStatus: View {
       .opacity(isVisible ? 1 : 0)
       .offset(y: isVisible || reduceMotion ? 0 : 3)
       .animation(Self.fade, value: text == nil)
-      .animation(
-        .easeInOut(duration: NowPlayingPresentationMotion.duration), value: isCovered)
+      .animation(Self.coverFade, value: isCovered)
       .frame(minWidth: 120, alignment: .leading)
       .padding(.leading, 12)
       .allowsHitTesting(false)
