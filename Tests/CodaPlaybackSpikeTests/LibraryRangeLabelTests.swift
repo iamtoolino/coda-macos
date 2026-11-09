@@ -81,15 +81,19 @@ struct LibraryRangeLabelTests {
     #expect(label(october, .recentlyPlayed) == "Played in October")
   }
 
-  @Test("releases and stars; most played says nothing")
+  @Test("releases, plays and stars")
   func yearsPlaysStars() {
     let years = [1997, 1994].map { RemoteAlbum(id: "\($0)", name: "A", year: $0) }
     #expect(label(years, .recentReleases) == "Released 1994 – 1997")
     #expect(label(Array(years.prefix(1)), .recentReleases) == "Released 1997")
     #expect(label([RemoteAlbum(id: "u", name: "A")], .recentReleases) == "Undated")
 
-    let played = [RemoteAlbum(id: "p", name: "A", playCount: 40)]
-    #expect(label(played, .mostPlayed) == nil)
+    func plays(_ counts: Int...) -> [RemoteAlbum] {
+      counts.map { RemoteAlbum(id: "\($0)", name: "A", playCount: $0) }
+    }
+    #expect(label(plays(310, 120, 37), .mostPlayed) == "37+ plays")
+    #expect(label(plays(1), .mostPlayed) == "1+ plays")
+    #expect(label(plays(3, 0), .mostPlayed) == "Not played")
 
     func rated(_ ratings: Int...) -> [RemoteAlbum] {
       ratings.enumerated().map { RemoteAlbum(id: "\($0.offset)", name: "A", userRating: $0.element) }

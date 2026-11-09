@@ -28,8 +28,10 @@ enum LibraryRangeLabel {
       guard let low = years.min(), let high = years.max() else { return "Undated" }
       return low == high ? "Released \(low)" : "Released \(low) – \(high)"
     case .mostPlayed:
-      // Navidrome's album play count adds up its track plays, so a number here would mislead.
-      return nil
+      // The list runs from most to fewest plays, so everything on screen has at least as many as
+      // the last album. Navidrome counts an album's plays as the sum of its track plays.
+      let plays = last.playCount ?? 0
+      return plays > 0 ? "\(plays.formatted())+ plays" : "Not played"
     case .topRated:
       let ratings = visible.map { $0.userRating ?? 0 }.filter { (1...5).contains($0) }
       guard let low = ratings.min(), let high = ratings.max() else { return "Unrated" }
