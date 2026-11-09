@@ -21,6 +21,8 @@ Coda is an independent community project and is not affiliated with or endorsed 
 
 - Artwork-led native macOS design with album-derived colors and Liquid Glass controls.
 - Album-first browsing with chronological discographies, multidisc releases, ratings, and search.
+- While you scroll Albums or Artists, the toolbar quietly names what is on screen, such as
+  "Added in September" or "A – C".
 - Proper artist credits: compilations show each track's artist, and Various Artists opens as a
   compilation collection.
 - A visible, editable queue with drag-and-drop, album grouping, and queue handoff.

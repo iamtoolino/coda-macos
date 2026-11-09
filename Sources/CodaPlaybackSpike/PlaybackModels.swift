@@ -281,6 +281,10 @@ struct RemoteAlbum: Decodable, Identifiable, Hashable, Sendable {
   var userRating: Int? = nil
   var discTitles: [RemoteDiscTitle]? = nil
   var genre: String? = nil
+  /// When the album was last played (OpenSubsonic), for the Recently Played range label.
+  var played: String? = nil
+  /// The server's sort name (OpenSubsonic), for the Title sort's range label.
+  var sortName: String? = nil
 
   var artistName: String { displayArtist?.nonEmpty ?? artist ?? "" }
   var artistCredit: ArtistCredit {

@@ -411,6 +411,10 @@ struct ArtistsView: View {
 
   @State private var selectedKind: ArtistCollectionKind
   @State private var artists: [RemoteArtist]?
+  @State private var artistIndexByID: [String: Int] = [:]
+  /// When each recently added artist's newest album was added, for the titlebar range.
+  @State private var addedDates: [String: String] = [:]
+  @State private var rangeLabel: String?
   @State private var isLoading = false
   @State private var errorMessage: String?
 
@@ -450,6 +454,7 @@ struct ArtistsView: View {
                 ArtistCard(artist: artist)
               }
             }
+            .scrollTargetLayout()
           }
           .padding(.horizontal, 22)
           .padding(.top, 18)
@@ -457,8 +462,12 @@ struct ArtistsView: View {
           .padding(.bottom, floatingPlaybackDockScrollClearance)
           .background(NativeScrollIndicators())
         }
+        .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.2) { ids in
+          updateRangeLabel(visibleIDs: ids)
+        }
       }
     }
+    .libraryRangeToolbar(rangeLabel)
     .navigationTitle(selectedKind.title)
     .focusedSceneValue(
       \.codaRefreshAction,
@@ -471,23 +480,40 @@ struct ArtistsView: View {
     }
   }
 
+  /// Names the range of artists on screen once the first row has scrolled under the toolbar.
+  private func updateRangeLabel(visibleIDs: [String]) {
+    let indices = visibleIDs.compactMap { artistIndexByID[$0] }.sorted()
+    let label: String? =
+      if let artists, let first = indices.first, first > 0 {
+        LibraryRangeLabel.label(
+          for: indices.map { artists[$0] }, kind: selectedKind, addedDates: addedDates)
+      } else {
+        nil
+      }
+    if label != rangeLabel { rangeLabel = label }
+  }
+
   @MainActor
   private func load(_ requestedKind: ArtistCollectionKind) async {
     guard let client = session.client else { return }
     isLoading = true
     artists = nil
+    rangeLabel = nil
     errorMessage = nil
     do {
       let loadedArtists: [RemoteArtist]
+      var loadedDates: [String: String] = [:]
       switch requestedKind {
       case .recentlyAdded:
         async let albumsTask = client.allAlbums(.recentlyAdded)
         async let artistsTask = client.artists()
-        loadedArtists = recentArtists(
+        let entries = recentArtistEntries(
           newestAlbums: try await albumsTask,
           artists: try await artistsTask,
           limit: nil
         )
+        loadedArtists = entries.map(\.artist)
+        for entry in entries { loadedDates[entry.artist.id] = entry.added }
       case .alphabetical:
         loadedArtists = try await client.artists().sorted {
           $0.name.localizedStandardCompare($1.name) == .orderedAscending
@@ -496,6 +522,9 @@ struct ArtistsView: View {
       try Task.checkCancellation()
       guard selectedKind == requestedKind else { return }
       artists = loadedArtists
+      artistIndexByID = Dictionary(
+        loadedArtists.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
+      addedDates = loadedDates
     } catch is CancellationError {
       return
     } catch {
@@ -531,6 +560,7 @@ struct AlbumsView: View {
   @State private var hasLoadedInitialPage = false
   @State private var isLoading = false
   @State private var errorMessage: String?
+  @State private var rangeLabel: String?
 
   init(kind: AlbumCollectionKind, resetToken: UUID?) {
     self.resetToken = resetToken
@@ -568,6 +598,7 @@ struct AlbumsView: View {
                 albumGridItem(at: index)
               }
             }
+            .scrollTargetLayout()
           }
           .padding(.horizontal, 22)
           .padding(.top, 18)
@@ -575,8 +606,12 @@ struct AlbumsView: View {
           .padding(.bottom, floatingPlaybackDockScrollClearance)
           .background(NativeScrollIndicators())
         }
+        .onScrollTargetVisibilityChange(idType: Int.self, threshold: 0.2) { indices in
+          updateRangeLabel(visibleIndices: indices)
+        }
       }
     }
+    .libraryRangeToolbar(rangeLabel)
     .navigationTitle(selectedKind.title)
     .focusedSceneValue(
       \.codaRefreshAction,
@@ -587,6 +622,19 @@ struct AlbumsView: View {
     .task(id: AlbumsLoadRequest(kind: selectedKind, resetToken: resetToken)) {
       await load(selectedKind)
     }
+  }
+
+  /// Names the range of albums on screen once the first row has scrolled under the toolbar;
+  /// at the top of the list the page title already says enough.
+  private func updateRangeLabel(visibleIndices: [Int]) {
+    let sorted = visibleIndices.sorted()
+    let label: String? =
+      if let first = sorted.first, first > 0 {
+        LibraryRangeLabel.label(for: sorted.compactMap { albumsByIndex[$0] }, kind: selectedKind)
+      } else {
+        nil
+      }
+    if label != rangeLabel { rangeLabel = label }
   }
 
   @MainActor
@@ -718,6 +766,50 @@ struct AlbumsView: View {
     } else if page.albums.count < Self.pageSize {
       reachedEnd = true
     }
+  }
+}
+
+extension View {
+  /// The quiet titlebar line in Albums and Artists naming the range on screen, e.g. "Added in
+  /// September". Hidden while Now Playing covers the library.
+  func libraryRangeToolbar(_ text: String?) -> some View {
+    modifier(LibraryRangeToolbar(text: text))
+  }
+}
+
+private struct LibraryRangeToolbar: ViewModifier {
+  @EnvironmentObject private var nowPlayingPresentation: NowPlayingPresentationController
+  let text: String?
+
+  func body(content: Content) -> some View {
+    content.toolbar {
+      if !nowPlayingPresentation.isPresented {
+        ToolbarItem(placement: .navigation) {
+          LibraryRangeStatus(text: text)
+        }
+        .sharedBackgroundVisibility(.hidden)
+      }
+    }
+  }
+}
+
+/// The item stays in place with no text so the toolbar does not shift when it appears.
+private struct LibraryRangeStatus: View {
+  let text: String?
+
+  var body: some View {
+    Text(text ?? "")
+      .font(.system(size: 13))
+      .monospacedDigit()
+      .foregroundStyle(.white.opacity(0.5))
+      .lineLimit(1)
+      .truncationMode(.tail)
+      .id(text)
+      .transition(.opacity)
+      .animation(.easeOut(duration: 0.2), value: text)
+      .frame(minWidth: 120, alignment: .leading)
+      .padding(.leading, 12)
+      .accessibilityHidden(text == nil)
   }
 }
 
@@ -2380,6 +2472,15 @@ func recentArtists(
   artists: [RemoteArtist],
   limit: Int? = 20
 ) -> [RemoteArtist] {
+  recentArtistEntries(newestAlbums: newestAlbums, artists: artists, limit: limit).map(\.artist)
+}
+
+/// Recent artists with when their newest album was added (its `created` date).
+func recentArtistEntries(
+  newestAlbums: [RemoteAlbum],
+  artists: [RemoteArtist],
+  limit: Int? = 20
+) -> [(artist: RemoteArtist, added: String?)] {
   // Distinct artists can share a name (or differ only by case); keep the first match.
   let byID = Dictionary(artists.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
   let byName = Dictionary(
@@ -2387,11 +2488,11 @@ func recentArtists(
     uniquingKeysWith: { first, _ in first }
   )
   var seen: Set<String> = []
-  var result: [RemoteArtist] = []
+  var result: [(artist: RemoteArtist, added: String?)] = []
   for album in newestAlbums {
     let artist = album.artistId.flatMap { byID[$0] } ?? byName[album.artistName.lowercased()]
     if let artist, seen.insert(artist.id).inserted {
-      result.append(artist)
+      result.append((artist, album.created))
       if let limit, result.count == limit { break }
     }
   }
